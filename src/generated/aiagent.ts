@@ -64,6 +64,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/connect-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mint a short-lived data-plane connect-token for a sandbox */
+        post: operations["createConnectToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/resume": {
         parameters: {
             query?: never;
@@ -239,6 +256,135 @@ export interface paths {
          *     `sb-ubuntu-26-04-minimal`). Use the template `name` at sandbox create.
          */
         get: operations["getSandboxTemplate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List agents in a project */
+        get: operations["listAgents"];
+        put?: never;
+        /**
+         * Create an agent
+         * @description Provisions an agent from a catalogue template. The platform creates a
+         *     backing sandbox (1:1) running the template's agent image and reports the
+         *     agent as `Provisioning` until the sandbox becomes ready.
+         */
+        post: operations["createAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an agent by ID */
+        get: operations["getAgent"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete an agent
+         * @description Deletes the agent and its backing sandbox.
+         */
+        delete: operations["deleteAgent"];
+        options?: never;
+        head?: never;
+        /**
+         * Update an agent in place
+         * @description Updates mutable fields of an agent without recreating it. `egress` is
+         *     re-applied live (no pod disruption). `resources` (cpu/memory) are resized
+         *     in place on the running pod via the pod resize subresource; the new size
+         *     also persists to the backing sandbox so it survives a restart. Disk is
+         *     not resizable in place. Fields omitted from the body are left unchanged.
+         */
+        patch: operations["updateAgent"];
+        trace?: never;
+    };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause an agent (suspend its backing sandbox) */
+        post: operations["pauseAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume a paused agent */
+        post: operations["resumeAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1beta1/agent-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List agent templates
+         * @description Returns platform-managed agent templates available for agent create.
+         *     Only templates with status `active` are returned. Registry paths and
+         *     other operator-internal fields are not exposed.
+         */
+        get: operations["listAgentTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1beta1/agent-templates/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get an agent template
+         * @description Returns one platform-managed agent template by id (e.g. `ag-claude-code`).
+         *     Use the template `name` at agent create.
+         */
+        get: operations["getAgentTemplate"];
         put?: never;
         post?: never;
         delete?: never;
@@ -486,6 +632,12 @@ export interface components {
             /** @description Time-ordered [unix_seconds, value] pairs. Empty when the sandbox emitted no samples in the window. */
             points: number[][];
         };
+        ConnectTokenResponse: {
+            /** @description Signed JWT connect-token, presented as a bearer credential to the sandbox data plane. */
+            token: string;
+            /** @description Token lifetime in seconds. */
+            expires_in: number;
+        };
         SandboxMetricsResponse: {
             /** Format: uuid */
             sandbox_id: string;
@@ -496,6 +648,133 @@ export interface components {
             /** @description Resolution actually used after server-side clamping. */
             step: string;
             series: components["schemas"]["MetricSeries"][];
+        };
+        /**
+         * @description Lifecycle state of an agent, derived from its backing sandbox.
+         * @enum {string}
+         */
+        AgentStatus: "Provisioning" | "Ready" | "Paused" | "Failed" | "Deleting";
+        Agent: {
+            /** Format: uuid */
+            id: string;
+            org_id: string;
+            project_id: string;
+            name: string;
+            /** @description Catalogue template id the agent was created from (e.g. ag-claude-code). */
+            agent_template_id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the backing sandbox that runs this agent.
+             */
+            sandbox_id: string;
+            /** @description Effective agent configuration (template defaults merged with create-time overrides). */
+            config?: {
+                [key: string]: unknown;
+            };
+            status: components["schemas"]["AgentStatus"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        CreateAgentRequest: {
+            /**
+             * @description Agent name. Used verbatim as the backing Sandbox CR name, so it must
+             *     be a valid DNS-1123 label: lowercase alphanumeric characters or '-',
+             *     starting and ending with an alphanumeric, max 63 characters.
+             * @example my-agent
+             */
+            name: string;
+            /**
+             * @description Catalogue template name (e.g. claude-code). The server validates the
+             *     template exists and is active, then provisions the agent from it.
+             * @example claude-code
+             */
+            agent_template: string;
+            /**
+             * @description Region to provision the backing sandbox in; omit to use the platform default.
+             * @example dev
+             */
+            region?: string;
+            /**
+             * @description Agent configuration overrides, shallow-merged over the template's
+             *     default_config. Shape is template-specific (see template config_schema).
+             */
+            config?: {
+                [key: string]: unknown;
+            };
+            /** @description Environment variables injected into the agent container. */
+            env?: components["schemas"]["EnvVar"][];
+            resources?: components["schemas"]["SandboxResources"];
+            /**
+             * @description Network egress policy for the agent's backing sandbox. Omit for the
+             *     secure default (deny-all). Use allow_list with allow rules to permit
+             *     specific destinations (e.g. the model provider, git, registries).
+             */
+            egress?: components["schemas"]["SandboxEgressConfig"];
+        };
+        /**
+         * @description Partial in-place update. Provide at least one field. Omitted fields are
+         *     unchanged.
+         */
+        UpdateAgentRequest: {
+            /** @description Replace the agent's egress policy (re-applied live, no pod restart). */
+            egress?: components["schemas"]["SandboxEgressConfig"];
+            /**
+             * @description New cpu/memory sizing, resized in place on the running pod. Only the
+             *     fields provided change. disk_gb is not resizable in place and is
+             *     rejected if supplied with a different value.
+             */
+            resources?: components["schemas"]["SandboxResources"];
+        };
+        AgentListResponse: {
+            items: components["schemas"]["Agent"][];
+            total: number;
+            page: number;
+            limit: number;
+        };
+        AgentTemplate: {
+            id: string;
+            name: string;
+            description: string;
+            /** @description Template category (e.g. coding). */
+            category: string;
+            /** @enum {string} */
+            status: "active" | "deprecated" | "disabled";
+            /** @description Version of the packaged agent binary. */
+            agent_version?: string | null;
+            /** @description UI/drive declaration (e.g. {"mode":"tui"} or {"mode":"web","port":8080}). */
+            ui: {
+                [key: string]: unknown;
+            };
+            /** @description JSON-schema-like description of the config this template accepts. */
+            config_schema?: {
+                [key: string]: unknown;
+            };
+            /**
+             * @description Recommended default sizing for agents of this template. An agent
+             *     inherits these when the create request omits the corresponding field;
+             *     caller-supplied resources take precedence. Null/omitted fields fall
+             *     back to the platform default.
+             */
+            default_resources?: components["schemas"]["SandboxResources"] | null;
+            /**
+             * @description Minimal least-privilege egress allow-list the agent needs (its model
+             *     provider + toolchain). An agent inherits this when the create request
+             *     omits egress; caller-supplied egress takes precedence. Null falls
+             *     back to deny-all.
+             */
+            default_egress?: components["schemas"]["SandboxEgressConfig"] | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AgentTemplateListResponse: {
+            items: components["schemas"]["AgentTemplate"][];
+            total: number;
+            page: number;
+            limit: number;
         };
     };
     responses: {
@@ -566,6 +845,9 @@ export interface components {
         Page: number;
         SandboxTemplateID: string;
         Limit: number;
+        /** @description Agent UUID. */
+        AgentID: string;
+        AgentTemplateID: string;
     };
     requestBodies: never;
     headers: never;
@@ -728,6 +1010,37 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createConnectToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description Sandbox UUID. */
+                sandbox_id: components["parameters"]["SandboxID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connect-token minted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectTokenResponse"];
+                };
+            };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -1051,6 +1364,281 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SandboxTemplate"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    listAgents: {
+        parameters: {
+            query?: {
+                page?: components["parameters"]["Page"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of agents */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    createAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAgentRequest"];
+            };
+        };
+        responses: {
+            /** @description Agent accepted; may still be provisioning (check `status`) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description Agent UUID. */
+                agent_id: components["parameters"]["AgentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    deleteAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description Agent UUID. */
+                agent_id: components["parameters"]["AgentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    updateAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description Agent UUID. */
+                agent_id: components["parameters"]["AgentID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated agent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    pauseAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description Agent UUID. */
+                agent_id: components["parameters"]["AgentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent paused */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    resumeAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description Agent UUID. */
+                agent_id: components["parameters"]["AgentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent resumed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    listAgentTemplates: {
+        parameters: {
+            query?: {
+                page?: components["parameters"]["Page"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paginated list of agent templates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTemplateListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getAgentTemplate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: components["parameters"]["AgentTemplateID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent template details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentTemplate"];
                 };
             };
             401: components["responses"]["Unauthorized"];

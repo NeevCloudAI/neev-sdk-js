@@ -1,5 +1,11 @@
 import type { FetchLike } from "../src/http.js";
-import type { SandboxData, SandboxTemplate, SnapshotData } from "../src/types.js";
+import type {
+  AgentData,
+  AgentTemplate,
+  SandboxData,
+  SandboxTemplate,
+  SnapshotData,
+} from "../src/types.js";
 
 // A single recorded fetch call, for asserting method/url/headers/body in tests.
 export interface RecordedCall {
@@ -116,6 +122,37 @@ export function templateData(overrides: Partial<SandboxTemplate> = {}): SandboxT
     description: "Minimal Ubuntu 26.04 sandbox runtime.",
     category: "standard",
     status: "active",
+    created_at: "2026-06-05T00:00:00Z",
+    updated_at: "2026-06-05T00:00:00Z",
+    ...overrides,
+  };
+}
+
+// Builds an Agent record with sensible defaults, overridable per field.
+export function agentData(overrides: Partial<AgentData> = {}): AgentData {
+  return {
+    id: "33333333-3333-3333-3333-333333333333",
+    org_id: "org_test",
+    project_id: "proj_test",
+    name: "test-agent",
+    agent_template_id: "ag-claude-code",
+    sandbox_id: "11111111-1111-1111-1111-111111111111",
+    status: "Provisioning",
+    created_at: "2026-06-05T00:00:00Z",
+    updated_at: "2026-06-05T00:00:00Z",
+    ...overrides,
+  };
+}
+
+// Builds an AgentTemplate record with sensible defaults, overridable per field.
+export function agentTemplateData(overrides: Partial<AgentTemplate> = {}): AgentTemplate {
+  return {
+    id: "ag-claude-code",
+    name: "claude-code",
+    description: "Claude Code coding agent.",
+    category: "coding",
+    status: "active",
+    ui: { mode: "tui" },
     created_at: "2026-06-05T00:00:00Z",
     updated_at: "2026-06-05T00:00:00Z",
     ...overrides,

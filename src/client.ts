@@ -1,6 +1,8 @@
 import createClient, { type Client } from "openapi-fetch";
 import { NeevError } from "./errors.js";
 import { type Dispatch, type FetchLike, RawClient, createDispatch } from "./http.js";
+import { AgentTemplates } from "./resources/agent-templates.js";
+import { Agents } from "./resources/agents.js";
 import { Sandboxes } from "./resources/sandboxes.js";
 import { SandboxTemplates } from "./resources/templates.js";
 import { SandboxConnection } from "./sandboxd.js";
@@ -62,6 +64,10 @@ export class Neev implements RequestContext {
   readonly sandboxes: Sandboxes;
   // Read-only sandbox-template catalogue (template ids for `sandboxes.create`).
   readonly templates: SandboxTemplates;
+  // Agent lifecycle operations.
+  readonly agents: Agents;
+  // Read-only agent-template catalogue (template names for `agents.create`).
+  readonly agentTemplates: AgentTemplates;
 
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -103,6 +109,10 @@ export class Neev implements RequestContext {
     this.raw = new RawClient({ baseUrl: this.baseUrl, apiKey, dispatch: this.dispatch });
     this.sandboxes = new Sandboxes(this);
     this.templates = new SandboxTemplates(this);
+    // Agents reuse the sandboxes resource so an Agent handle can resolve its
+    // backing sandbox; construct sandboxes first.
+    this.agents = new Agents(this, this.sandboxes);
+    this.agentTemplates = new AgentTemplates(this);
   }
 
   // Opens a connection to a sandbox daemon at its connect_url, backed by this

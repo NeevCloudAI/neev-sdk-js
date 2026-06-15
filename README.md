@@ -9,6 +9,8 @@ One package, one auth model, one client — adopt new capabilities as they ship.
 
 - **`neev.sandboxes`** — full agent-sandbox lifecycle: create, list, get, pause, resume, delete, live metrics, plus snapshots, restore, and fork. Inside a running sandbox: `files`, `exec`, and a `processes` supervisor for long-running, detached processes. Sandboxes are gVisor-isolated (`runsc`) compute environments for AI agents.
 - **`neev.templates`** — the platform sandbox-template catalogue (list, get). A template id (e.g. `sb-ubuntu-26-04-minimal`) is optional when creating a sandbox; omit it to use the platform's default template.
+- **`neev.agents`** — agent lifecycle: create from a catalogue template, list, get, update (in-place egress / cpu / memory), pause, resume, delete. Each agent runs on its own backing sandbox, reachable from the handle via `agent.sandbox()`.
+- **`neev.agentTemplates`** — the platform agent-template catalogue (list, get). A template name (e.g. `claude-code`) is passed as `agent_template` when creating an agent.
 
 **Coming next**
 
@@ -257,6 +259,40 @@ await neev.sandboxes.deleteSnapshot(snap.id);
 ```
 
 The full snapshot example is [`examples/snapshot-fork-restore.ts`](./examples/snapshot-fork-restore.ts).
+
+### Agents
+
+An **agent** is a packaged coding agent (e.g. Claude Code) provisioned from a catalogue template onto its own backing sandbox (1:1). Create one from a template name, wait for it to become `Ready`, then drive its environment through the backing sandbox:
+
+```ts
+// Discover available agent templates (or pass a known name directly).
+const { items } = await neev.agentTemplates.list();
+const template = await neev.agentTemplates.get("ag-claude-code");
+
+// Provision an agent from a template. It starts `Provisioning`; wait for `Ready`.
+const agent = await neev.agents.create({
+  name: "my-coder",
+  agent_template: "claude-code",
+  region: process.env.NEEV_REGION,
+});
+await agent.waitUntilReady();
+console.log(agent.id, agent.status, agent.sandboxId);
+
+// Reach the agent's environment (files / exec / processes) via its backing sandbox.
+const sandbox = await agent.sandbox();
+await sandbox.files.write("notes.md", "# scratch\n");
+const { stdout } = await sandbox.exec(["ls", "-la"]);
+
+// Resize cpu/memory or change egress in place (no recreate); disk is not resizable.
+await agent.update({ resources: { cpu: 2, memory_gb: 4 } });
+
+// Pause to release compute, resume on demand, delete when done.
+await agent.pause();
+await agent.resume();
+await agent.delete();
+```
+
+Resource methods mirror the handle: `neev.agents.list/create/get/update/pause/resume/delete`, and `neev.agentTemplates.list/get`. The full example is [`examples/create-agent.ts`](./examples/create-agent.ts).
 
 ## Documentation
 
