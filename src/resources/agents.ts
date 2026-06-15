@@ -1,6 +1,7 @@
 import type { Client } from "openapi-fetch";
 import { Agent } from "../agent.js";
 import type { RequestContext, Scope } from "../client.js";
+import { NeevError } from "../errors.js";
 import type { paths } from "../generated/aiagent.js";
 import { ensureOk, unwrap } from "../http.js";
 import type {
@@ -92,7 +93,11 @@ export class Agents {
 
   // Updates an agent in place (egress and/or cpu/memory) and returns the updated
   // handle. Omitted fields are left unchanged; disk is not resizable in place.
+  // Rejects an empty patch locally rather than letting the server 400 on it.
   async update(id: string, params: UpdateAgentParams, scope?: Scope): Promise<Agent> {
+    if (!Object.values(params).some((value) => value !== undefined)) {
+      throw new NeevError("agents.update requires at least one field (egress or resources).");
+    }
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.PATCH(ITEM, {
       params: { path: { org_id: orgId, project_id: projectId, agent_id: id } },

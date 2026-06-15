@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Agent, Neev, NotFoundError } from "../src/index.js";
+import { Agent, Neev, NeevError, NotFoundError } from "../src/index.js";
 import { agentData, json, mockFetch } from "./helpers.js";
 
 // Builds a client backed by the given queued responses.
@@ -63,6 +63,12 @@ describe("agents resource", () => {
     expect(calls[0]?.method).toBe("PATCH");
     expect(calls[0]?.url).toMatch(/\/agents\/ag-1$/);
     expect(calls[0]?.body).toEqual({ resources: { cpu: 2, memory_gb: 4 } });
+  });
+
+  it("rejects an empty update locally without issuing a request", async () => {
+    const { neev, calls } = client([]);
+    await expect(neev.agents.update("ag-1", {})).rejects.toBeInstanceOf(NeevError);
+    expect(calls).toHaveLength(0);
   });
 
   it("targets the pause and resume sub-paths", async () => {

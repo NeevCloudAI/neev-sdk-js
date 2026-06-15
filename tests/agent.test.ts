@@ -118,4 +118,13 @@ describe("Agent handle", () => {
     const agent = await neev.agents.create({ name: "demo", agent_template: "claude-code" });
     await expect(agent.waitUntilReady()).rejects.toThrow(/failed to provision/);
   });
+
+  it("waitUntilReady rejects non-finite or non-positive timings instead of hot-looping", async () => {
+    const neev = alwaysStatusClient("Provisioning");
+    const agent = await neev.agents.create({ name: "demo", agent_template: "claude-code" });
+    await expect(agent.waitUntilReady({ timeoutMs: 0 })).rejects.toThrow(/timeoutMs/);
+    await expect(agent.waitUntilReady({ timeoutMs: Number.NaN })).rejects.toThrow(/timeoutMs/);
+    await expect(agent.waitUntilReady({ pollIntervalMs: 0 })).rejects.toThrow(/pollIntervalMs/);
+    await expect(agent.waitUntilReady({ pollIntervalMs: -1 })).rejects.toThrow(/pollIntervalMs/);
+  });
 });

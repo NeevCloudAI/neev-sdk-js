@@ -267,6 +267,18 @@ export class Sandbox {
   async waitUntilReady(options: WaitOptions = {}): Promise<this> {
     const timeoutMs = options.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS;
     const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    // Reject non-finite or non-positive timings: they would otherwise produce a
+    // near-zero-delay poll loop (or, for NaN, one that never times out).
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new NeevError(
+        `waitUntilReady: timeoutMs must be a positive, finite number (got ${timeoutMs}).`,
+      );
+    }
+    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+      throw new NeevError(
+        `waitUntilReady: pollIntervalMs must be a positive, finite number (got ${pollIntervalMs}).`,
+      );
+    }
     const deadline = Date.now() + timeoutMs;
 
     // Poll the live phase until Ready, a terminal Paused state, or the deadline.
