@@ -32,7 +32,9 @@ async function main(): Promise<void> {
       program: "sh",
       cols: 80,
       rows: 24,
-      onData: (chunk) => process.stdout.write(decoder.decode(chunk)),
+      // Decode in streaming mode so a multibyte UTF-8 character split across
+      // frames isn't corrupted; the trailing flush below emits any held bytes.
+      onData: (chunk) => process.stdout.write(decoder.decode(chunk, { stream: true })),
     });
 
     // Drive the shell, then exit so the session ends cleanly.
@@ -40,6 +42,8 @@ async function main(): Promise<void> {
     pty.sendInput("exit\n");
 
     const { exitCode } = await pty.wait();
+    // Flush any bytes the streaming decoder buffered from a partial sequence.
+    process.stdout.write(decoder.decode());
     console.error(`\n[pty exited with code ${exitCode}]`);
   } finally {
     await sandbox.delete();
