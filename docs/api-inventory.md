@@ -32,6 +32,7 @@ import { Neev } from "@neevcloud/sdk";
 - [Exec and streaming](#exec-and-streaming)
 - [Files API](#files-api)
 - [Processes API](#processes-api)
+- [PTY API](#pty-api)
 - [Runtime connection](#runtime-connection)
 - [Raw client](#raw-client)
 - [Types reference](#types-reference)
@@ -72,6 +73,12 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `ProcessStatusOptions` | interface (type) | `processes.ts` |
 | `ProcessLogsOptions` | interface (type) | `processes.ts` |
 | `ProcessRequestOptions` | interface (type) | `processes.ts` |
+| `SandboxPty` | class | `pty.ts` |
+| `PtyHandle` | class | `pty.ts` |
+| `PtyCreateOptions` | interface (type) | `pty.ts` |
+| `PtyResult` | interface (type) | `pty.ts` |
+| `WebSocketFactory` | type alias | `pty.ts` |
+| `SandboxWebSocket` | interface (type) | `pty.ts` |
 | `ExecOptions` | interface (type) | `sandboxd.ts` |
 | `ExecResult` | interface (type) | `sandboxd.ts` |
 | `ExecStreamEvent` | type alias (union) | `sandboxd.ts` |
@@ -549,6 +556,7 @@ Returned by `create()`, `get()`, `list().items`, `pause()`, `resume()`, `restore
 | `resources` | `SandboxResources \| undefined` | Compute size, or `undefined` when defaulted. |
 | `files` | `SandboxFiles` | Filesystem facade; resolves its connection lazily on first use (waits for Ready). |
 | `processes` | `SandboxProcesses` | Process-supervisor facade; resolves its connection lazily on first use (waits for Ready). |
+| `pty` | `SandboxPty` | Interactive-terminal facade; resolves its connection lazily on first use (waits for Ready). |
 | `data` | `SandboxData` | The full raw API record. |
 
 ### `sandbox.refresh()`
@@ -876,6 +884,35 @@ follow(processId: string, options?: { cursor?: number; signal?: AbortSignal }): 
 
 ---
 
+## PTY API
+
+Access via the `sandbox.pty` getter (a `SandboxPty`). Opens an interactive pseudo-terminal over a WebSocket; the first call waits for the sandbox to be `Ready`.
+
+### `sandbox.pty.create(options?)`
+
+```ts
+create(options?: PtyCreateOptions): Promise<PtyHandle>
+```
+
+Opens a PTY and resolves once connected. `PtyCreateOptions`: `program?: string`, `args?: string[]`, `cols?: number`, `rows?: number`, `onData?: (chunk: Uint8Array) => void`. Throws `NeevError` if no WebSocket is available.
+
+### `PtyHandle`
+
+| Member | Type | Description |
+| ------ | ---- | ----------- |
+| `sendInput(data)` | `void` | Send `string \| Uint8Array` to the terminal's stdin. |
+| `resize(cols, rows)` | `void` | Forward a window-size change. |
+| `kill(signal?)` | `void` | Signal the process group by name (default `"SIGTERM"`). |
+| `wait()` | `Promise<PtyResult>` | Resolves with `{ exitCode }` when the session ends. |
+| `connected()` | `Promise<void>` | Resolves once the socket is open (awaited by `create`). |
+| `disconnect()` | `void` | Close the socket; `wait` then resolves. |
+
+**Type shapes:** `PtyResult` = `{ exitCode: number }`; `WebSocketFactory` = `(url: string, options: { headers: Record<string,string> }) => SandboxWebSocket`; `SandboxWebSocket` is the minimal `binaryType`/`send`/`close`/`addEventListener` subset satisfied by the global `WebSocket` and Node's `ws`.
+
+The WebSocket comes from the client's `webSocket` option, else the runtime global. In Node, pass a header-capable one (the global cannot send the auth header).
+
+---
+
 ## Runtime connection
 
 Low-level connection to the sandbox daemon (`sandboxd`), reached directly at the sandbox's `connect_url`. Constructed internally by the `Sandbox` handle; exposed for advanced use via `client.sandboxes.connect(connectUrl)` or `new SandboxConnection(...)`.
@@ -892,6 +929,7 @@ constructor(opts: SandboxConnectionOptions)
 | ------ | ---- | ----------- |
 | `files` | `SandboxFiles` | File operations bound to this connection. |
 | `processes` | `SandboxProcesses` | Process-supervisor operations bound to this connection. |
+| `pty` | `SandboxPty` | Interactive-terminal operations bound to this connection. |
 | `exec(command, options?)` | `Promise<ExecResult>` | Buffered command execution. |
 | `execStream(command, options?)` | `AsyncGenerator<ExecStreamEvent>` | Streaming command execution. |
 | `request(req)` | `Promise<Response>` | Low-level daemon request; throws a typed `APIError` on non-2xx. |
@@ -1350,6 +1388,15 @@ Compact reviewer index.
 | `Signal` | const | `{ HUP: 1, INT: 2, QUIT: 3, KILL: 9, TERM: 15 }`. |
 | `ProcessState`, `ProcessStatus`, `ProcessInfo`, `ProcessLogEntry`, `ProcessLogsPage`, `ProcessLogEvent` | types | Supervisor shapes. |
 | `StartProcessOptions`, `ProcessStatusOptions`, `ProcessLogsOptions`, `ProcessRequestOptions` | types | Operation options. |
+
+### PTY (`pty.ts`)
+
+| Symbol | Kind | Notes |
+| ------ | ---- | ----- |
+| `SandboxPty` | class | `create` → `PtyHandle`. |
+| `PtyHandle` | class | `sendInput`, `resize`, `kill`, `wait`, `connected`, `disconnect`. |
+| `PtyCreateOptions`, `PtyResult` | types | Create options and exit result. |
+| `WebSocketFactory`, `SandboxWebSocket` | types | Pluggable WebSocket transport. |
 
 ### HTTP / raw (`http.ts`)
 

@@ -294,15 +294,38 @@ await sandbox.processes.killAll(Signal.TERM);
 
 `ProcessState` is `"running" | "exited"`. `Signal` is a const of the accepted signal numbers: `{ HUP, INT, QUIT, KILL, TERM }`. Poll `entries[].data` is plain UTF-8; follow `stdout`/`stderr` chunks are decoded for you.
 
+### `sandbox.pty`
+
+Opens an interactive pseudo-terminal over a WebSocket. `create` returns a `PtyHandle`; output streams to the `onData` callback.
+
+| Member | Returns | Summary |
+| ------ | ------- | ------- |
+| `create(options?)` | `Promise<PtyHandle>` | Opens a PTY; `options` = `{ program?, args?, cols?, rows?, onData? }`. Resolves once connected. |
+| `handle.sendInput(data)` | `void` | Sends keystrokes/bytes (`string \| Uint8Array`) to the terminal. |
+| `handle.resize(cols, rows)` | `void` | Forwards a window-size change. |
+| `handle.kill(signal?)` | `void` | Signals the process group by name (default `"SIGTERM"`). |
+| `handle.wait()` | `Promise<PtyResult>` | Resolves with `{ exitCode }` when the session ends. |
+| `handle.disconnect()` | `void` | Closes the socket; `wait` then resolves. |
+
+```ts
+const pty = await sandbox.pty.create({ cols: 80, rows: 24, onData: (b) => process.stdout.write(b) });
+pty.sendInput("ls -la\n");
+pty.resize(120, 40);
+const { exitCode } = await pty.wait();
+```
+
+The PTY needs a `WebSocket`. It uses the runtime's global one if present; in Node, pass a header-capable WebSocket (the global cannot send auth headers): `new Neev({ webSocket: (url, opts) => new WebSocket(url, opts) })` with the [`ws`](https://www.npmjs.com/package/ws) package.
+
 ### Low-level connection types
 
 Listed for completeness; prefer the handle methods above.
 
 | Type | Summary |
 | ---- | ------- |
-| `SandboxConnection` | A live connection to one sandbox's daemon. Construct via `neev.createSandboxConnection(connectUrl)`, or reach it through `sandbox.exec` / `sandbox.files` / `sandbox.processes`. Exposes `exec`, `execStream`, and `files` / `processes` facades. |
+| `SandboxConnection` | A live connection to one sandbox's daemon. Construct via `neev.createSandboxConnection(connectUrl)`, or reach it through `sandbox.exec` / `sandbox.files` / `sandbox.processes` / `sandbox.pty`. Exposes `exec`, `execStream`, and `files` / `processes` / `pty` facades. |
 | `SandboxFiles` | The filesystem facade (`write`/`read`/`readText`/`list`). Accessed via `sandbox.files` or `connection.files`. |
 | `SandboxProcesses` | The process-supervisor facade (`start`/`get`/`list`/`kill`/`killAll`/`logs`/`follow`). Accessed via `sandbox.processes` or `connection.processes`. |
+| `SandboxPty` | The interactive-terminal facade (`create` → `PtyHandle`). Accessed via `sandbox.pty` or `connection.pty`. |
 
 ---
 
