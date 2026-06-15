@@ -7,7 +7,7 @@ One package, one auth model, one client — adopt new capabilities as they ship.
 
 **Available today**
 
-- **`neev.sandboxes`** — full agent-sandbox lifecycle: create, list, get, pause, resume, delete, live metrics, plus snapshots, restore, and fork. Sandboxes are gVisor-isolated (`runsc`) compute environments for AI agents.
+- **`neev.sandboxes`** — full agent-sandbox lifecycle: create, list, get, pause, resume, delete, live metrics, plus snapshots, restore, and fork. Inside a running sandbox: `files`, `exec`, and a `processes` supervisor for long-running, detached processes. Sandboxes are gVisor-isolated (`runsc`) compute environments for AI agents.
 - **`neev.templates`** — the platform sandbox-template catalogue (list, get). A template id (e.g. `sb-ubuntu-26-04-minimal`) is optional when creating a sandbox; omit it to use the platform's default template.
 
 **Coming next**
@@ -195,6 +195,42 @@ for await (const event of sandbox.exec(["sh", "-c", "for i in 1 2 3; do echo $i;
 ```
 
 These calls are **not** retried automatically (a retried `write` could run twice) — handle retries yourself if needed.
+
+### Long-running processes
+
+`exec` ties a command's lifetime to your request. For background work that should outlive a single call — a dev server, a build, a watcher — use `sandbox.processes`. The supervisor runs the process detached, addressed by a stable `process_id`, so you can start it, follow or poll its output, await its exit, and signal it across separate calls:
+
+```ts
+const proc = await sandbox.processes.start("npm", { args: ["run", "dev"], cwd: "app" });
+proc.id; // "proc_9f3a…"
+
+// Follow combined stdout/stderr live until the process exits (or you abort).
+for await (const event of proc.follow()) {
+  if (event.type === "stdout") process.stdout.write(event.data);
+  else if (event.type === "stderr") process.stderr.write(event.data);
+  else console.log("exit", event.exitCode);
+}
+
+// …or poll with a reconnect-safe cursor instead of following.
+const page = await proc.logs({ cursor: 0 }); // → { entries, cursor, dropped, state }
+
+const status = await proc.status();          // non-blocking snapshot
+const final = await proc.wait();             // block until it exits → { state, exitCode, … }
+await proc.kill(Signal.TERM);                // signal; default is SIGTERM
+```
+
+Collection-level operations live on `sandbox.processes`:
+
+```ts
+const all = await sandbox.processes.list();        // → ProcessInfo[]
+const status = await sandbox.processes.get(id);    // by process_id
+const signalled = await sandbox.processes.kill(id, Signal.KILL);
+const count = await sandbox.processes.killAll();   // signal every running process
+```
+
+Output is captured in a bounded ring: `logs` returns plain-text `entries` plus a monotonic `cursor` to resume from, and `dropped: true` when the ring rolled past your cursor. `follow` is the streaming counterpart; a client abort ends it without an `exit` event. Like `files`/`exec`, the first process call waits until the sandbox is Ready to resolve its `connect_url`.
+
+The full example is [`examples/processes.ts`](./examples/processes.ts).
 
 ### Snapshots, fork & restore
 

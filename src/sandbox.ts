@@ -1,5 +1,6 @@
 import type { Scope } from "./client.js";
 import { NeevError } from "./errors.js";
+import { SandboxProcesses } from "./processes.js";
 import type {
   ListSnapshotsParams,
   MetricsQuery,
@@ -46,6 +47,8 @@ export class Sandbox {
   private connecting?: Promise<SandboxConnection>;
   // Cached files facade; its connection is resolved lazily on first use.
   private filesProxy?: SandboxFiles;
+  // Cached processes facade; its connection is resolved lazily on first use.
+  private processesProxy?: SandboxProcesses;
 
   constructor(sandboxes: Sandboxes, data: SandboxData, scope?: Scope) {
     this.sandboxes = sandboxes;
@@ -101,6 +104,16 @@ export class Sandbox {
       this.filesProxy = new SandboxFiles(() => this.ensureConnection());
     }
     return this.filesProxy;
+  }
+
+  // Process supervisor operations on this sandbox's daemon. Like `files`, each
+  // operation resolves the connection lazily, waiting until the sandbox is Ready
+  // on first use to obtain its connect_url.
+  get processes(): SandboxProcesses {
+    if (!this.processesProxy) {
+      this.processesProxy = new SandboxProcesses(() => this.ensureConnection());
+    }
+    return this.processesProxy;
   }
 
   // Runs a command in the sandbox. By default it buffers and resolves to the full

@@ -198,6 +198,7 @@ await neev.sandboxes.deleteSnapshot(snap.id);
 | `restore(snapshotId)` | `Promise<this>` | Restores this sandbox in place from a chosen snapshot. |
 | `fork(name)` | `Promise<Sandbox>` | Forks the current live state into a new sandbox handle. |
 | `files` | `SandboxFiles` (getter) | Filesystem operations on this sandbox (see runtime). |
+| `processes` | `SandboxProcesses` (getter) | Detached-process supervisor on this sandbox (see runtime). |
 | `exec(command, options?)` | `Promise<ExecResult>` \| `AsyncGenerator<ExecStreamEvent>` | Runs a command (see runtime). |
 | `toJSON()` | `SandboxData` | Raw record, so `JSON.stringify(sandbox)` emits the API shape. |
 
@@ -266,14 +267,42 @@ const entries = await sandbox.files.list(".", { recursive: true }); // → FileE
 
 `FileEntry`: `{ name; type: "file" | "directory" | "symlink"; path; size; mode; permissions; modifiedTime; symlinkTarget? }`.
 
+### `sandbox.processes`
+
+Runs **detached** processes whose lifetime outlives the request that started them, each addressed by a stable `process_id`. `start` returns a `Process` handle; collection-level operations live on `sandbox.processes`.
+
+| Method | Returns | Summary |
+| ------ | ------- | ------- |
+| `start(command, options?)` | `Promise<Process>` | Starts a detached process; `options` = `{ args?, cwd?, env?, stdin?, signal? }`. |
+| `get(id, options?)` | `Promise<ProcessStatus>` | Status snapshot; `{ wait: true }` blocks until the process exits. |
+| `list(options?)` | `Promise<ProcessInfo[]>` | All tracked processes (running + recently-exited). |
+| `kill(id, signal?)` | `Promise<boolean>` | Signals one process (default SIGTERM); returns whether a signal was delivered. |
+| `killAll(signal?)` | `Promise<number>` | Signals every running process; returns the count signalled. |
+| `logs(id, options?)` | `Promise<ProcessLogsPage>` | Polls captured output from `{ cursor? }`; returns `{ entries, cursor, dropped, state }`. |
+| `follow(id, options?)` | `AsyncGenerator<ProcessLogEvent>` | Streams output until exit; a caller abort ends it without an `exit` event. |
+
+The `Process` handle exposes `id`, `state`, `exitCode`, `startedAt`, and `status()`, `wait()`, `kill(signal?)`, `logs(options?)`, `follow(options?)`.
+
+```ts
+const proc = await sandbox.processes.start("npm", { args: ["run", "dev"], cwd: "app" });
+for await (const event of proc.follow()) {
+  if (event.type === "stdout") process.stdout.write(event.data);
+}
+const final = await proc.wait();   // → { state: "exited", exitCode, … }
+await sandbox.processes.killAll(Signal.TERM);
+```
+
+`ProcessState` is `"running" | "exited"`. `Signal` is a const of the accepted signal numbers: `{ HUP, INT, QUIT, KILL, TERM }`. Poll `entries[].data` is plain UTF-8; follow `stdout`/`stderr` chunks are decoded for you.
+
 ### Low-level connection types
 
 Listed for completeness; prefer the handle methods above.
 
 | Type | Summary |
 | ---- | ------- |
-| `SandboxConnection` | A live connection to one sandbox's daemon. Construct via `neev.createSandboxConnection(connectUrl)`, or reach it through `sandbox.exec` / `sandbox.files`. Exposes `exec`, `execStream`, and a `files` facade. |
+| `SandboxConnection` | A live connection to one sandbox's daemon. Construct via `neev.createSandboxConnection(connectUrl)`, or reach it through `sandbox.exec` / `sandbox.files` / `sandbox.processes`. Exposes `exec`, `execStream`, and `files` / `processes` facades. |
 | `SandboxFiles` | The filesystem facade (`write`/`read`/`readText`/`list`). Accessed via `sandbox.files` or `connection.files`. |
+| `SandboxProcesses` | The process-supervisor facade (`start`/`get`/`list`/`kill`/`killAll`/`logs`/`follow`). Accessed via `sandbox.processes` or `connection.processes`. |
 
 ---
 

@@ -1,5 +1,7 @@
+import { decodeBase64 } from "./base64.js";
 import { type APIError, type ApiErrorBody, NeevError, errorFromStatus } from "./errors.js";
 import type { Dispatch } from "./http.js";
+import { SandboxProcesses } from "./processes.js";
 
 // Inputs needed to open a connection to a sandbox's daemon.
 export interface SandboxConnectionOptions {
@@ -117,12 +119,15 @@ export class SandboxConnection {
   private readonly dispatch: Dispatch;
   // File operations on the sandbox filesystem.
   readonly files: SandboxFiles;
+  // Process supervisor operations on the sandbox.
+  readonly processes: SandboxProcesses;
 
   constructor(opts: SandboxConnectionOptions) {
     this.base = opts.connectUrl.replace(/\/+$/, "");
     this.apiKey = opts.apiKey;
     this.dispatch = opts.dispatch;
     this.files = new SandboxFiles(this);
+    this.processes = new SandboxProcesses(this);
   }
 
   // Issues a request to the daemon and returns the raw Response, throwing a typed
@@ -389,14 +394,6 @@ async function* streamExec(response: Response): AsyncGenerator<ExecStreamEvent> 
       "exec stream ended without an exit status (the command may have timed out).",
     );
   }
-}
-
-// Decodes a base64 string to bytes using the runtime's global atob.
-function decodeBase64(value: string): Uint8Array {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 // Maps a sandboxd entry onto the SDK's camelCase FileEntry.

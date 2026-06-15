@@ -20,16 +20,16 @@ export NEEV_PROJECT_ID=...
 By default examples target the **production** API (`https://api.ai.neevcloud.com/agent`).
 The basic lifecycle examples pass only a `name` and use the platform's **default
 template and region**; the richer ones (`parallel-fanout`, `sandbox-metrics`, and
-the agent examples) pin a specific template they need. To run on another
-environment, set the base URL and pin a region:
+the agent examples) pin a specific template they need. To run against a
+non-default environment, point the base URL at it and pin a region:
 
 ```sh
-export NEEV_BASE_URL=https://api.dev.ai.neevcloud.com/agent
-export NEEV_REGION=as-dev-1
+export NEEV_BASE_URL=https://api.<env>.ai.neevcloud.com/agent
+export NEEV_REGION=<your-region>
 ```
 
-> `NEEV_REGION` is optional on production (the platform picks a default) but
-> should be set on dev. Re-run `pnpm build` whenever you change SDK source.
+> `NEEV_REGION` is optional on production (the platform picks a default). Re-run
+> `pnpm build` whenever you change SDK source.
 
 ## Examples — no model needed (pure SDK)
 
@@ -40,6 +40,8 @@ export NEEV_REGION=as-dev-1
 | [`streaming-exec.ts`](./streaming-exec.ts) | `sandbox.exec(cmd, { stream: true })` — output streamed line-by-line as it is produced | `npx tsx examples/streaming-exec.ts` |
 | [`parallel-fanout.ts`](./parallel-fanout.ts) | Several isolated sandboxes run a map/reduce concurrently; reads `metrics()` | `npx tsx examples/parallel-fanout.ts` |
 | [`sandbox-metrics.ts`](./sandbox-metrics.ts) | `sandbox.metrics()` polled under CPU load | `npx tsx examples/sandbox-metrics.ts` |
+| [`processes.ts`](./processes.ts) | `sandbox.processes` — start a detached process, follow/poll its output, list, kill, wait | `npx tsx examples/processes.ts` |
+| [`process-pool.ts`](./process-pool.ts) | Manage several detached processes: start a pool, `list()`/`status()`, then `killAll()` | `npx tsx examples/process-pool.ts` |
 
 ## Examples — with an AI model
 
@@ -102,29 +104,41 @@ npx tsx examples/sandbox-metrics.ts
 ```
 → per-burst readouts; `disk_usage_bytes` carries real points (`cpu`/`memory` depend on the environment's metrics pipeline).
 
+**5. Long-running processes**
+```sh
+npx tsx examples/processes.ts
+```
+→ `started proc_…` → a few live `stdout: tick N` lines (via `follow`) → `polled N entries …` → `tracked processes: …` → `kill signalled=true` → `final state=exited exitCode=…`.
+
+**6. Process pool**
+```sh
+npx tsx examples/process-pool.ts
+```
+→ `started 3 workers: …` → `list → …(running)…` → `worker 0 status: state=running …` → `killAll signalled 3 process(es)` → each `worker … → state=exited`.
+
 The remaining examples need an AI model — set `NEEV_INFERENCE_API_KEY` (see above).
 
-**5. AI code-interpreter** (no extra deps) — the highlight
+**7. AI code-interpreter** (no extra deps) — the highlight
 ```sh
 npx tsx examples/agents/ai-interpreter.ts
 ```
 → a step-by-step transcript: model call (+token usage) → `run_shell` → output streaming live → `✅ final answer`.
 
-**6. LangChain**
+**8. LangChain**
 ```sh
 pnpm add -D @langchain/core @langchain/openai @langchain/langgraph zod
 npx tsx examples/agents/langchain.ts
 ```
 → `3fb3a134aebfd0bf072b02b4096612a39e201593853091c52510d37adc3d98de` (SHA-256 of `neev`).
 
-**7. Vercel AI SDK**
+**9. Vercel AI SDK**
 ```sh
 pnpm add -D ai@^4 @ai-sdk/openai@^1 zod
 npx tsx examples/agents/vercel-ai.ts
 ```
 → same digest, via the Vercel AI SDK tool loop.
 
-**8. Genkit**
+**10. Genkit**
 ```sh
 pnpm add -D genkit @genkit-ai/compat-oai
 npx tsx examples/agents/genkit.ts

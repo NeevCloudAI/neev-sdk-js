@@ -31,6 +31,7 @@ import { Neev } from "@neevcloud/sdk";
 - [Sandbox handle](#sandbox-handle)
 - [Exec and streaming](#exec-and-streaming)
 - [Files API](#files-api)
+- [Processes API](#processes-api)
 - [Runtime connection](#runtime-connection)
 - [Raw client](#raw-client)
 - [Types reference](#types-reference)
@@ -58,6 +59,19 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `WaitOptions` | interface (type) | `sandbox.ts` |
 | `SandboxConnection` | class | `sandboxd.ts` |
 | `SandboxFiles` | class | `sandboxd.ts` |
+| `SandboxProcesses` | class | `processes.ts` |
+| `Process` | class | `processes.ts` |
+| `Signal` | const (value) | `processes.ts` |
+| `ProcessState` | type alias (union) | `processes.ts` |
+| `ProcessStatus` | interface (type) | `processes.ts` |
+| `ProcessInfo` | interface (type) | `processes.ts` |
+| `ProcessLogEntry` | interface (type) | `processes.ts` |
+| `ProcessLogsPage` | interface (type) | `processes.ts` |
+| `ProcessLogEvent` | type alias (union) | `processes.ts` |
+| `StartProcessOptions` | interface (type) | `processes.ts` |
+| `ProcessStatusOptions` | interface (type) | `processes.ts` |
+| `ProcessLogsOptions` | interface (type) | `processes.ts` |
+| `ProcessRequestOptions` | interface (type) | `processes.ts` |
 | `ExecOptions` | interface (type) | `sandboxd.ts` |
 | `ExecResult` | interface (type) | `sandboxd.ts` |
 | `ExecStreamEvent` | type alias (union) | `sandboxd.ts` |
@@ -534,6 +548,7 @@ Returned by `create()`, `get()`, `list().items`, `pause()`, `resume()`, `restore
 | `templateId` | `string \| null` | Catalogue template id it was created from, or `null` when unknown. |
 | `resources` | `SandboxResources \| undefined` | Compute size, or `undefined` when defaulted. |
 | `files` | `SandboxFiles` | Filesystem facade; resolves its connection lazily on first use (waits for Ready). |
+| `processes` | `SandboxProcesses` | Process-supervisor facade; resolves its connection lazily on first use (waits for Ready). |
 | `data` | `SandboxData` | The full raw API record. |
 
 ### `sandbox.refresh()`
@@ -795,6 +810,72 @@ All file operations raise typed `APIError` subclasses (mapped from the daemon's 
 
 ---
 
+## Processes API
+
+Access via the `sandbox.processes` getter (a `SandboxProcesses`). Runs **detached** processes whose lifetime is decoupled from the request that started them, each addressed by a stable `process_id`. The first call resolves the daemon connection, waiting for the sandbox to be `Ready`. HTTP-backed failures raise typed `APIError` subclasses (e.g. `NotFoundError` for an unknown `process_id`, `BadRequestError` for a disallowed signal). Before any HTTP call, `start` throws `NeevError` for invalid arguments (an argv array combined with `args`, or an empty program), and the first-use readiness wait throws `NeevError` if the sandbox is `Paused` or does not become `Ready` in time.
+
+### `sandbox.processes.start(command, options?)`
+
+```ts
+start(command: string | string[], options?: StartProcessOptions): Promise<Process>
+```
+
+Starts a detached process and returns a `Process` handle. `command` is a bare program (combine with `options.args`) or a full argv array; passing both throws `NeevError`.
+
+**`StartProcessOptions`:** `args?: string[]`; `cwd?: string`; `env?: Record<string,string>` (sent as `K=V`); `stdin?: string`; `signal?: AbortSignal`.
+
+### `sandbox.processes.get(id, options?)`
+
+```ts
+get(processId: string, options?: { wait?: boolean; signal?: AbortSignal }): Promise<ProcessStatus>
+```
+
+Returns a status snapshot. With `wait: true` it blocks until the process exits (bounded by the daemon's wait ceiling).
+
+### `sandbox.processes.list(options?)`
+
+```ts
+list(options?: { signal?: AbortSignal }): Promise<ProcessInfo[]>
+```
+
+Lists all tracked processes (running plus recently-exited, retained ones).
+
+### `sandbox.processes.kill(id, signal?)` / `killAll(signal?)`
+
+```ts
+kill(processId: string, signal?: number): Promise<boolean>
+killAll(signal?: number): Promise<number>
+```
+
+`kill` signals one process and returns whether a signal was delivered (`false` if already exited); `killAll` signals every running process and returns the count. `signal` defaults to SIGTERM. Use the `Signal` const: `{ HUP: 1, INT: 2, QUIT: 3, KILL: 9, TERM: 15 }`.
+
+### `sandbox.processes.logs(id, options?)` / `follow(id, options?)`
+
+```ts
+logs(processId: string, options?: { cursor?: number; signal?: AbortSignal }): Promise<ProcessLogsPage>
+follow(processId: string, options?: { cursor?: number; signal?: AbortSignal }): AsyncGenerator<ProcessLogEvent>
+```
+
+`logs` polls captured output from `cursor` (0 = oldest retained byte) and returns `{ entries, cursor, dropped, state }` — `entries[].data` is plain UTF-8; `dropped: true` means the ring rolled past the cursor. `follow` streams `stdout`/`stderr` chunks (decoded) and a terminal `exit` event; a caller abort ends the stream **without** an exit event.
+
+### `Process` handle
+
+| Member | Type | Description |
+| ------ | ---- | ----------- |
+| `id` | `string` | The `process_id`. |
+| `state` | `ProcessState` | Last-known state (`"running" \| "exited"`); updated by `status()`/`wait()`. |
+| `exitCode` | `number \| null` | Last-known exit code; `null` while running. |
+| `startedAt` | `number` | Spawn time, epoch milliseconds. |
+| `status(options?)` | `Promise<ProcessStatus>` | Non-blocking refresh. |
+| `wait(options?)` | `Promise<ProcessStatus>` | Blocks until exit; caches the terminal status. |
+| `kill(signal?)` | `Promise<boolean>` | Signals this process. |
+| `logs(options?)` | `Promise<ProcessLogsPage>` | Polls this process's output. |
+| `follow(options?)` | `AsyncGenerator<ProcessLogEvent>` | Streams this process's output. |
+
+**Type shapes:** `ProcessStatus` = `{ processId; state; exitCode: number\|null; startedAt }`; `ProcessInfo` = `ProcessStatus & { name; args: string[]; cwd }`; `ProcessLogEntry` = `{ stream: "stdout"\|"stderr"; data: string }`; `ProcessLogsPage` = `{ entries: ProcessLogEntry[]; cursor: number; dropped: boolean; state }`; `ProcessLogEvent` = `{ type: "stdout"\|"stderr"; data } | { type: "exit"; exitCode }`.
+
+---
+
 ## Runtime connection
 
 Low-level connection to the sandbox daemon (`sandboxd`), reached directly at the sandbox's `connect_url`. Constructed internally by the `Sandbox` handle; exposed for advanced use via `client.sandboxes.connect(connectUrl)` or `new SandboxConnection(...)`.
@@ -810,6 +891,7 @@ constructor(opts: SandboxConnectionOptions)
 | Member | Type | Description |
 | ------ | ---- | ----------- |
 | `files` | `SandboxFiles` | File operations bound to this connection. |
+| `processes` | `SandboxProcesses` | Process-supervisor operations bound to this connection. |
 | `exec(command, options?)` | `Promise<ExecResult>` | Buffered command execution. |
 | `execStream(command, options?)` | `AsyncGenerator<ExecStreamEvent>` | Streaming command execution. |
 | `request(req)` | `Promise<Response>` | Low-level daemon request; throws a typed `APIError` on non-2xx. |
@@ -1231,6 +1313,7 @@ Compact reviewer index.
 | ------ | ---- | ----- |
 | `id`, `name`, `phase`, `replicas`, `connectUrl`, `region`, `templateId`, `resources`, `data` | getters | `connectUrl` is `string \| null`. |
 | `files` | getter | `SandboxFiles` (lazy connection). |
+| `processes` | getter | `SandboxProcesses` (lazy connection). |
 | `refresh` | method | `Promise<this>` |
 | `waitUntilReady` | method | `Promise<this>`; `WaitOptions`. |
 | `pause` / `resume` | methods | `Promise<this>` |
@@ -1249,7 +1332,7 @@ Compact reviewer index.
 
 | Symbol | Kind | Notes |
 | ------ | ---- | ----- |
-| `SandboxConnection` | class | `files`, `exec`, `execStream`, `request`. |
+| `SandboxConnection` | class | `files`, `processes`, `exec`, `execStream`, `request`. |
 | `SandboxConnection.exec` | method | `Promise<ExecResult>` |
 | `SandboxConnection.execStream` | method | `AsyncGenerator<ExecStreamEvent>` |
 | `SandboxFiles.write` | method | `Promise<WriteFileResult>` (`bytesWritten`). |
@@ -1257,6 +1340,16 @@ Compact reviewer index.
 | `SandboxFiles.readText` | method | `Promise<string>` |
 | `SandboxFiles.list` | method | `Promise<FileEntry[]>` |
 | `ExecOptions`, `ExecResult`, `ExecStreamEvent`, `FileEntry`, `WriteFileOptions`, `ReadFileOptions`, `ListFilesOptions`, `WriteFileResult` | types | Runtime shapes. |
+
+### Processes (`processes.ts`)
+
+| Symbol | Kind | Notes |
+| ------ | ---- | ----- |
+| `SandboxProcesses` | class | `start`, `get`, `list`, `kill`, `killAll`, `logs`, `follow`. |
+| `Process` | class | Handle: `id`, `state`, `exitCode`, `startedAt`, `status`, `wait`, `kill`, `logs`, `follow`. |
+| `Signal` | const | `{ HUP: 1, INT: 2, QUIT: 3, KILL: 9, TERM: 15 }`. |
+| `ProcessState`, `ProcessStatus`, `ProcessInfo`, `ProcessLogEntry`, `ProcessLogsPage`, `ProcessLogEvent` | types | Supervisor shapes. |
+| `StartProcessOptions`, `ProcessStatusOptions`, `ProcessLogsOptions`, `ProcessRequestOptions` | types | Operation options. |
 
 ### HTTP / raw (`http.ts`)
 

@@ -22,6 +22,20 @@ export type {
   WriteFileResult,
 } from "./sandboxd.js";
 
+export { Process, SandboxProcesses, Signal } from "./processes.js";
+export type {
+  ProcessInfo,
+  ProcessLogEntry,
+  ProcessLogEvent,
+  ProcessLogsOptions,
+  ProcessLogsPage,
+  ProcessRequestOptions,
+  ProcessState,
+  ProcessStatus,
+  ProcessStatusOptions,
+  StartProcessOptions,
+} from "./processes.js";
+
 export type {
   ListSandboxesParams,
   MetricsParams,
