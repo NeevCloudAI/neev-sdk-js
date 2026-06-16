@@ -8,7 +8,7 @@
  * then kills it and confirms the terminal exit — exercising start/follow/logs/
  * list/kill/wait.
  *
- * Run (targets the Neev production API by default; override with NEEV_BASE_URL):
+ * Run (targets the Neev production API by default):
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/processes.ts
  */
@@ -24,10 +24,9 @@ function log(message: string): void {
 
 async function main(): Promise<void> {
   log("creating sandbox…");
-  // Platform defaults for template and region; set NEEV_REGION to pin a region.
+  // Platform defaults for template and region.
   const sandbox = await neev.sandboxes.create({
     name: `proc-${Math.random().toString(36).slice(2, 8)}`,
-    region: process.env.NEEV_REGION,
   });
 
   try {

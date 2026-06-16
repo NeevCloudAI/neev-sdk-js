@@ -10,6 +10,9 @@ export type { FetchLike, RawRequest } from "./http.js";
 export { Sandbox } from "./sandbox.js";
 export type { WaitOptions } from "./sandbox.js";
 
+export { Agent } from "./agent.js";
+export type { AgentWaitOptions } from "./agent.js";
+
 export { SandboxConnection, SandboxFiles } from "./sandboxd.js";
 export type {
   ExecOptions,
@@ -56,7 +59,20 @@ export type {
   SandboxTemplatePage,
 } from "./resources/templates.js";
 
+export type { AgentPage, ListAgentsParams } from "./resources/agents.js";
+
 export type {
+  AgentTemplatePage,
+  ListAgentTemplatesParams,
+} from "./resources/agent-templates.js";
+
+export type {
+  AgentData,
+  AgentListResponse,
+  AgentStatus,
+  AgentTemplate,
+  AgentTemplateListResponse,
+  CreateAgentParams,
   CreateSandboxParams,
   CreateSnapshotParams,
   EnvVar,
@@ -75,6 +91,7 @@ export type {
   SnapshotData,
   SnapshotListResponse,
   SnapshotStatus,
+  UpdateAgentParams,
 } from "./types.js";
 
 export {

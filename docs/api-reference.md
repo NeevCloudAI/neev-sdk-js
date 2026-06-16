@@ -40,7 +40,7 @@ Creates the platform client. Auth is a Bearer API key; the sandboxd runtime reus
 | `apiKey` | `NEEV_API_KEY` | — | Required. Throws if unset. |
 | `orgId` | `NEEV_ORG_ID` | — | Required at call time; overridable per call via `Scope`. |
 | `projectId` | `NEEV_PROJECT_ID` | — | Required at call time; overridable per call via `Scope`. |
-| `baseURL` | `NEEV_BASE_URL` | `https://api.ai.neevcloud.com/agent` | Set only to target another environment. |
+| `baseURL` | — | `https://api.ai.neevcloud.com/agent` | Set only to target another environment. |
 | `timeoutMs` | — | `60000` | Per-request timeout. |
 | `maxRetries` | — | `2` | Retries on network errors, `429`, and `5xx` (lifecycle only). |
 | `fetch` | — | global `fetch` | Custom fetch implementation. |

@@ -7,7 +7,7 @@
  * NeevCloud `gpt-oss-120b` over the OpenAI-compatible Neev inference endpoint.
  *
  * Install (peer deps for this example):
- *   npm install @neevcloud/sdk ai @ai-sdk/openai zod
+ *   npm install @neevcloud/sdk@beta ai @ai-sdk/openai zod
  *
  * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \

@@ -9,6 +9,8 @@ One package, one auth model, one client — adopt new capabilities as they ship.
 
 - **`neev.sandboxes`** — full agent-sandbox lifecycle: create, list, get, pause, resume, delete, live metrics, plus snapshots, restore, and fork. Inside a running sandbox: `files`, `exec`, a `processes` supervisor for long-running, detached processes, and `pty` for interactive terminal sessions. Sandboxes are gVisor-isolated (`runsc`) compute environments for AI agents.
 - **`neev.templates`** — the platform sandbox-template catalogue (list, get). A template id (e.g. `sb-ubuntu-26-04-minimal`) is optional when creating a sandbox; omit it to use the platform's default template.
+- **`neev.agents`** — agent lifecycle: create from a catalogue template, list, get, update (in-place egress / cpu / memory), pause, resume, delete. Each agent runs on its own backing sandbox, reachable from the handle via `agent.sandbox()`.
+- **`neev.agentTemplates`** — the platform agent-template catalogue (list, get). A template name (e.g. `claude-code`) is passed as `agent_template` when creating an agent.
 
 **Coming next**
 
@@ -19,8 +21,8 @@ One package, one auth model, one client — adopt new capabilities as they ship.
 ## Install
 
 ```sh
-npm install @neevcloud/sdk
-# or: pnpm add @neevcloud/sdk · yarn add @neevcloud/sdk · bun add @neevcloud/sdk
+npm install @neevcloud/sdk@beta
+# or: pnpm add @neevcloud/sdk@beta · yarn add @neevcloud/sdk@beta · bun add @neevcloud/sdk@beta
 ```
 
 Requires a server-side JS runtime with global `fetch`: **Node 18+**, **Bun**, **Deno**, or an edge runtime. There is no browser build — your API key must never ship to a browser.
@@ -34,11 +36,11 @@ The client reads configuration from explicit options or `NEEV_*` environment var
 | `apiKey`    | `NEEV_API_KEY`          | yes      | —       |
 | `orgId`     | `NEEV_ORG_ID`           | yes\*    | —       |
 | `projectId` | `NEEV_PROJECT_ID`       | yes\*    | —       |
-| `baseURL`   | `NEEV_BASE_URL`         | no       | production API |
+| `baseURL`   | —                       | no       | production API |
 
 \* `orgId` / `projectId` may be set on the client or overridden per call.
 
-`baseURL` defaults to the Neev production API; set `NEEV_BASE_URL` only to target another environment.
+`baseURL` defaults to the Neev production API; set it only to target another environment.
 
 ## Quickstart
 
@@ -282,6 +284,40 @@ await neev.sandboxes.deleteSnapshot(snap.id);
 ```
 
 The full snapshot example is [`examples/snapshot-fork-restore.ts`](./examples/snapshot-fork-restore.ts).
+
+### Agents
+
+An **agent** is a packaged coding agent (e.g. Claude Code) provisioned from a catalogue template onto its own backing sandbox (1:1). Create one from a template name, wait for it to become `Ready`, then drive its environment through the backing sandbox:
+
+```ts
+// Discover available agent templates (or pass a known name directly).
+const { items } = await neev.agentTemplates.list();
+const template = await neev.agentTemplates.get("ag-claude-code");
+
+// Provision an agent from a template. It starts `Provisioning`; wait for `Ready`.
+const agent = await neev.agents.create({
+  name: "my-coder",
+  agent_template: "claude-code",
+  region: process.env.NEEV_REGION,
+});
+await agent.waitUntilReady();
+console.log(agent.id, agent.status, agent.sandboxId);
+
+// Reach the agent's environment (files / exec / processes) via its backing sandbox.
+const sandbox = await agent.sandbox();
+await sandbox.files.write("notes.md", "# scratch\n");
+const { stdout } = await sandbox.exec(["ls", "-la"]);
+
+// Resize cpu/memory or change egress in place (no recreate); disk is not resizable.
+await agent.update({ resources: { cpu: 2, memory_gb: 4 } });
+
+// Pause to release compute, resume on demand, delete when done.
+await agent.pause();
+await agent.resume();
+await agent.delete();
+```
+
+Resource methods mirror the handle: `neev.agents.list/create/get/update/pause/resume/delete`, and `neev.agentTemplates.list/get`. The full example is [`examples/create-agent.ts`](./examples/create-agent.ts).
 
 ## Documentation
 

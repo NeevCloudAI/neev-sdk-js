@@ -2,7 +2,7 @@
 
 Complete, hand-maintained inventory of the public `@neevcloud/sdk` package: per-method reference, type field tables, symbol index, and contract notes. Use this document when you need exhaustive detail on the entire SDK surface.
 
-Everything is `async`: methods return `Promise<...>` and are used with `await`. Install with `npm install @neevcloud/sdk` and import from the package root:
+Everything is `async`: methods return `Promise<...>` and are used with `await`. Install with `npm install @neevcloud/sdk@beta` and import from the package root:
 
 ```ts
 import { Neev } from "@neevcloud/sdk";
@@ -139,7 +139,7 @@ The platform client. Construct once and reuse. Exposes two resource namespaces p
 | `apiKey` | `string` | `NEEV_API_KEY` env | Bearer API key. **Required** (constructor throws if absent). |
 | `orgId` | `string` | `NEEV_ORG_ID` env | Default organization id. |
 | `projectId` | `string` | `NEEV_PROJECT_ID` env | Default project id. |
-| `baseURL` | `string` | `NEEV_BASE_URL` env, else `https://api.ai.neevcloud.com/agent` | Lifecycle base URL. |
+| `baseURL` | `string` | `https://api.ai.neevcloud.com/agent` | Lifecycle base URL. |
 | `timeoutMs` | `number` | `60000` | Per-request timeout in milliseconds. |
 | `maxRetries` | `number` | `2` | Retries on transient failures (network errors, 429, 5xx). Sandbox runtime calls always use 0 retries because exec/write are not idempotent. |
 | `fetch` | `FetchLike` | runtime global `fetch` | Custom fetch implementation. |
@@ -1418,7 +1418,7 @@ Compact reviewer index.
 
 ## Contract notes
 
-- Client env vars: `NEEV_API_KEY`, `NEEV_ORG_ID`, `NEEV_PROJECT_ID`, `NEEV_BASE_URL` (not `NEEVAI_*`). The constructor throws `NeevError` if no API key resolves.
+- Client env vars: `NEEV_API_KEY`, `NEEV_ORG_ID`, `NEEV_PROJECT_ID` (not `NEEVAI_*`). The constructor throws `NeevError` if no API key resolves.
 - `create` requires only `name`; `sandbox_template_id` and `region` are optional and fall back to a server default.
 - `pause()` and `resume()` return the updated `Sandbox` handle (not `void`).
 - `connectUrl` is a getter returning `string | null`, not a method.

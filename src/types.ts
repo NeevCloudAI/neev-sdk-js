@@ -63,3 +63,26 @@ export type CreateSnapshotParams = Omit<
 
 // Paginated list payload returned by `sandboxes.listSnapshots`.
 export type SnapshotListResponse = components["schemas"]["SnapshotListResponse"];
+
+// An agent as returned by the API. The Agent handle class wraps this shape.
+export type AgentData = components["schemas"]["Agent"];
+
+// Lifecycle status of an agent, derived from its backing sandbox
+// ("Provisioning" | "Ready" | "Paused" | "Failed" | "Deleting").
+export type AgentStatus = components["schemas"]["AgentStatus"];
+
+// Request body accepted by `agents.create`. Requires `name` and a catalogue
+// `agent_template` name; the server provisions the backing sandbox from it.
+export type CreateAgentParams = components["schemas"]["CreateAgentRequest"];
+
+// Partial in-place update accepted by `agents.update` (egress and/or resources).
+export type UpdateAgentParams = components["schemas"]["UpdateAgentRequest"];
+
+// Paginated list payload returned by `agents.list`.
+export type AgentListResponse = components["schemas"]["AgentListResponse"];
+
+// A platform-managed agent template, referenced by name at agent create time.
+export type AgentTemplate = components["schemas"]["AgentTemplate"];
+
+// Paginated list payload returned by `agentTemplates.list`.
+export type AgentTemplateListResponse = components["schemas"]["AgentTemplateListResponse"];

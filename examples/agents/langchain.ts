@@ -7,7 +7,7 @@
  * OpenAI-compatible Neev inference endpoint.
  *
  * Install (peer deps for this example):
- *   npm install @neevcloud/sdk @langchain/core @langchain/openai @langchain/langgraph zod
+ *   npm install @neevcloud/sdk@beta @langchain/core @langchain/openai @langchain/langgraph zod
  *
  * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \

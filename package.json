@@ -54,7 +54,7 @@
     "format": "biome format --write .",
     "changeset": "changeset",
     "changeset:version": "changeset version",
-    "changeset:publish": "pnpm build && changeset publish",
+    "changeset:publish": "pnpm build && node scripts/publish.mjs",
     "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {

@@ -1,8 +1,9 @@
 # Examples
 
-Runnable examples for `@neevcloud/sdk`. The package isn't published yet, so run them
-from this repository — `import "@neevcloud/sdk"` resolves to the local build
-automatically (Node package self-referencing), so no link step is needed.
+Runnable examples for `@neevcloud/sdk`. Run them from this repository against the
+local build — `import "@neevcloud/sdk"` resolves automatically (Node package
+self-referencing), so there is no install or link step. (To use the published
+package in your own project instead, `npm install @neevcloud/sdk@beta`.)
 
 ## Quick setup (once)
 
@@ -20,11 +21,10 @@ export NEEV_PROJECT_ID=...
 By default examples target the **production** API (`https://api.ai.neevcloud.com/agent`).
 The basic lifecycle examples pass only a `name` and use the platform's **default
 template and region**; the richer ones (`parallel-fanout`, `sandbox-metrics`, and
-the agent examples) pin a specific template they need. To run against a
-non-default environment, point the base URL at it and pin a region:
+the agent examples) pin a specific template they need. To pin a region, set
+`NEEV_REGION`:
 
 ```sh
-export NEEV_BASE_URL=https://api.<env>.ai.neevcloud.com/agent
 export NEEV_REGION=<your-region>
 ```
 
@@ -36,6 +36,7 @@ export NEEV_REGION=<your-region>
 | File | What it shows | Run |
 |------|---------------|-----|
 | [`create-sandbox.ts`](./create-sandbox.ts) | Lifecycle: create → wait for Ready → metrics → pause → delete | `npx tsx examples/create-sandbox.ts` |
+| [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
 | [`snapshot-fork-restore.ts`](./snapshot-fork-restore.ts) | Snapshot a sandbox → fork a new one from it → restore the original in place | `npx tsx examples/snapshot-fork-restore.ts` |
 | [`streaming-exec.ts`](./streaming-exec.ts) | `sandbox.exec(cmd, { stream: true })` — output streamed line-by-line as it is produced | `npx tsx examples/streaming-exec.ts` |
 | [`parallel-fanout.ts`](./parallel-fanout.ts) | Several isolated sandboxes run a map/reduce concurrently; reads `metrics()` | `npx tsx examples/parallel-fanout.ts` |
@@ -153,8 +154,8 @@ npx tsx examples/agents/genkit.ts
 | `NEEV_API_KEY` | all | — (required) |
 | `NEEV_ORG_ID` | all | — (required) |
 | `NEEV_PROJECT_ID` | all | — (required) |
-| `NEEV_BASE_URL` | all | production gateway |
 | `NEEV_REGION` | sandbox create | `as-south-1` |
+| `NEEV_AGENT_TEMPLATE` | `create-agent.ts` | `claude-code` |
 | `NEEV_INFERENCE_API_KEY` | model examples | falls back to `NEEV_API_KEY` |
 | `NEEV_INFERENCE_BASE_URL` | model examples | production inference endpoint |
 

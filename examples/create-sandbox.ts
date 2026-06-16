@@ -1,8 +1,7 @@
 /**
  * Create a sandbox, wait for it to become Ready, read its metrics, then clean up.
  *
- * Uses the platform's default template and region; set NEEV_REGION to pin a
- * region (e.g. on dev) and NEEV_BASE_URL to target another environment.
+ * Uses the platform's default template and region.
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/create-sandbox.ts
  */
@@ -13,12 +12,11 @@ import { Neev } from "@neevcloud/sdk";
 const neev = new Neev();
 
 async function main(): Promise<void> {
-  // Provision a sandbox from the platform defaults; set NEEV_REGION to pin a
-  // region. (Browse the catalogue with `neev.templates.list()` to choose a
-  // specific template via `sandbox_template_id`.)
+  // Provision a sandbox from the platform defaults. (Browse the catalogue with
+  // `neev.templates.list()` to choose a specific template via
+  // `sandbox_template_id`.)
   const sandbox = await neev.sandboxes.create({
     name: "example-agent",
-    region: process.env.NEEV_REGION,
   });
   console.log(`created ${sandbox.id} (phase: ${sandbox.phase})`);
 
