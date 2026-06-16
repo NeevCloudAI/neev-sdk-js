@@ -8,7 +8,7 @@
  * each chunk with the elapsed time, so the ~1s spacing is visible — proof the
  * output arrives live rather than all at once at the end.
  *
- * Run (targets the Neev production API by default; override with NEEV_BASE_URL):
+ * Run (targets the Neev production API by default):
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/streaming-exec.ts
  */

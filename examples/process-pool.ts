@@ -7,7 +7,7 @@
  * output live) by exercising the fleet-management endpoints: start, list,
  * status, kill-all.
  *
- * Run (targets the Neev production API by default; override with NEEV_BASE_URL):
+ * Run (targets the Neev production API by default):
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/process-pool.ts
  */

@@ -2,7 +2,7 @@
  * Create a sandbox, wait for it to become Ready, read its metrics, then clean up.
  *
  * Uses the platform's default template and region; set NEEV_REGION to pin a
- * region (e.g. on dev) and NEEV_BASE_URL to target another environment.
+ * region.
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/create-sandbox.ts
  */

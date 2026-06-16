@@ -40,7 +40,7 @@ export class SandboxCodeExecutor {
 
   constructor(options: SandboxCodeExecutorOptions = {}) {
     // Reads NEEV_API_KEY / NEEV_ORG_ID / NEEV_PROJECT_ID from the environment
-    // and targets the Neev production API by default (override with NEEV_BASE_URL).
+    // and targets the Neev production API by default.
     this.neev = new Neev();
     this.templateId = options.templateId ?? "sb-ubuntu-26-04-minimal";
     this.region = options.region ?? process.env.NEEV_REGION ?? "as-south-1";

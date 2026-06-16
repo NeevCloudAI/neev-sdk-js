@@ -34,11 +34,11 @@ The client reads configuration from explicit options or `NEEV_*` environment var
 | `apiKey`    | `NEEV_API_KEY`          | yes      | —       |
 | `orgId`     | `NEEV_ORG_ID`           | yes\*    | —       |
 | `projectId` | `NEEV_PROJECT_ID`       | yes\*    | —       |
-| `baseURL`   | `NEEV_BASE_URL`         | no       | production API |
+| `baseURL`   | —                       | no       | production API |
 
 \* `orgId` / `projectId` may be set on the client or overridden per call.
 
-`baseURL` defaults to the Neev production API; set `NEEV_BASE_URL` only to target another environment.
+`baseURL` defaults to the Neev production API; set it only to target another environment.
 
 ## Quickstart
 

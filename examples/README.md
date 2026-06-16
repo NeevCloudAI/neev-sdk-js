@@ -20,11 +20,10 @@ export NEEV_PROJECT_ID=...
 By default examples target the **production** API (`https://api.ai.neevcloud.com/agent`).
 The basic lifecycle examples pass only a `name` and use the platform's **default
 template and region**; the richer ones (`parallel-fanout`, `sandbox-metrics`, and
-the agent examples) pin a specific template they need. To run against a
-non-default environment, point the base URL at it and pin a region:
+the agent examples) pin a specific template they need. To pin a region, set
+`NEEV_REGION`:
 
 ```sh
-export NEEV_BASE_URL=https://api.<env>.ai.neevcloud.com/agent
 export NEEV_REGION=<your-region>
 ```
 
@@ -152,7 +151,6 @@ npx tsx examples/agents/genkit.ts
 | `NEEV_API_KEY` | all | — (required) |
 | `NEEV_ORG_ID` | all | — (required) |
 | `NEEV_PROJECT_ID` | all | — (required) |
-| `NEEV_BASE_URL` | all | production gateway |
 | `NEEV_REGION` | sandbox create | `as-south-1` |
 | `NEEV_INFERENCE_API_KEY` | model examples | falls back to `NEEV_API_KEY` |
 | `NEEV_INFERENCE_BASE_URL` | model examples | production inference endpoint |
