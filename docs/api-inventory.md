@@ -2,7 +2,7 @@
 
 Complete, hand-maintained inventory of the public `@neevcloud/sdk` package: per-method reference, type field tables, symbol index, and contract notes. Use this document when you need exhaustive detail on the entire SDK surface.
 
-Everything is `async`: methods return `Promise<...>` and are used with `await`. Install with `npm install @neevcloud/sdk` and import from the package root:
+Everything is `async`: methods return `Promise<...>` and are used with `await`. Install with `npm install @neevcloud/sdk@beta` and import from the package root:
 
 ```ts
 import { Neev } from "@neevcloud/sdk";

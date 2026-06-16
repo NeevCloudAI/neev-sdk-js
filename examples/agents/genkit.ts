@@ -7,7 +7,7 @@
  * a Neev sandbox.
  *
  * Install (peer deps for this example):
- *   npm install @neevcloud/sdk genkit @genkit-ai/compat-oai
+ *   npm install @neevcloud/sdk@beta genkit @genkit-ai/compat-oai
  *
  * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \

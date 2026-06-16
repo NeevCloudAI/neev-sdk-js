@@ -19,8 +19,8 @@ One package, one auth model, one client — adopt new capabilities as they ship.
 ## Install
 
 ```sh
-npm install @neevcloud/sdk
-# or: pnpm add @neevcloud/sdk · yarn add @neevcloud/sdk · bun add @neevcloud/sdk
+npm install @neevcloud/sdk@beta
+# or: pnpm add @neevcloud/sdk@beta · yarn add @neevcloud/sdk@beta · bun add @neevcloud/sdk@beta
 ```
 
 Requires a server-side JS runtime with global `fetch`: **Node 18+**, **Bun**, **Deno**, or an edge runtime. There is no browser build — your API key must never ship to a browser.

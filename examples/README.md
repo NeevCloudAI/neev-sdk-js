@@ -1,8 +1,9 @@
 # Examples
 
-Runnable examples for `@neevcloud/sdk`. The package isn't published yet, so run them
-from this repository — `import "@neevcloud/sdk"` resolves to the local build
-automatically (Node package self-referencing), so no link step is needed.
+Runnable examples for `@neevcloud/sdk`. Run them from this repository against the
+local build — `import "@neevcloud/sdk"` resolves automatically (Node package
+self-referencing), so there is no install or link step. (To use the published
+package in your own project instead, `npm install @neevcloud/sdk@beta`.)
 
 ## Quick setup (once)
 
