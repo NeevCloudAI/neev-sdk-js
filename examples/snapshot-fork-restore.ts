@@ -2,8 +2,7 @@
  * Snapshot a sandbox, fork it into a fresh sandbox seeded from that state, then
  * restore the original in place from the same snapshot.
  *
- * Run with (targets the Neev production API by default; set the region with
- * NEEV_REGION):
+ * Run with (targets the Neev production API by default):
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/snapshot-fork-restore.ts
  */
@@ -28,11 +27,9 @@ async function waitForSnapshot(id: string, timeoutMs = 120_000): Promise<Snapsho
 }
 
 async function main(): Promise<void> {
-  // Template and region use the platform defaults; set NEEV_REGION to pin a
-  // region.
+  // Template and region use the platform defaults.
   const sandbox = await neev.sandboxes.create({
     name: "snapshot-source",
-    region: process.env.NEEV_REGION,
   });
   await sandbox.waitUntilReady();
   await sandbox.files.write("state.txt", "captured-at-snapshot");

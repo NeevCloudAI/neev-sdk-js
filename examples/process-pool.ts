@@ -18,7 +18,6 @@ const neev = new Neev();
 async function main(): Promise<void> {
   const sandbox = await neev.sandboxes.create({
     name: `pool-${Math.random().toString(36).slice(2, 8)}`,
-    region: process.env.NEEV_REGION,
   });
 
   try {
