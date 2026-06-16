@@ -45,7 +45,6 @@ That's the whole setup. Defaults applied for you:
 
 | Setting | Default | Override |
 | ------- | ------- | -------- |
-| Platform API base | production | `NEEV_BASE_URL` |
 | Model | `gpt-oss-120b` | — |
 | Inference endpoint | `https://inference.ai.neevcloud.com/v1` | `NEEV_INFERENCE_BASE_URL` |
 | Inference key | `NEEV_API_KEY` | `NEEV_INFERENCE_API_KEY` |

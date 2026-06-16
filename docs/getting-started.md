@@ -52,7 +52,6 @@ pass the equivalent options to `new Neev({ ... })`.
 | `NEEV_API_KEY` | `apiKey` | Bearer token (**required**) |
 | `NEEV_ORG_ID` | `orgId` | Default organization id |
 | `NEEV_PROJECT_ID` | `projectId` | Default project id |
-| `NEEV_BASE_URL` | `baseURL` | API base URL (default: `https://api.ai.neevcloud.com/agent`) |
 | `NEEV_REGION` | — | Default region for sandbox create (optional) |
 
 Notes:
@@ -61,12 +60,8 @@ Notes:
   `NEEV_API_KEY`.
 - `orgId` / `projectId` are required to make a call, but may be set on the client
   **or** overridden per call (see [per-call scope](#per-call-scope-override)).
-- `NEEV_BASE_URL` **includes the `/agent` path segment.** The default targets the
-  production API (`https://api.ai.neevcloud.com/agent`); to target dev, use
-  `https://api.dev.ai.neevcloud.com/agent`.
 - `NEEV_REGION` is read by examples/your code when calling `create`; it is
-  optional on production (the platform picks a default) but should be set on dev
-  (e.g. `as-dev-1`).
+  optional (the platform picks a default when omitted).
 
 **Linux / macOS (bash/zsh)** — current session:
 
@@ -74,10 +69,6 @@ Notes:
 export NEEV_API_KEY="your-api-key"
 export NEEV_ORG_ID="org-abc123"
 export NEEV_PROJECT_ID="proj-xyz789"
-# Optional — pin a region (required on dev):
-export NEEV_REGION="as-dev-1"
-# Optional — target another environment (note the /agent suffix):
-export NEEV_BASE_URL="https://api.dev.ai.neevcloud.com/agent"
 ```
 
 **Windows PowerShell** — current session:
@@ -86,7 +77,6 @@ export NEEV_BASE_URL="https://api.dev.ai.neevcloud.com/agent"
 $env:NEEV_API_KEY = "your-api-key"
 $env:NEEV_ORG_ID = "org-abc123"
 $env:NEEV_PROJECT_ID = "proj-xyz789"
-$env:NEEV_REGION = "as-dev-1"
 ```
 
 **Persistence:** The commands above apply only to the current terminal session.
@@ -104,7 +94,7 @@ const neev = new Neev({
   apiKey: process.env.NEEV_API_KEY,
   orgId: process.env.NEEV_ORG_ID,
   projectId: process.env.NEEV_PROJECT_ID,
-  // baseURL: "https://api.dev.ai.neevcloud.com/agent", // override the default
+  // baseURL: "https://api.ai.neevcloud.com/agent", // set only to target another environment
 });
 ```
 
@@ -154,7 +144,7 @@ This section walks the full path from a clean project to a running sandbox.
 
 4. **Create your first sandbox.** Only `name` is required — the server defaults
    the template and region when you omit them. (Pass `sandbox_template_id` and/or
-   `region` to pin them; on dev, set `region`.)
+   `region` to pin them.)
 
    ```ts
    const sandbox = await neev.sandboxes.create({ name: "my-first-sandbox" });
@@ -193,7 +183,7 @@ const neev = new Neev();
 
 async function main(): Promise<void> {
   // 1. Create a sandbox. Only `name` is required — the server defaults the
-  //    template and region. Set NEEV_REGION (e.g. on dev) to pin a region.
+  //    template and region. Set NEEV_REGION to pin a region.
   const sandbox = await neev.sandboxes.create({
     name: "quickstart-demo",
     region: process.env.NEEV_REGION,
