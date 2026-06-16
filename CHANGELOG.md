@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.0-beta
+
+### Minor Changes
+
+- d6fef41: Add an agent lifecycle surface: `neev.agents` and `neev.agentTemplates`.
+
+  Provision a packaged agent from a catalogue template onto its own backing sandbox (1:1), then manage it through a handle.
+
+  - `neev.agents` — `create(params, scope?)`, `list(params?)` (paginated), `get(id, scope?)`, `update(id, params, scope?)` (in-place egress and cpu/memory; disk is not resizable), `pause(id, scope?)`, `resume(id, scope?)`, `delete(id, scope?)`. Every method returns an `Agent` handle (or a page of handles).
+  - `Agent` handle — `id`, `name`, `status`, `templateId`, `sandboxId`, `config`, `data`/`toJSON()`, plus `refresh()`, `update()`, `pause()`, `resume()`, `delete()`, and `waitUntilReady()` (polls until `Ready`; fails fast on `Failed` and on `Paused`). `agent.sandbox()` resolves the backing sandbox as a `Sandbox` handle so callers can reach its `files`/`exec`/`processes`.
+  - `neev.agentTemplates` — read-only catalogue: `list()` (paginated) and `get(id)`. The template `name` (e.g. `claude-code`) is passed as `agent_template` at create.
+  - Exports `Agent`, the `AgentWaitOptions` / `AgentPage` / `ListAgentsParams` / `AgentTemplatePage` / `ListAgentTemplatesParams` option types, and the `AgentData` / `AgentStatus` / `CreateAgentParams` / `UpdateAgentParams` / `AgentListResponse` / `AgentTemplate` / `AgentTemplateListResponse` types.
+
+- c26f452: Add a sandbox process-supervisor surface: `sandbox.processes`.
+
+  Run **detached** processes whose lifetime outlives the request that started them, each addressed by a stable `process_id`.
+
+  - `sandbox.processes.start(command, options?)` returns a `Process` handle with `id`, `state`, `exitCode`, `startedAt`, and `status()`, `wait()` (blocks until exit), `kill(signal?)`, `logs({ cursor? })` (poll), and `follow({ cursor? })` (stream until exit).
+  - Collection ops on `sandbox.processes`: `get(id, { wait? })`, `list()`, `kill(id, signal?)`, `killAll(signal?)`, `logs(id, options?)`, `follow(id, options?)`. Also available on a raw `SandboxConnection` via `connection.processes`.
+  - Exports `SandboxProcesses`, `Process`, the `Signal` const (`{ HUP, INT, QUIT, KILL, TERM }`), and the `ProcessState` / `ProcessStatus` / `ProcessInfo` / `ProcessLogEntry` / `ProcessLogsPage` / `ProcessLogEvent` types plus the supporting option types.
+
+  Output is captured in a bounded ring: `logs` returns plain-text entries plus a monotonic cursor (with `dropped` when the ring rolled past it); `follow` streams decoded `stdout`/`stderr` chunks and a terminal `exit` event, and ends without an `exit` event on a caller abort. Like `files`/`exec`, the first call waits until the sandbox is Ready to resolve its `connect_url`.
+
 ## 0.5.0-beta
 
 ### Minor Changes
