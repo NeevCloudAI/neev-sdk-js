@@ -87,4 +87,14 @@ describe("Sandbox handle", () => {
     });
     await expect(sb.waitUntilReady()).rejects.toThrow(/Paused/);
   });
+
+  it("waitUntilReady rejects non-finite or non-positive timings instead of hot-looping", async () => {
+    const neev = alwaysPhaseClient("Pending");
+    const sb = await neev.sandboxes.create({
+      name: "demo",
+      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+    });
+    await expect(sb.waitUntilReady({ timeoutMs: Number.NaN })).rejects.toThrow(/timeoutMs/);
+    await expect(sb.waitUntilReady({ pollIntervalMs: 0 })).rejects.toThrow(/pollIntervalMs/);
+  });
 });
