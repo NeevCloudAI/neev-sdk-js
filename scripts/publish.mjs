@@ -8,10 +8,14 @@ import { readFileSync } from "node:fs";
 // Read the version this build will publish from the package manifest.
 const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
-// Map the version to its release channel.
+// Map the version to its release channel. Any prerelease (the hyphen covers
+// -beta, -alpha, -rc, etc.) is routed to the single "beta" tag; only a plain
+// stable version publishes to "latest".
 const tag = version.includes("-") ? "beta" : "latest";
 
-// Hand off to changesets, which publishes every package with a pending release
-// under the resolved tag. Inherit stdio so npm/changeset output is visible.
+// Hand off to changesets via `pnpm exec` so the local `changeset` binary
+// resolves regardless of how this script was invoked. Changesets publishes
+// every package with a pending release under the resolved tag; stdio is
+// inherited so npm/changeset output (and a non-zero exit) propagate.
 console.log(`Publishing ${version} under dist-tag "${tag}"`);
-execSync(`changeset publish --tag ${tag}`, { stdio: "inherit" });
+execSync(`pnpm exec changeset publish --tag ${tag}`, { stdio: "inherit" });

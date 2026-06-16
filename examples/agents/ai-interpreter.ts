@@ -12,7 +12,7 @@
  * endpoint directly and needs only `@neevcloud/sdk`.
  *
  * Install:
- *   npm install @neevcloud/sdk
+ *   npm install @neevcloud/sdk@beta
  *
  * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
