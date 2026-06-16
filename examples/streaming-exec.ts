@@ -24,10 +24,9 @@ function log(message: string): void {
 
 async function main(): Promise<void> {
   log("creating sandbox…");
-  // Platform defaults for template and region; set NEEV_REGION to pin a region.
+  // Platform defaults for template and region.
   const sandbox = await neev.sandboxes.create({
     name: `stream-${Math.random().toString(36).slice(2, 8)}`,
-    region: process.env.NEEV_REGION,
   });
 
   try {

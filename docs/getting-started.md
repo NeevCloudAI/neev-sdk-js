@@ -94,7 +94,6 @@ const neev = new Neev({
   apiKey: process.env.NEEV_API_KEY,
   orgId: process.env.NEEV_ORG_ID,
   projectId: process.env.NEEV_PROJECT_ID,
-  // baseURL: "https://api.ai.neevcloud.com/agent", // set only to target another environment
 });
 ```
 
@@ -183,10 +182,9 @@ const neev = new Neev();
 
 async function main(): Promise<void> {
   // 1. Create a sandbox. Only `name` is required — the server defaults the
-  //    template and region. Set NEEV_REGION to pin a region.
+  //    template and region.
   const sandbox = await neev.sandboxes.create({
     name: "quickstart-demo",
-    region: process.env.NEEV_REGION,
   });
   console.log(`created ${sandbox.id} (phase: ${sandbox.phase})`);
 
