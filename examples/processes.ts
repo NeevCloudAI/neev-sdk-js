@@ -2,7 +2,7 @@
  * Run a long-running, detached process in a sandbox and manage it by id.
  *
  * `exec` ties a command's lifetime to your request; `sandbox.processes` runs a
- * process detached under the daemon's supervisor, addressed by a stable
+ * process detached under the sandbox.s supervisor, addressed by a stable
  * `process_id`. This starts a process that prints a line per second, follows its
  * output live for a few seconds, polls the log cursor, lists tracked processes,
  * then kills it and confirms the terminal exit — exercising start/follow/logs/

@@ -4,9 +4,9 @@ import type { Dispatch } from "./http.js";
 import { SandboxProcesses } from "./processes.js";
 import { SandboxPty, type SandboxWebSocket, type WebSocketFactory } from "./pty.js";
 
-// Inputs needed to open a connection to a sandbox's daemon.
+// Inputs needed to open a connection to a sandbox's runtime.
 export interface SandboxConnectionOptions {
-  // The sandbox's daemon base URL (Sandbox.connect_url).
+  // The sandbox's runtime base URL (Sandbox.connect_url).
   connectUrl: string;
   // Bearer API key; the gateway derives x-sandbox-id from the connect_url host.
   apiKey: string;
@@ -17,8 +17,8 @@ export interface SandboxConnectionOptions {
   webSocket?: WebSocketFactory;
 }
 
-// A low-level request against the daemon, before body encoding/decoding.
-interface DaemonRequest {
+// A low-level request against the sandbox runtime, before body encoding/decoding.
+interface SandboxRequest {
   method: "GET" | "POST";
   path: string;
   query?: Record<string, string | number | boolean | undefined>;
@@ -99,7 +99,7 @@ export interface ExecOptions {
 }
 
 // Buffered result of a command. A non-zero exitCode is NOT an error. stdout and
-// stderr are decoded as UTF-8 text (not binary-safe); the daemon does not report
+// stderr are decoded as UTF-8 text (not binary-safe); the sandbox does not report
 // output truncation on this path, so output is captured in full.
 export interface ExecResult {
   stdout: string;
@@ -114,7 +114,7 @@ export type ExecStreamEvent =
   | { type: "stderr"; data: string }
   | { type: "exit"; exitCode: number };
 
-// A live connection to one sandbox's daemon (sandboxd), reached directly at the
+// A live connection to one sandbox's runtime, reached directly at the
 // sandbox's connect_url. Construct via Neev.createSandboxConnection or, more
 // commonly, access it through `sandbox.files` / `sandbox.exec`.
 export class SandboxConnection {
@@ -139,7 +139,7 @@ export class SandboxConnection {
     this.pty = new SandboxPty(this);
   }
 
-  // Opens a WebSocket to the daemon's PTY endpoint, applying the bearer auth header. Uses
+  // Opens a WebSocket to the sandbox's PTY endpoint, applying the bearer auth header. Uses
   // the configured WebSocket factory, else the runtime's global WebSocket. Used by the pty
   // facade; not called directly.
   openPtySocket(search: URLSearchParams): SandboxWebSocket {
@@ -156,9 +156,9 @@ export class SandboxConnection {
     );
   }
 
-  // Issues a request to the daemon and returns the raw Response, throwing a typed
-  // APIError (mapped from the daemon's {reason_code, message}) on a non-2xx status.
-  async request(req: DaemonRequest): Promise<Response> {
+  // Issues a request to the sandbox runtime and returns the raw Response, throwing a typed
+  // APIError (mapped from the sandbox's {reason_code, message}) on a non-2xx status.
+  async request(req: SandboxRequest): Promise<Response> {
     const url = new URL(`${this.base}${req.path}`);
     if (req.query) {
       for (const [key, value] of Object.entries(req.query)) {
@@ -174,7 +174,7 @@ export class SandboxConnection {
       signal: req.signal,
     });
     const response = await this.dispatch(request);
-    if (!response.ok) throw await daemonError(response);
+    if (!response.ok) throw await sandboxError(response);
     return response;
   }
 
@@ -195,7 +195,7 @@ export class SandboxConnection {
 
   // Runs a command and yields its output as it arrives: `stdout`/`stderr` events
   // carry decoded text chunks and a terminal `exit` event carries the exit code.
-  // A non-zero exit is reported via the exit event, not thrown; a daemon error
+  // A non-zero exit is reported via the exit event, not thrown; a sandbox error
   // frame throws a typed APIError, and a stream that ends without an exit throws.
   async *execStream(
     command: string | string[],
@@ -229,14 +229,14 @@ export class SandboxConnection {
   }
 }
 
-// Resolves the daemon connection for a file operation. The Sandbox handle
+// Resolves the sandbox connection for a file operation. The Sandbox handle
 // supplies an async resolver that waits until the sandbox is Ready and caches
 // the connection; a concrete SandboxConnection is wrapped as an already-resolved
 // provider. Resolving per call lets `sandbox.files` stay a synchronous getter
 // while the underlying connect_url may only arrive once the sandbox is Ready.
 export type ConnectionResolver = () => Promise<SandboxConnection>;
 
-// Filesystem operations exposed by sandboxd. Reached via `sandbox.files`.
+// Filesystem operations exposed by the sandbox. Reached via `sandbox.files`.
 export class SandboxFiles {
   private readonly resolve: ConnectionResolver;
 
@@ -301,7 +301,7 @@ export class SandboxFiles {
   }
 }
 
-// The wire shape of a directory entry as emitted by sandboxd.
+// The wire shape of a directory entry as emitted by the sandbox.
 interface RawEntry {
   name: string;
   type: "file" | "directory" | "symlink";
@@ -325,7 +325,7 @@ interface ExecFrame {
   message?: string;
 }
 
-// sandboxd reason codes mapped to the HTTP status the SDK keys error types on.
+// Sandbox reason codes mapped to the HTTP status the SDK keys error types on.
 const REASON_STATUS: Record<string, number> = {
   permission_denied: 403,
   invalid_argument: 400,
@@ -422,7 +422,7 @@ async function* streamExec(response: Response): AsyncGenerator<ExecStreamEvent> 
   }
 }
 
-// Maps a sandboxd entry onto the SDK's camelCase FileEntry.
+// Maps a sandbox entry onto the SDK's camelCase FileEntry.
 function toFileEntry(entry: RawEntry): FileEntry {
   return {
     name: entry.name,
@@ -436,9 +436,9 @@ function toFileEntry(entry: RawEntry): FileEntry {
   };
 }
 
-// Builds a typed APIError from a sandboxd error response. The daemon's body is
+// Builds a typed APIError from a sandbox error response. The sandbox's body is
 // {reason_code, message}; this maps it onto the SDK's {error, details} shape.
-async function daemonError(response: Response): Promise<APIError> {
+async function sandboxError(response: Response): Promise<APIError> {
   const text = await response.text();
   let body: ApiErrorBody | undefined;
   if (text.length > 0) {

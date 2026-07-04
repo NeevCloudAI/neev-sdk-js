@@ -98,7 +98,7 @@ export class Sandboxes {
     this.api = ctx.createTypedClient<paths>();
   }
 
-  // Opens a connection to a sandbox daemon at the given connect_url. Used by the
+  // Opens a connection to the sandbox runtime at the given connect_url. Used by the
   // Sandbox handle to back `sandbox.files` / `sandbox.exec`.
   connect(connectUrl: string): SandboxConnection {
     return this.ctx.createSandboxConnection(connectUrl);
@@ -158,7 +158,7 @@ export class Sandboxes {
     return new Sandbox(this, unwrap<SandboxData>(res), scope);
   }
 
-  // Permanently deletes a sandbox, removing the Kubernetes CR and the DB row.
+  // Permanently deletes a sandbox.
   async delete(id: string, scope?: Scope): Promise<void> {
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.DELETE(ITEM, {

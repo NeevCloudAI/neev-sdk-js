@@ -2,7 +2,7 @@ import { decodeBase64 } from "./base64.js";
 import { NeevError } from "./errors.js";
 import type { ConnectionResolver, SandboxConnection } from "./sandboxd.js";
 
-// Lifecycle state of a supervised process, as reported by the daemon.
+// Lifecycle state of a supervised process, as reported by the sandbox.
 export type ProcessState = "running" | "exited";
 
 // Options for starting a detached process.
@@ -22,7 +22,7 @@ export interface StartProcessOptions {
 
 // Options for querying a process's status.
 export interface ProcessStatusOptions {
-  // Block until the process exits (bounded by the daemon's wait ceiling).
+  // Block until the process exits (bounded by the sandbox's wait ceiling).
   wait?: boolean;
   // Caller cancellation signal for the request.
   signal?: AbortSignal;
@@ -91,7 +91,7 @@ export type ProcessLogEvent =
   | { type: "stderr"; data: string }
   | { type: "exit"; exitCode: number };
 
-// Signal numbers the daemon accepts for kill/kill-all; any other value is
+// Signal numbers the sandbox accepts for kill/kill-all; any other value is
 // rejected as invalid_argument. 0 (the default) is delivered as SIGTERM.
 export const Signal = {
   HUP: 1,
@@ -101,7 +101,7 @@ export const Signal = {
   TERM: 15,
 } as const;
 
-// Wire shapes emitted by the daemon (snake_case), mapped to the public types.
+// Wire shapes emitted by the sandbox (snake_case), mapped to the public types.
 interface RawStatus {
   process_id: string;
   state: ProcessState;
@@ -123,8 +123,8 @@ interface FollowFrame {
   exit_code?: number;
 }
 
-// Process management exposed by the sandboxd process supervisor. Reached via
-// `sandbox.processes`. Each operation resolves the daemon connection lazily,
+// Process management exposed by the sandbox process supervisor. Reached via
+// `sandbox.processes`. Each operation resolves the sandbox connection lazily,
 // waiting until the sandbox is Ready on first use, exactly like `sandbox.files`.
 export class SandboxProcesses {
   private readonly resolve: ConnectionResolver;
@@ -150,7 +150,7 @@ export class SandboxProcesses {
     if (!program) {
       throw new NeevError("processes.start: a non-empty program is required.");
     }
-    // The daemon takes env as ["K=V", ...]; convert from the ergonomic record.
+    // The sandbox takes env as ["K=V", ...]; convert from the ergonomic record.
     const env = options.env
       ? Object.entries(options.env).map(([key, value]) => `${key}=${value}`)
       : undefined;
@@ -167,7 +167,7 @@ export class SandboxProcesses {
   }
 
   // Fetches a status snapshot for a process. With `wait: true` it blocks until
-  // the process exits (bounded by the daemon's wait ceiling).
+  // the process exits (bounded by the sandbox's wait ceiling).
   async get(processId: string, options: ProcessStatusOptions = {}): Promise<ProcessStatus> {
     const conn = await this.resolve();
     const response = await conn.request({
@@ -328,7 +328,7 @@ export class Process {
   }
 }
 
-// Maps a daemon status record onto the SDK's camelCase ProcessStatus.
+// Maps a sandbox status record onto the SDK's camelCase ProcessStatus.
 function toStatus(raw: RawStatus): ProcessStatus {
   return {
     processId: raw.process_id,
@@ -338,7 +338,7 @@ function toStatus(raw: RawStatus): ProcessStatus {
   };
 }
 
-// Maps a daemon list record onto the SDK's camelCase ProcessInfo.
+// Maps a sandbox list record onto the SDK's camelCase ProcessInfo.
 function toInfo(raw: RawInfo): ProcessInfo {
   return {
     processId: raw.process_id,

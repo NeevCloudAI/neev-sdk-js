@@ -24,10 +24,10 @@ export type WebSocketFactory = (
 
 // Options for opening a PTY session.
 export interface PtyCreateOptions {
-  // Program to run; defaults to the daemon's default shell when omitted.
+  // Program to run; defaults to the sandbox's default shell when omitted.
   program?: string;
   args?: string[];
-  // Initial terminal size in characters; 0/omitted leaves the daemon default.
+  // Initial terminal size in characters; 0/omitted leaves the sandbox default.
   cols?: number;
   rows?: number;
   // Called with each chunk of terminal output as it arrives.
@@ -162,7 +162,7 @@ export class PtyHandle {
     return this.done;
   }
 
-  // Closes the WebSocket; the daemon reaps the child. `wait` then resolves.
+  // Closes the WebSocket; the sandbox reaps the child. `wait` then resolves.
   disconnect(): void {
     this.ws.close();
   }

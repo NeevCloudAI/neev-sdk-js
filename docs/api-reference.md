@@ -33,7 +33,7 @@ const neev = new Neev({
 new Neev(options?: NeevOptions)
 ```
 
-Creates the platform client. Auth is a Bearer API key; the sandboxd runtime reuses this key (the gateway derives the sandbox id from the `connect_url` host).
+Creates the platform client. Auth is a Bearer API key; the same API key authorizes runtime calls to a sandbox.
 
 | Option | Env var | Default | Notes |
 | ------ | ------- | ------- | ----- |
@@ -64,7 +64,7 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `get(id, scope?)` | `Promise<Sandbox>` | Fetches the current record for a sandbox by id. |
 | `pause(id, scope?)` | `Promise<Sandbox>` | Pauses a sandbox (scales to zero replicas). |
 | `resume(id, scope?)` | `Promise<Sandbox>` | Resumes a paused sandbox (scales to one replica). |
-| `delete(id, scope?)` | `Promise<void>` | Permanently deletes a sandbox (CR + DB row). |
+| `delete(id, scope?)` | `Promise<void>` | Permanently deletes a sandbox. |
 | `metrics(id, params?)` | `Promise<SandboxMetricsResponse>` | Reads the live, tenant-scoped metric series over an optional time window. |
 | `createSnapshot(id, params?, scope?)` | `Promise<SnapshotData>` | Captures a filesystem snapshot; returns immediately with `status: "Pending"`. |
 | `listSnapshots(id, params?)` | `Promise<SnapshotPage>` | Lists a sandbox's snapshots. **Paginated** — accepts `{ page, limit }`, returns `{ items, total, page, limit }`. |
@@ -183,7 +183,7 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | `region` | `string` | Region slug the sandbox runs in. |
 | `templateId` | `string \| null` | Template id it was created from, or `null`. |
 | `resources` | `SandboxResources \| undefined` | Provisioned compute size, or `undefined` when defaulted. |
-| `connectUrl` | `string \| null` | Daemon address, or `null` when not yet configured. |
+| `connectUrl` | `string \| null` | Runtime address, or `null` when not yet configured. |
 | `data` | `SandboxData` | Full raw API record. |
 
 ### Methods
@@ -220,7 +220,7 @@ console.log(sandbox.id, sandbox.phase, sandbox.connectUrl);
 
 ## Runtime
 
-Runtime APIs run commands and access files **inside** a sandbox, reached directly at the sandbox's `connect_url`. Use `sandbox.exec` / `sandbox.files` on the handle — it resolves and caches the connection automatically, waiting until the sandbox is `Ready` on first use. These calls are **never retried** (a retried `write`/`exec` could run twice). File paths are workspace-relative (the daemon rejects absolute paths).
+Runtime APIs run commands and access files **inside** a sandbox, reached directly at the sandbox's `connect_url`. Use `sandbox.exec` / `sandbox.files` on the handle — it resolves and caches the connection automatically, waiting until the sandbox is `Ready` on first use. These calls are **never retried** (a retried `write`/`exec` could run twice). File paths are workspace-relative (the sandbox rejects absolute paths).
 
 ### Exec
 
@@ -325,7 +325,7 @@ Listed for completeness; prefer the handle methods above.
 
 | Type | Summary |
 | ---- | ------- |
-| `SandboxConnection` | A live connection to one sandbox's daemon. Construct via `neev.createSandboxConnection(connectUrl)`, or reach it through `sandbox.exec` / `sandbox.files` / `sandbox.processes` / `sandbox.pty`. Exposes `exec`, `execStream`, and `files` / `processes` / `pty` facades. |
+| `SandboxConnection` | A live connection to one sandbox.s runtime. Construct via `neev.createSandboxConnection(connectUrl)`, or reach it through `sandbox.exec` / `sandbox.files` / `sandbox.processes` / `sandbox.pty`. Exposes `exec`, `execStream`, and `files` / `processes` / `pty` facades. |
 | `SandboxFiles` | The filesystem facade (`write`/`read`/`readText`/`list`). Accessed via `sandbox.files` or `connection.files`. |
 | `SandboxProcesses` | The process-supervisor facade (`start`/`get`/`list`/`kill`/`killAll`/`logs`/`follow`). Accessed via `sandbox.processes` or `connection.processes`. |
 | `SandboxPty` | The interactive-terminal facade (`create` → `PtyHandle`). Accessed via `sandbox.pty` or `connection.pty`. |
