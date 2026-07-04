@@ -7,27 +7,12 @@
  *     npx tsx examples/snapshot-fork-restore.ts
  */
 import { Neev } from "@neevcloud/sdk";
-import type { SnapshotData } from "@neevcloud/sdk";
 
 // Construct the client from NEEV_* environment variables.
 const neev = new Neev();
 
-// Poll a snapshot until it reaches a terminal state. A snapshot is created
-// Pending and must be Ready before it can be restored or forked from.
-async function waitForSnapshot(id: string, timeoutMs = 120_000): Promise<SnapshotData> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const snap = await neev.sandboxes.getSnapshot(id);
-    if (snap.status === "Ready") return snap;
-    if (snap.status === "Failed")
-      throw new Error(`snapshot ${id} failed: ${snap.error_message ?? ""}`);
-    if (Date.now() > deadline) throw new Error(`snapshot ${id} not ready within ${timeoutMs}ms`);
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-}
-
 async function main(): Promise<void> {
-  // Template and region use the platform defaults.
+  // Template and region use the account defaults.
   const sandbox = await neev.sandboxes.create({
     name: "snapshot-source",
   });
@@ -35,9 +20,10 @@ async function main(): Promise<void> {
   await sandbox.files.write("state.txt", "captured-at-snapshot");
   console.log(`source ${sandbox.id} ready with state written`);
 
-  // Capture a filesystem snapshot and wait for it to become Ready.
-  const pending = await sandbox.snapshot({ name: "demo-snap" });
-  const snapshot = await waitForSnapshot(pending.id);
+  // Capture a snapshot and block until it is Ready. A snapshot is created
+  // Pending and must be Ready before it can be restored or forked from;
+  // waitUntilReady polls until then (or throws if the capture fails).
+  const snapshot = await sandbox.snapshot({ name: "demo-snap", waitUntilReady: true });
   console.log(`snapshot ${snapshot.id} ready (${snapshot.size_bytes ?? "?"} bytes)`);
 
   // Fork a brand-new sandbox from the source's *current* live state. Fork

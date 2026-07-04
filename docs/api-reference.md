@@ -69,6 +69,7 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `createSnapshot(id, params?, scope?)` | `Promise<SnapshotData>` | Captures a filesystem snapshot; returns immediately with `status: "Pending"`. |
 | `listSnapshots(id, params?)` | `Promise<SnapshotPage>` | Lists a sandbox's snapshots. **Paginated** — accepts `{ page, limit }`, returns `{ items, total, page, limit }`. |
 | `getSnapshot(snapshotId, scope?)` | `Promise<SnapshotData>` | Fetches snapshot metadata by project-scoped id. |
+| `waitForSnapshot(snapshotId, params?)` | `Promise<SnapshotData>` | Polls until the snapshot is `Ready`; throws on `Failed` (with its error message) or timeout. |
 | `deleteSnapshot(snapshotId, scope?)` | `Promise<void>` | Deletes a snapshot and its stored blob. |
 | `restore(id, snapshotId, scope?)` | `Promise<Sandbox>` | Restores a sandbox **in place** from one of its snapshots. |
 | `fork(id, name, scope?)` | `Promise<Sandbox>` | Forks a sandbox into a new named sandbox from its **current live state**. |
@@ -134,7 +135,7 @@ const widget = await neev.raw.request<{ id: string }>({
 
 ## Snapshots
 
-Snapshots capture a sandbox's filesystem state. They are **asynchronous**: `createSnapshot` / `sandbox.snapshot` return `status: "Pending"`; poll `getSnapshot` (or read `snapshot.status`) until `"Ready"` before restoring or forking from it. Status values are `"Pending" | "Running" | "Ready" | "Failed"`.
+Snapshots capture a sandbox's filesystem state. They are **asynchronous**: `createSnapshot` / `sandbox.snapshot` return `status: "Pending"` and the snapshot must reach `"Ready"` before it can be restored or forked from. Status values are `"Pending" | "Running" | "Ready" | "Failed"`. To wait for `Ready`, either pass `{ waitUntilReady: true }` to `sandbox.snapshot` or call `waitForSnapshot(snapshotId)`; both resolve with the `Ready` snapshot and throw if the capture fails or the timeout elapses.
 
 Two distinct paths:
 
@@ -144,15 +145,8 @@ Two distinct paths:
 ```ts
 const sandbox = await neev.sandboxes.get(id);
 
-// Capture filesystem state (starts Pending).
-const pending = await sandbox.snapshot({ name: "checkpoint" });
-
-// Poll until Ready.
-let snap = await neev.sandboxes.getSnapshot(pending.id);
-while (snap.status === "Pending" || snap.status === "Running") {
-  await new Promise((r) => setTimeout(r, 2000));
-  snap = await neev.sandboxes.getSnapshot(pending.id);
-}
+// Capture filesystem state and block until it is Ready.
+const snap = await sandbox.snapshot({ name: "checkpoint", waitUntilReady: true });
 
 await sandbox.restore(snap.id);             // restore this sandbox in place
 const fork = await sandbox.fork("my-fork"); // branch current live state into a new sandbox
@@ -160,6 +154,15 @@ const fork = await sandbox.fork("my-fork"); // branch current live state into a 
 const { items } = await neev.sandboxes.listSnapshots(id); // paginated: { page, limit }
 await neev.sandboxes.deleteSnapshot(snap.id);
 ```
+
+To create the snapshot without blocking and wait later, use `waitForSnapshot`:
+
+```ts
+const pending = await sandbox.snapshot({ name: "checkpoint" }); // status: "Pending"
+const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once Ready
+```
+
+`waitForSnapshot(snapshotId, params?)` accepts `WaitForSnapshotParams` = `Scope & { timeoutMs?: number (default 300000); pollIntervalMs?: number (default 2000) }`. `sandbox.snapshot(options?)` takes the snapshot-create fields (`name`, `retain_for`) plus `SnapshotWaitOptions` (`{ waitUntilReady?: boolean; timeoutMs?; pollIntervalMs? }`).
 
 `listSnapshots` / `sandbox.snapshots()` return a `SnapshotPage` (`{ items: SnapshotData[]; total; page; limit }`) and accept `{ page, limit }`.
 
@@ -193,7 +196,7 @@ await neev.sandboxes.deleteSnapshot(snap.id);
 | `resume()` | `Promise<this>` | Resumes (scales to one) and updates the handle. |
 | `delete()` | `Promise<void>` | Permanently deletes the sandbox. |
 | `metrics(params?)` | `Promise<SandboxMetricsResponse>` | Reads the live metric series; `params` is `{ from?, to?, step? }`. |
-| `snapshot(params?)` | `Promise<SnapshotData>` | Captures this sandbox's state (starts `Pending`). |
+| `snapshot(options?)` | `Promise<SnapshotData>` | Captures this sandbox's state (starts `Pending`). Pass `{ waitUntilReady: true }` to resolve only once the snapshot is `Ready`. |
 | `snapshots(params?)` | `Promise<SnapshotPage>` | Lists this sandbox's snapshots (paginated: `{ page, limit }`). |
 | `restore(snapshotId)` | `Promise<this>` | Restores this sandbox in place from a chosen snapshot. |
 | `fork(name)` | `Promise<Sandbox>` | Forks the current live state into a new sandbox handle. |
@@ -384,6 +387,7 @@ Minimal one-liners for each public API.
 | `neev.sandboxes.createSnapshot(id, ...)` | `const snap = await neev.sandboxes.createSnapshot(id, { name: "checkpoint" });` |
 | `neev.sandboxes.listSnapshots(id, ...)` | `const { items } = await neev.sandboxes.listSnapshots(id, { page: 1, limit: 20 });` |
 | `neev.sandboxes.getSnapshot(snapshotId)` | `const snap = await neev.sandboxes.getSnapshot(snapshotId);` |
+| `neev.sandboxes.waitForSnapshot(snapshotId)` | `const snap = await neev.sandboxes.waitForSnapshot(snapshotId);` |
 | `neev.sandboxes.deleteSnapshot(snapshotId)` | `await neev.sandboxes.deleteSnapshot(snapshotId);` |
 | `neev.sandboxes.restore(id, snapshotId)` | `await neev.sandboxes.restore(id, snapshotId);` |
 | `neev.sandboxes.fork(id, name)` | `const fork = await neev.sandboxes.fork(id, "my-fork");` |

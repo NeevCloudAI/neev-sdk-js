@@ -86,9 +86,9 @@ const metrics = await neev.sandboxes.metrics(id, { step: "60s" });
 // Snapshots, restore, and fork (see "Snapshots, fork & restore" below).
 const snap = await neev.sandboxes.createSnapshot(id, { name: "checkpoint" });
 const { items } = await neev.sandboxes.listSnapshots(id); // paginated
-// `snap` starts Pending — wait until it reaches Ready before restoring from it
-// (see "Snapshots, fork & restore" below for the poll loop).
-await neev.sandboxes.restore(id, snap.id);             // restore in place once snap is Ready
+// `snap` starts Pending — wait until it reaches Ready before restoring from it.
+await neev.sandboxes.waitForSnapshot(snap.id);         // resolves once Ready (throws on failure)
+await neev.sandboxes.restore(id, snap.id);             // restore in place from the Ready snapshot
 const fork = await neev.sandboxes.fork(id, "my-fork"); // fork the current live state (no snapshot needed)
 ```
 
@@ -118,10 +118,9 @@ const sandbox = await neev.sandboxes.get(id);
 await sandbox.refresh();          // re-fetch latest state
 await sandbox.waitUntilReady();   // poll until phase === "Ready"
 await sandbox.pause();
-const snap = await sandbox.snapshot();      // capture this sandbox's state (starts Pending)
+const snap = await sandbox.snapshot({ waitUntilReady: true }); // capture and wait until Ready
 const fork = await sandbox.fork("my-fork"); // branch the current state into a new sandbox
-// restore needs `snap` Ready first — poll getSnapshot (see "Snapshots, fork & restore" below).
-await sandbox.restore(snap.id);             // restore this sandbox in place once snap is Ready
+await sandbox.restore(snap.id);             // restore this sandbox in place from the Ready snapshot
 sandbox.data;                     // full raw API record
 ```
 
@@ -261,18 +260,13 @@ const neev = new Neev({ webSocket: (url, opts) => new WebSocket(url, opts) });
 
 ### Snapshots, fork & restore
 
-Capture a sandbox's state as a **snapshot**, then **restore** the same sandbox back to that snapshot. A snapshot is created `Pending` and must reach `Ready` before it can be restored — poll `getSnapshot` (or read `snapshot.status`). **Fork** is separate: it atomically snapshots a sandbox's *current* live state into a brand-new sandbox (it does not reuse an existing snapshot), and the source keeps running:
+Capture a sandbox's state as a **snapshot**, then **restore** the same sandbox back to that snapshot. A snapshot is created `Pending` and must reach `Ready` before it can be restored. Pass `{ waitUntilReady: true }` to block until it is `Ready` (or use `neev.sandboxes.waitForSnapshot(id)`); otherwise read `snapshot.status` yourself. **Fork** is separate: it atomically snapshots a sandbox's *current* live state into a brand-new sandbox (it does not reuse an existing snapshot), and the source keeps running:
 
 ```ts
 const sandbox = await neev.sandboxes.get(id);
 
-// Capture the sandbox's filesystem state.
-const pending = await sandbox.snapshot({ name: "checkpoint" });
-let snap = await neev.sandboxes.getSnapshot(pending.id);
-while (snap.status === "Pending" || snap.status === "Running") {
-  await new Promise((r) => setTimeout(r, 2000));
-  snap = await neev.sandboxes.getSnapshot(pending.id);
-}
+// Capture the sandbox's filesystem state and block until it is Ready.
+const snap = await sandbox.snapshot({ name: "checkpoint", waitUntilReady: true });
 
 // Restore the original in place from the snapshot; fork branches the current
 // live state into a brand-new sandbox (it does not consume `snap`).
@@ -281,6 +275,13 @@ const fork = await sandbox.fork("my-fork"); // → a new Sandbox handle
 
 const { items } = await neev.sandboxes.listSnapshots(id); // paginated; pass { page, limit }
 await neev.sandboxes.deleteSnapshot(snap.id);
+```
+
+Prefer a two-step flow (create now, wait later)? Capture without waiting and poll explicitly:
+
+```ts
+const pending = await sandbox.snapshot({ name: "checkpoint" }); // status: "Pending"
+const ready = await neev.sandboxes.waitForSnapshot(pending.id); // resolves once Ready
 ```
 
 The full snapshot example is [`examples/snapshot-fork-restore.ts`](./examples/snapshot-fork-restore.ts).
