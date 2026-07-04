@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.1-beta
+
+### Minor Changes
+
+- c757f8e: Add an interactive PTY surface: `sandbox.pty`.
+
+  Open a pseudo-terminal in a sandbox over a WebSocket — for shells, REPLs, and anything that needs a TTY.
+
+  - `sandbox.pty.create({ cols?, rows?, program?, args?, onData? })` resolves to a `PtyHandle` once connected. Terminal output streams to `onData` as `Uint8Array`.
+  - `PtyHandle`: `sendInput(string | Uint8Array)`, `resize(cols, rows)`, `kill(signal?)` (by name, default `SIGTERM`), `wait()` → `{ exitCode }`, and `disconnect()`. Also available on a raw `SandboxConnection` via `connection.pty`.
+  - New `webSocket` client option (`new Neev({ webSocket })`): the SDK uses the runtime's global `WebSocket` if present; in Node, pass a header-capable one (e.g. the `ws` package) so the auth header is sent.
+  - Exports `SandboxPty`, `PtyHandle`, and the `PtyCreateOptions` / `PtyResult` / `WebSocketFactory` / `SandboxWebSocket` types.
+
+- 2b3cd1a: Add a snapshot readiness wait so you no longer hand-write a poll loop. `neev.sandboxes.waitForSnapshot(snapshotId)` resolves once a snapshot reaches `Ready` (and throws with the error message if it fails or the wait times out), and `sandbox.snapshot({ waitUntilReady: true })` captures and waits in one call.
+
+### Patch Changes
+
+- Publish the newest beta as the default install. While the SDK is pre-1.0 and ships only on the beta line, each release now takes the npm `latest` dist-tag (a prerelease is also tagged `beta`), so `npm install @neevcloud/sdk` resolves to the newest build instead of a stale earlier version.
+
 ## 0.6.0-beta
 
 ### Minor Changes
