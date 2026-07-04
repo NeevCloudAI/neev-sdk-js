@@ -2,7 +2,7 @@
  * AI code-interpreter with live output.
  *
  * NeevCloud `gpt-oss-120b` is given a `run_shell` tool backed by a Neev sandbox.
- * When the model calls it, the command runs in the gVisor-isolated sandbox and
+ * When the model calls it, the command runs in the strongly isolated sandbox and
  * its stdout/stderr **stream to your terminal as they are produced** (via
  * `sandbox.exec(cmd, { stream: true })`), not buffered to the end — so you watch
  * the AI's code run live. The full output is then fed back so the model can finish.

@@ -48,7 +48,7 @@ export class Sandbox {
   private readonly sandboxes: Sandboxes;
   private readonly scope?: Scope;
   private state: SandboxData;
-  // Cached daemon connection and the connect_url it was built for, so the
+  // Cached sandbox connection and the connect_url it was built for, so the
   // connection is reused across calls but rebuilt if the URL changes.
   private conn?: SandboxConnection;
   private connUrl?: string;
@@ -88,7 +88,7 @@ export class Sandbox {
     return this.state.replicas;
   }
 
-  // Direct address of the sandbox daemon, or null when not configured.
+  // Direct address of the sandbox runtime, or null when not configured.
   get connectUrl(): string | null {
     return this.state.connect_url ?? null;
   }
@@ -108,7 +108,7 @@ export class Sandbox {
     return this.state.resources;
   }
 
-  // Filesystem operations on this sandbox's daemon. Each operation resolves the
+  // Filesystem operations on this sandbox's runtime. Each operation resolves the
   // connection lazily: if the sandbox has no connect_url yet, the first call
   // waits until it is Ready to obtain one.
   get files(): SandboxFiles {
@@ -118,7 +118,7 @@ export class Sandbox {
     return this.filesProxy;
   }
 
-  // Process supervisor operations on this sandbox's daemon. Like `files`, each
+  // Process supervisor operations on this sandbox's runtime. Like `files`, each
   // operation resolves the connection lazily, waiting until the sandbox is Ready
   // on first use to obtain its connect_url.
   get processes(): SandboxProcesses {
@@ -128,7 +128,7 @@ export class Sandbox {
     return this.processesProxy;
   }
 
-  // Interactive PTY sessions on this sandbox's daemon. Like `files`, the connection
+  // Interactive PTY sessions on this sandbox's runtime. Like `files`, the connection
   // resolves lazily, waiting until the sandbox is Ready on first use.
   get pty(): SandboxPty {
     if (!this.ptyProxy) {
@@ -260,7 +260,7 @@ export class Sandbox {
     return this.sandboxes.fork(this.id, name, this.scope);
   }
 
-  // Resolves the daemon connection for this sandbox, coalescing concurrent first
+  // Resolves the sandbox connection for this sandbox, coalescing concurrent first
   // calls into one readiness wait. Subsequent calls re-resolve cheaply (the
   // sandbox is Ready and the connection is cached).
   private ensureConnection(): Promise<SandboxConnection> {
@@ -272,7 +272,7 @@ export class Sandbox {
     return this.connecting;
   }
 
-  // Caches the daemon connection by connect_url. Waits until the sandbox is Ready
+  // Caches the sandbox connection by connect_url. Waits until the sandbox is Ready
   // when it has no usable endpoint yet (a freshly-created or just-resumed sandbox
   // reports no connect_url, or a stale non-Ready phase). The cached connection is
   // rebuilt if the connect_url changes (e.g. across a resume). Throws if the

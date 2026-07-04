@@ -197,7 +197,7 @@ async function main(): Promise<void> {
     const result = await sandbox.exec(["sh", "-c", "echo hello from sandbox"]);
     console.log(`stdout=${result.stdout.trim()} exitCode=${result.exitCode}`);
 
-    // 4. Write and read a file. Paths are workspace-relative — the daemon
+    // 4. Write and read a file. Paths are workspace-relative — the sandbox
     //    rejects absolute paths.
     const { bytesWritten } = await sandbox.files.write("notes.txt", "written by the SDK\n");
     console.log(`wrote ${bytesWritten} bytes`);

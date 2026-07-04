@@ -161,7 +161,7 @@ npx tsx examples/agents/genkit.ts
 
 ## Notes
 
-- Sandbox file paths are **workspace-relative** — the daemon rejects absolute paths.
+- Sandbox file paths are **workspace-relative** — the sandbox rejects absolute paths.
 - The standard templates ship `sh` only (no `bash`, no `python3`); `sh -c` works
   on every template. `runPython` needs a python-capable template.
 - Progress/transcript output goes to **stderr**; an example's result goes to **stdout**.

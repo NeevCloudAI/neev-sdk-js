@@ -2,7 +2,7 @@
 
 These examples wire a **Neev sandbox** into popular agentic frameworks as a
 secure code-execution tool. Each agent reasons over a task, runs Python or shell
-inside a gVisor-isolated Neev sandbox, and uses the captured output to answer.
+inside a strongly isolated Neev sandbox, and uses the captured output to answer.
 
 All three drive the **same NeevCloud model — `gpt-oss-120b`** — over the
 OpenAI-compatible Neev inference endpoint, and share two helpers:
@@ -103,5 +103,5 @@ loop simply waits and retries on its own.
   buffered back to it; `sandbox.files.write` (used by the executor's `runPython`)
   stages files on python-capable templates. The handle resolves the sandbox's
   `connect_url` and waits for Ready on first use.
-- **Isolation** — every agent's generated code runs in a gVisor (`runsc`)
+- **Isolation** — every agent's generated code runs in a strongly isolated
   sandbox, not on the host.
