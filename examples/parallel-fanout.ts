@@ -1,7 +1,7 @@
 /**
  * Fan out work across several isolated sandboxes, then read their metrics.
  *
- * Provisions N gVisor-isolated sandboxes concurrently, runs an independent piece
+ * Provisions N strongly isolated sandboxes concurrently, runs an independent piece
  * of a map/reduce (each sums a slice of 1..3000) in each, reduces the partials,
  * reads each sandbox's live metric series, and tears them all down. Demonstrates
  * isolation, concurrent lifecycle, exec, and `sandbox.metrics()` — no LLM.

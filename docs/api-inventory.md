@@ -294,7 +294,7 @@ await resumed.waitUntilReady();
 delete(id: string, scope?: Scope): Promise<void>
 ```
 
-Permanently deletes a sandbox (removes the Kubernetes CR and the DB row).
+Permanently deletes a sandbox.
 
 **Returns:** `Promise<void>`.
 
@@ -508,7 +508,7 @@ const fork2 = await sandbox.fork("fork-name");
 connect(connectUrl: string): SandboxConnection
 ```
 
-Opens a low-level runtime connection to a sandbox daemon at the given `connect_url`, backed by the client's bearer auth and the no-retry transport. Used internally by the `Sandbox` handle to back `sandbox.files` / `sandbox.exec`; exposed for advanced use. Synchronous (returns a `SandboxConnection`, not a `Promise`).
+Opens a low-level runtime connection to the sandbox runtime at the given `connect_url`, backed by the client's bearer auth and the no-retry transport. Used internally by the `Sandbox` handle to back `sandbox.files` / `sandbox.exec`; exposed for advanced use. Synchronous (returns a `SandboxConnection`, not a `Promise`).
 
 ```ts
 const conn = client.sandboxes.connect(sandbox.connectUrl!);
@@ -578,7 +578,7 @@ Returned by `create()`, `get()`, `list().items`, `pause()`, `resume()`, `restore
 | `name` | `string` | Human-readable name. |
 | `phase` | `SandboxPhase` | Current lifecycle phase as last seen from the server. |
 | `replicas` | `number` | Desired replica count (`0` when paused, `1` when running). |
-| `connectUrl` | `string \| null` | Runtime daemon URL, or `null` when not yet configured. |
+| `connectUrl` | `string \| null` | Runtime URL, or `null` when not yet configured. |
 | `region` | `string` | Region slug the sandbox runs in. |
 | `templateId` | `string \| null` | Catalogue template id it was created from, or `null` when unknown. |
 | `resources` | `SandboxResources \| undefined` | Compute size, or `undefined` when defaulted. |
@@ -710,7 +710,7 @@ console.log(JSON.stringify(sandbox, null, 2));
 
 ## Exec and streaming
 
-Runtime command execution runs against the sandbox daemon at `connect_url`. The `Sandbox` handle resolves the connection lazily: the first `exec` / `files` call waits until the sandbox is `Ready` (and has a `connect_url`) before issuing the request. A non-zero exit code is **not** an error — it is reported in the result (or the `exit` event), never thrown.
+Runtime command execution runs against the sandbox runtime at `connect_url`. The `Sandbox` handle resolves the connection lazily: the first `exec` / `files` call waits until the sandbox is `Ready` (and has a `connect_url`) before issuing the request. A non-zero exit code is **not** an error — it is reported in the result (or the `exit` event), never thrown.
 
 ### `sandbox.exec(command, options?)`
 
@@ -737,7 +737,7 @@ Runs a command in the sandbox. With no `stream` flag it buffers stdout/stderr an
 
 **Returns:** `Promise<ExecResult>` (buffered) or `AsyncGenerator<ExecStreamEvent>` (streaming).
 
-**Raises:** `NeevError` (invalid args, sandbox `Paused`/timeout on the readiness wait, or a stream that ends without an exit status), and typed `APIError` subclasses mapped from the daemon's `{reason_code, message}` (e.g. `PermissionDeniedError`, `BadRequestError`, `NotFoundError`, `PreconditionFailedError`, `RateLimitError`, `DeadlineExceededError`, `InternalServerError`).
+**Raises:** `NeevError` (invalid args, sandbox `Paused`/timeout on the readiness wait, or a stream that ends without an exit status), and typed `APIError` subclasses mapped from the sandbox's `{reason_code, message}` (e.g. `PermissionDeniedError`, `BadRequestError`, `NotFoundError`, `PreconditionFailedError`, `RateLimitError`, `DeadlineExceededError`, `InternalServerError`).
 
 ```ts
 // argv form (preferred)
@@ -791,7 +791,7 @@ for await (const event of sandbox.execStream(["echo", "hi"])) {
 
 ## Files API
 
-Access via the `sandbox.files` getter (a `SandboxFiles`). The first call resolves the daemon connection, waiting for the sandbox to be `Ready`. Paths are resolved against the sandbox workspace; an optional `cwd` is supplied for relative paths.
+Access via the `sandbox.files` getter (a `SandboxFiles`). The first call resolves the sandbox connection, waiting for the sandbox to be `Ready`. Paths are resolved against the sandbox workspace; an optional `cwd` is supplied for relative paths.
 
 ### `sandbox.files.write(path, content, options?)`
 
@@ -843,13 +843,13 @@ for (const e of entries) {
 }
 ```
 
-All file operations raise typed `APIError` subclasses (mapped from the daemon's reason codes) on failure, and `NeevError` if the readiness wait fails.
+All file operations raise typed `APIError` subclasses (mapped from the sandbox's reason codes) on failure, and `NeevError` if the readiness wait fails.
 
 ---
 
 ## Processes API
 
-Access via the `sandbox.processes` getter (a `SandboxProcesses`). Runs **detached** processes whose lifetime is decoupled from the request that started them, each addressed by a stable `process_id`. The first call resolves the daemon connection, waiting for the sandbox to be `Ready`. HTTP-backed failures raise typed `APIError` subclasses (e.g. `NotFoundError` for an unknown `process_id`, `BadRequestError` for a disallowed signal). Before any HTTP call, `start` throws `NeevError` for invalid arguments (an argv array combined with `args`, or an empty program), and the first-use readiness wait throws `NeevError` if the sandbox is `Paused` or does not become `Ready` in time.
+Access via the `sandbox.processes` getter (a `SandboxProcesses`). Runs **detached** processes whose lifetime is decoupled from the request that started them, each addressed by a stable `process_id`. The first call resolves the sandbox connection, waiting for the sandbox to be `Ready`. HTTP-backed failures raise typed `APIError` subclasses (e.g. `NotFoundError` for an unknown `process_id`, `BadRequestError` for a disallowed signal). Before any HTTP call, `start` throws `NeevError` for invalid arguments (an argv array combined with `args`, or an empty program), and the first-use readiness wait throws `NeevError` if the sandbox is `Paused` or does not become `Ready` in time.
 
 ### `sandbox.processes.start(command, options?)`
 
@@ -867,7 +867,7 @@ Starts a detached process and returns a `Process` handle. `command` is a bare pr
 get(processId: string, options?: { wait?: boolean; signal?: AbortSignal }): Promise<ProcessStatus>
 ```
 
-Returns a status snapshot. With `wait: true` it blocks until the process exits (bounded by the daemon's wait ceiling).
+Returns a status snapshot. With `wait: true` it blocks until the process exits (bounded by the sandbox's wait ceiling).
 
 ### `sandbox.processes.list(options?)`
 
@@ -944,7 +944,7 @@ The WebSocket comes from the client's `webSocket` option, else the runtime globa
 
 ## Runtime connection
 
-Low-level connection to the sandbox daemon (`sandboxd`), reached directly at the sandbox's `connect_url`. Constructed internally by the `Sandbox` handle; exposed for advanced use via `client.sandboxes.connect(connectUrl)` or `new SandboxConnection(...)`.
+Low-level connection to the sandbox runtime, reached directly at the sandbox's `connect_url`. Constructed internally by the `Sandbox` handle; exposed for advanced use via `client.sandboxes.connect(connectUrl)` or `new SandboxConnection(...)`.
 
 ### `new SandboxConnection(opts)`
 
@@ -961,7 +961,7 @@ constructor(opts: SandboxConnectionOptions)
 | `pty` | `SandboxPty` | Interactive-terminal operations bound to this connection. |
 | `exec(command, options?)` | `Promise<ExecResult>` | Buffered command execution. |
 | `execStream(command, options?)` | `AsyncGenerator<ExecStreamEvent>` | Streaming command execution. |
-| `request(req)` | `Promise<Response>` | Low-level daemon request; throws a typed `APIError` on non-2xx. |
+| `request(req)` | `Promise<Response>` | Low-level runtime request; throws a typed `APIError` on non-2xx. |
 
 Unlike `Sandbox.exec`, the connection-level `exec` and `execStream` are separate methods (there is no `{ stream: true }` flag here — `ExecOptions.stream` is ignored at this level). Neither waits for readiness; the caller is responsible for using a live `connect_url`.
 
@@ -1061,7 +1061,7 @@ Alias for the generated `Sandbox` schema — the full lifecycle sandbox record w
 
 ### `SandboxPhase`
 
-Alias for the generated `SandboxPhase` enum — the lifecycle phase reported by the service. Steady states include `"Pending"`, `"Ready"`, `"NotReady"`, `"Unknown"`, and `"Paused"`; the lifecycle may also report transitional values during pause/resume reconciliation. `Sandbox.waitUntilReady` treats `"Ready"` as success and `"Paused"` as a fail-fast terminal state.
+Alias for the generated `SandboxPhase` enum — the lifecycle phase reported by the service. Steady states include `"Pending"`, `"Ready"`, `"NotReady"`, `"Unknown"`, and `"Paused"`; the lifecycle may also report transitional values during pause/resume transitions. `Sandbox.waitUntilReady` treats `"Ready"` as success and `"Paused"` as a fail-fast terminal state.
 
 ### `SandboxResources`
 
@@ -1266,7 +1266,7 @@ All SDK errors inherit from `NeevError`. Import from `@neevcloud/sdk`. Branch wi
 
 `APIError` properties: `status: number`, `code?: string` (from the body's `error` field), `details?: string` (from the body's `details` field), `requestId?: string` (from the `x-request-id` header).
 
-Runtime (daemon) exec/file errors are mapped to the same hierarchy via reason codes: `permission_denied` → 403, `invalid_argument` → 400, `not_found` → 404, `failed_precondition` → 412, `resource_exhausted` → 429, `deadline_exceeded` → 504, `unavailable` → 503, `internal` → 500.
+Runtime exec/file errors are mapped to the same hierarchy via reason codes: `permission_denied` → 403, `invalid_argument` → 400, `not_found` → 404, `failed_precondition` → 412, `resource_exhausted` → 429, `deadline_exceeded` → 504, `unavailable` → 503, `internal` → 500.
 
 ```ts
 import { Neev, NotFoundError, AuthenticationError, NeevError } from "@neevcloud/sdk";
@@ -1457,7 +1457,7 @@ Compact reviewer index.
 - `fork(id, name)` snapshots the **current live state** and seeds a **new** sandbox — it does **not** reuse an existing snapshot. Use `restore` when you want a specific prior snapshot.
 - `listSnapshots` / `Sandbox.snapshots` are **paginated**: they return `SnapshotPage` (`{ items, total, page, limit }`) and accept `{ page, limit }`. `SnapshotPage`/`ListSnapshotsParams` are not re-exported at the package root.
 - `exec` is buffered by default; pass `{ stream: true }` for a live async-iterable. `execStream` is a **deprecated** alias for the streaming form.
-- A non-zero exit code is reported (in `ExecResult.exitCode` or the `exit` event), never thrown. Daemon failure frames throw typed `APIError` subclasses.
+- A non-zero exit code is reported (in `ExecResult.exitCode` or the `exit` event), never thrown. Runtime failure frames throw typed `APIError` subclasses.
 - Sandbox runtime calls use a **no-retry** transport (exec/write are not idempotent); lifecycle calls retry network errors, 429, and 5xx up to `maxRetries` (default 2).
 - `sandbox.exec` and `sandbox.files` wait for the sandbox to be `Ready` (and to expose a `connect_url`) on first use; `SandboxConnection` methods do not wait.
 - There is no `close()` on `Neev` or `SandboxConnection` — neither holds a persistent connection.
@@ -1482,7 +1482,7 @@ I read all the source files and `/tmp/py-api-inventory.md`, then produced the co
 - Every `Sandboxes` method with exact TS signatures and `scope?`/params interfaces; `create` requires only `name`; `createSnapshot` forces `include_memory: false`; `listSnapshots`/`snapshots` are paginated (`SnapshotPage`); `restore` = in-place from chosen snapshot; `fork` = new sandbox from current live state (not a stored snapshot); included `connect`.
 - `Sandbox` handle getters (`connectUrl` is `string | null`, plus `region`/`templateId`/`resources`), `waitUntilReady` (`Paused` fail-fast, timeout), overloaded `exec` (buffered vs `{ stream: true }`), deprecated `execStream`, `toJSON`.
 - Runtime `SandboxConnection`/`SandboxFiles` with camelCase results (`bytesWritten`, `modifiedTime`, `symlinkTarget`), `ExecOptions`/`ExecResult`/`ExecStreamEvent`/`FileEntry`.
-- Full error hierarchy with status mapping (incl. daemon reason-code → status table) and `APIError` properties (`status`, `code`, `details`, `requestId`).
+- Full error hierarchy with status mapping (incl. reason-code → status table) and `APIError` properties (`status`, `code`, `details`, `requestId`).
 - `RawClient.request<T>` returns `undefined` on 204; no-retry runtime vs retrying lifecycle transport.
 
 For type field tables sourced from the generated OpenAPI schema (e.g. `SandboxResources`, `MetricSeries`, exact `CreateSandboxRequest`/`Snapshot` field optionality), I noted they follow `src/generated/aiagent.ts` since `types.ts` only aliases them — that generated file was not in the read set, so those specific field lists are best-effort and flagged as such in the doc.

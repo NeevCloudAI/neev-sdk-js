@@ -46,7 +46,7 @@ export interface RequestContext {
   createTypedClient<Paths extends {}>(): Client<Paths>;
   // Untyped client for spec-less endpoints.
   readonly raw: RawClient;
-  // Opens a connection to a sandbox daemon at its connect_url. Uses a no-retry
+  // Opens a connection to a sandbox runtime at its connect_url. Uses a no-retry
   // transport so non-idempotent sandbox calls never double-fire.
   createSandboxConnection(connectUrl: string): SandboxConnection;
   // Resolves the effective org/project for a call.
@@ -122,7 +122,7 @@ export class Neev implements RequestContext {
     this.agentTemplates = new AgentTemplates(this);
   }
 
-  // Opens a connection to a sandbox daemon at its connect_url, backed by this
+  // Opens a connection to a sandbox runtime at its connect_url, backed by this
   // client's bearer auth and the no-retry transport.
   createSandboxConnection(connectUrl: string): SandboxConnection {
     return new SandboxConnection({

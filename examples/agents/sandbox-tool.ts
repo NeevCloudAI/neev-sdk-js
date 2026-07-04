@@ -2,7 +2,7 @@
  * Shared, framework-agnostic helper used by the agent examples in this folder.
  *
  * `SandboxCodeExecutor` wraps `@neevcloud/sdk` and exposes two capabilities an agent
- * can call as tools: run Python and run shell commands inside a gVisor-isolated
+ * can call as tools: run Python and run shell commands inside a strongly isolated
  * Neev sandbox. It provisions a single sandbox lazily on first use and reuses it
  * across calls, then tears it down on `cleanup()`.
  *
@@ -66,7 +66,7 @@ export class SandboxCodeExecutor {
   }
 
   // Writes the given Python source into the sandbox and runs it with python3.
-  // Paths are workspace-relative (the daemon rejects absolute paths). Requires a
+  // Paths are workspace-relative (the sandbox rejects absolute paths). Requires a
   // python-capable template; the minimal catalogue images do not ship python3.
   async runPython(code: string): Promise<RunResult> {
     const sandbox = await this.ensure();

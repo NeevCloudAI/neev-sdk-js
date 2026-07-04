@@ -2,7 +2,7 @@
  * Vercel AI SDK agent with a Neev sandbox as its code-execution tool.
  *
  * `generateText` runs a multi-step tool-calling loop: the model issues shell
- * commands via the `runShell` tool, which executes them in a gVisor-isolated
+ * commands via the `runShell` tool, which executes them in a strongly isolated
  * Neev sandbox, and the model uses the output to finish the task. The model is
  * NeevCloud `gpt-oss-120b` over the OpenAI-compatible Neev inference endpoint.
  *

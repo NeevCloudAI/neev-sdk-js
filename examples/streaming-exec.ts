@@ -2,7 +2,7 @@
  * Stream a command's output from a sandbox as it is produced.
  *
  * `sandbox.exec(cmd, { stream: true })` returns an async iterable: it yields
- * `stdout`/`stderr` text chunks the moment the daemon flushes them, then a
+ * `stdout`/`stderr` text chunks the moment the sandbox flushes them, then a
  * terminal `exit` event. (Without `stream: true`, `exec` buffers and resolves to
  * the full result.) This runs a command that prints a line per second and logs
  * each chunk with the elapsed time, so the ~1s spacing is visible — proof the

@@ -2,7 +2,7 @@
  * LangChain.js agent with a Neev sandbox as its code-execution tool.
  *
  * The agent reasons over a task, calls a `run_shell` tool to execute commands
- * in a gVisor-isolated Neev sandbox, and uses the captured output to produce its
+ * in a strongly isolated Neev sandbox, and uses the captured output to produce its
  * answer. The model is NeevCloud `gpt-oss-120b`, served over the
  * OpenAI-compatible Neev inference endpoint.
  *
