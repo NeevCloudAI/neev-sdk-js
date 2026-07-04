@@ -23,6 +23,7 @@ import { Neev } from "@neevcloud/sdk";
   - [createSnapshot](#clientsandboxescreatesnapshotid-params-scope)
   - [listSnapshots](#clientsandboxeslistsnapshotsid-params)
   - [getSnapshot](#clientsandboxesgetsnapshotsnapshotid-scope)
+  - [waitForSnapshot](#clientsandboxeswaitforsnapshotsnapshotid-params)
   - [deleteSnapshot](#clientsandboxesdeletesnapshotsnapshotid-scope)
   - [restore](#clientsandboxesrestoreid-snapshotid-scope)
   - [fork](#clientsandboxesforkid-name-scope)
@@ -58,6 +59,7 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `RawRequest` | interface (type) | `http.ts` |
 | `Sandbox` | class | `sandbox.ts` |
 | `WaitOptions` | interface (type) | `sandbox.ts` |
+| `SnapshotWaitOptions` | interface (type) | `sandbox.ts` |
 | `SandboxConnection` | class | `sandboxd.ts` |
 | `SandboxFiles` | class | `sandboxd.ts` |
 | `SandboxProcesses` | class | `processes.ts` |
@@ -91,6 +93,7 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `MetricsParams` | interface (type) | `resources/sandboxes.ts` |
 | `MetricsQuery` | interface (type) | `resources/sandboxes.ts` |
 | `SandboxPage` | interface (type) | `resources/sandboxes.ts` |
+| `WaitForSnapshotParams` | interface (type) | `resources/sandboxes.ts` |
 | `ListTemplatesParams` | interface (type) | `resources/templates.ts` |
 | `SandboxTemplatePage` | interface (type) | `resources/templates.ts` |
 | `CreateSandboxParams` | type alias | `types.ts` |
@@ -403,14 +406,39 @@ Fetches a snapshot's metadata by id (project-scoped, not tied to its source sand
 **Raises:** `NotFoundError` if the snapshot does not exist, plus scope/auth/transport errors.
 
 ```ts
-let snap = await client.sandboxes.getSnapshot(pending.id);
-while (snap.status === "Pending" || snap.status === "Running") {
-  await new Promise((r) => setTimeout(r, 2000));
-  snap = await client.sandboxes.getSnapshot(pending.id);
-}
+const snap = await client.sandboxes.getSnapshot(pending.id);
 if (snap.status === "Ready") {
   // safe to restore or fork-from this snapshot
 }
+// To poll until Ready without hand-writing a loop, use waitForSnapshot below.
+```
+
+### `client.sandboxes.waitForSnapshot(snapshotId, params?)`
+
+```ts
+waitForSnapshot(snapshotId: string, params?: WaitForSnapshotParams): Promise<SnapshotData>
+```
+
+Polls `getSnapshot` until the snapshot reaches `Ready`, then resolves with it. Throws a `NeevError` if the snapshot enters `Failed` (surfacing its `error_message`) or if the wait budget elapses first. Use it after `createSnapshot` before `restore` / `fork`, both of which require a `Ready` snapshot.
+
+**Parameters (`WaitForSnapshotParams`, extends `Scope`):**
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `timeoutMs` | `number` (optional) | Overall wait budget in milliseconds. Defaults to `300000`. |
+| `pollIntervalMs` | `number` (optional) | Delay between status polls in milliseconds. Defaults to `2000`. |
+
+**Returns:** `Promise<SnapshotData>` with `status === "Ready"`.
+
+**Raises:** `NeevError` on a `Failed` snapshot, on timeout, or for a non-finite/non-positive `timeoutMs`/`pollIntervalMs`; plus scope/auth/transport errors.
+
+```ts
+const pending = await client.sandboxes.createSnapshot(sandbox.id, { name: "demo-snap" });
+const snap = await client.sandboxes.waitForSnapshot(pending.id);
+// snap.status === "Ready"
+
+// Or capture and wait in one call from the handle:
+const ready = await sandbox.snapshot({ name: "demo-snap", waitUntilReady: true });
 ```
 
 ### `client.sandboxes.deleteSnapshot(snapshotId, scope?)`
@@ -632,14 +660,15 @@ const m = await sandbox.metrics({ step: "1m" });
 ### `sandbox.snapshot(params?)` / `sandbox.snapshots(params?)`
 
 ```ts
-snapshot(params?: CreateSnapshotParams): Promise<SnapshotData>
+snapshot(options?: CreateSnapshotParams & SnapshotWaitOptions): Promise<SnapshotData>
 snapshots(params?: ListSnapshotsParams): Promise<SnapshotPage>
 ```
 
-Convenience wrappers for `createSnapshot` and `listSnapshots` on this sandbox. `snapshot` returns a `SnapshotData` (starting `Pending`). `snapshots` is **paginated** and returns a `SnapshotPage`.
+Convenience wrappers for `createSnapshot` and `listSnapshots` on this sandbox. `snapshot` takes the snapshot-create fields (`name`, `retain_for`) plus `SnapshotWaitOptions` (`{ waitUntilReady?: boolean; timeoutMs?; pollIntervalMs? }`): by default it returns the `Pending` `SnapshotData`, but with `{ waitUntilReady: true }` it blocks (via `waitForSnapshot`) and resolves only once the snapshot is `Ready`. `snapshots` is **paginated** and returns a `SnapshotPage`.
 
 ```ts
-const pending = await sandbox.snapshot({ name: "demo-snap" });
+const pending = await sandbox.snapshot({ name: "demo-snap" });                 // Pending
+const ready = await sandbox.snapshot({ name: "demo-snap", waitUntilReady: true }); // Ready
 const page = await sandbox.snapshots({ page: 1, limit: 50 });
 ```
 

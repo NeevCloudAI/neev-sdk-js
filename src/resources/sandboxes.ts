@@ -1,5 +1,6 @@
 import type { Client } from "openapi-fetch";
 import type { RequestContext, Scope } from "../client.js";
+import { NeevError } from "../errors.js";
 import type { paths } from "../generated/aiagent.js";
 import { ensureOk, unwrap } from "../http.js";
 import { Sandbox } from "../sandbox.js";
@@ -54,6 +55,21 @@ export interface SnapshotPage {
   total: number;
   page: number;
   limit: number;
+}
+
+// Default overall wait budget for waitForSnapshot, in milliseconds. Snapshot
+// capture copies the filesystem, so it gets a longer default than a sandbox
+// readiness wait.
+const DEFAULT_SNAPSHOT_WAIT_TIMEOUT_MS = 300_000;
+// Default delay between snapshot status polls, in milliseconds.
+const DEFAULT_SNAPSHOT_POLL_INTERVAL_MS = 2_000;
+
+// Parameters for waitForSnapshot: poll timing plus an optional scope override.
+export interface WaitForSnapshotParams extends Scope {
+  // Maximum time to wait for the Ready status, in milliseconds. Defaults to 300000.
+  timeoutMs?: number;
+  // Delay between status polls, in milliseconds. Defaults to 2000.
+  pollIntervalMs?: number;
 }
 
 // The time-window fields of a metrics read; shared by the resource method and the
@@ -205,6 +221,52 @@ export class Sandboxes {
     return unwrap<SnapshotData>(res);
   }
 
+  // Polls a snapshot until it finishes capturing, returning the Ready snapshot.
+  // Throws if the snapshot enters the Failed state (surfacing error_message) or if
+  // the timeout elapses first. Use it after createSnapshot before restoring or
+  // forking, both of which require the snapshot to be Ready.
+  async waitForSnapshot(
+    snapshotId: string,
+    params: WaitForSnapshotParams = {},
+  ): Promise<SnapshotData> {
+    const {
+      timeoutMs = DEFAULT_SNAPSHOT_WAIT_TIMEOUT_MS,
+      pollIntervalMs = DEFAULT_SNAPSHOT_POLL_INTERVAL_MS,
+      ...scope
+    } = params;
+    // Reject non-finite or non-positive timings, which would otherwise spin a
+    // near-zero-delay poll loop (or, for NaN, one that never times out).
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new NeevError(
+        `waitForSnapshot: timeoutMs must be a positive, finite number (got ${timeoutMs}).`,
+      );
+    }
+    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+      throw new NeevError(
+        `waitForSnapshot: pollIntervalMs must be a positive, finite number (got ${pollIntervalMs}).`,
+      );
+    }
+    const deadline = Date.now() + timeoutMs;
+
+    // Fetch the live status each iteration until Ready, a terminal Failed, or the
+    // deadline. getSnapshot is project-scoped, so the source sandbox is not needed.
+    while (true) {
+      const snapshot = await this.getSnapshot(snapshotId, scope);
+      if (snapshot.status === "Ready") return snapshot;
+      if (snapshot.status === "Failed") {
+        const reason = snapshot.error_message ? `: ${snapshot.error_message}` : "";
+        throw new NeevError(`Snapshot ${snapshotId} failed to capture${reason}.`);
+      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        throw new NeevError(
+          `Snapshot ${snapshotId} was not Ready within ${timeoutMs}ms (status: ${snapshot.status}).`,
+        );
+      }
+      await sleep(Math.min(pollIntervalMs, remaining));
+    }
+  }
+
   // Deletes a snapshot and its stored blob.
   async deleteSnapshot(snapshotId: string, scope?: Scope): Promise<void> {
     const { orgId, projectId } = this.ctx.resolveScope(scope);
@@ -238,4 +300,9 @@ export class Sandboxes {
     });
     return new Sandbox(this, unwrap<SandboxData>(res), scope);
   }
+}
+
+// Resolves after the given number of milliseconds.
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -27,6 +27,15 @@ export interface WaitOptions {
   pollIntervalMs?: number;
 }
 
+// Options for `sandbox.snapshot`: whether to block until the snapshot is Ready,
+// plus the poll timing applied while waiting.
+export interface SnapshotWaitOptions extends WaitOptions {
+  // When true, block until the snapshot finishes capturing (status Ready) and
+  // return the completed snapshot. When false (the default) return the Pending
+  // snapshot immediately.
+  waitUntilReady?: boolean;
+}
+
 // Default overall wait budget for waitUntilReady, in milliseconds.
 const DEFAULT_WAIT_TIMEOUT_MS = 120_000;
 // Default delay between status polls, in milliseconds.
@@ -212,10 +221,22 @@ export class Sandbox {
     return this.sandboxes.metrics(this.id, { ...params, ...this.scope });
   }
 
-  // Captures a snapshot of this sandbox. The result starts Pending; poll the
-  // snapshot (via sandboxes.getSnapshot) until Ready before restoring or forking.
-  async snapshot(params: CreateSnapshotParams = {}): Promise<SnapshotData> {
-    return this.sandboxes.createSnapshot(this.id, params, this.scope);
+  // Captures a snapshot of this sandbox. By default the result starts Pending —
+  // poll it (via sandboxes.getSnapshot / sandboxes.waitForSnapshot) until Ready
+  // before restoring or forking. Pass { waitUntilReady: true } to block until the
+  // snapshot is Ready and return the completed snapshot instead; timeoutMs and
+  // pollIntervalMs tune that wait.
+  async snapshot(options: CreateSnapshotParams & SnapshotWaitOptions = {}): Promise<SnapshotData> {
+    // Split the client-side wait controls from the snapshot request body fields
+    // (name, retain_for) so only the latter reach the create call.
+    const { waitUntilReady, timeoutMs, pollIntervalMs, ...params } = options;
+    const snapshot = await this.sandboxes.createSnapshot(this.id, params, this.scope);
+    if (!waitUntilReady) return snapshot;
+    return this.sandboxes.waitForSnapshot(snapshot.id, {
+      ...this.scope,
+      timeoutMs,
+      pollIntervalMs,
+    });
   }
 
   // Lists the snapshots taken from this sandbox. Paginated — pass page/limit and

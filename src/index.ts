@@ -8,7 +8,7 @@ export { RawClient } from "./http.js";
 export type { FetchLike, RawRequest } from "./http.js";
 
 export { Sandbox } from "./sandbox.js";
-export type { WaitOptions } from "./sandbox.js";
+export type { SnapshotWaitOptions, WaitOptions } from "./sandbox.js";
 
 export { Agent } from "./agent.js";
 export type { AgentWaitOptions } from "./agent.js";
@@ -52,6 +52,7 @@ export type {
   MetricsParams,
   MetricsQuery,
   SandboxPage,
+  WaitForSnapshotParams,
 } from "./resources/sandboxes.js";
 
 export type {

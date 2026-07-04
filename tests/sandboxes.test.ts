@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Neev, NotFoundError, Sandbox } from "../src/index.js";
+import { Neev, NeevError, NotFoundError, Sandbox } from "../src/index.js";
 import { json, mockFetch, sandboxData, snapshotData } from "./helpers.js";
 
 // Builds a client backed by the given queued responses.
@@ -215,5 +215,82 @@ describe("sandbox snapshots, restore, and fork", () => {
       "restore",
       "fork",
     ]);
+  });
+
+  it("waitForSnapshot polls getSnapshot until the snapshot is Ready", async () => {
+    const { neev, calls } = client([
+      json(200, snapshotData({ status: "Pending" })),
+      json(200, snapshotData({ status: "Running" })),
+      json(200, snapshotData({ status: "Ready", size_bytes: 4096 })),
+    ]);
+    const snap = await neev.sandboxes.waitForSnapshot("snap-1", {
+      pollIntervalMs: 1,
+      timeoutMs: 1000,
+    });
+    expect(snap.status).toBe("Ready");
+    expect(snap.size_bytes).toBe(4096);
+    // One GET per poll until Ready, all against the snapshot item route.
+    expect(calls).toHaveLength(3);
+    for (const call of calls) {
+      expect(call.method).toBe("GET");
+      expect(call.url).toContain("/snapshots/snap-1");
+    }
+  });
+
+  it("waitForSnapshot throws with the error message when the snapshot fails", async () => {
+    const { neev } = client([
+      json(200, snapshotData({ status: "Failed", error_message: "disk full" })),
+    ]);
+    await expect(
+      neev.sandboxes.waitForSnapshot("snap-1", { pollIntervalMs: 1, timeoutMs: 1000 }),
+    ).rejects.toThrow(/disk full/);
+  });
+
+  it("waitForSnapshot throws when it never becomes Ready before the timeout", async () => {
+    // A fetch that always reports Pending, so the poll loop can only time out.
+    const neev = new Neev({
+      apiKey: "k",
+      orgId: "org_test",
+      projectId: "proj_test",
+      maxRetries: 0,
+      fetch: async () => json(200, snapshotData({ status: "Pending" })),
+    });
+    await expect(
+      neev.sandboxes.waitForSnapshot("snap-1", { pollIntervalMs: 1, timeoutMs: 10 }),
+    ).rejects.toThrow(NeevError);
+  });
+
+  it("waitForSnapshot rejects a non-positive timeout before polling", async () => {
+    const { neev, calls } = client([]);
+    await expect(neev.sandboxes.waitForSnapshot("snap-1", { timeoutMs: 0 })).rejects.toThrow(
+      /timeoutMs/,
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it("sandbox.snapshot({ waitUntilReady: true }) resolves with the Ready snapshot", async () => {
+    const { neev, calls } = client([
+      json(200, sandboxData()), // get
+      json(202, snapshotData({ status: "Pending" })), // createSnapshot
+      json(200, snapshotData({ status: "Ready" })), // waitForSnapshot poll
+    ]);
+    const sb = await neev.sandboxes.get("sb-1");
+    const snap = await sb.snapshot({ name: "snap-a", waitUntilReady: true, pollIntervalMs: 1 });
+    expect(snap.status).toBe("Ready");
+    // The create body carries only the request fields, not the wait controls.
+    expect(calls[1]?.body).toEqual({ name: "snap-a", include_memory: false });
+    expect(calls[2]?.url).toContain("/snapshots/");
+  });
+
+  it("sandbox.snapshot() without waitUntilReady returns Pending without polling", async () => {
+    const { neev, calls } = client([
+      json(200, sandboxData()), // get
+      json(202, snapshotData({ status: "Pending" })), // createSnapshot
+    ]);
+    const sb = await neev.sandboxes.get("sb-1");
+    const snap = await sb.snapshot();
+    expect(snap.status).toBe("Pending");
+    // Only get + create — no follow-up getSnapshot poll.
+    expect(calls).toHaveLength(2);
   });
 });
