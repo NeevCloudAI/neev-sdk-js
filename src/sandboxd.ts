@@ -2,6 +2,7 @@ import { decodeBase64 } from "./base64.js";
 import { type APIError, type ApiErrorBody, NeevError, errorFromStatus } from "./errors.js";
 import type { Dispatch } from "./http.js";
 import { SandboxProcesses } from "./processes.js";
+import { SandboxPty, type SandboxWebSocket, type WebSocketFactory } from "./pty.js";
 
 // Inputs needed to open a connection to a sandbox's daemon.
 export interface SandboxConnectionOptions {
@@ -11,6 +12,9 @@ export interface SandboxConnectionOptions {
   apiKey: string;
   // Shared transport; the no-retry dispatch, since sandbox calls are not idempotent.
   dispatch: Dispatch;
+  // WebSocket factory for interactive PTY sessions. When omitted, the runtime's global
+  // WebSocket is used if present (it cannot send the auth header — provide one in Node).
+  webSocket?: WebSocketFactory;
 }
 
 // A low-level request against the daemon, before body encoding/decoding.
@@ -117,17 +121,39 @@ export class SandboxConnection {
   private readonly base: string;
   private readonly apiKey: string;
   private readonly dispatch: Dispatch;
+  private readonly webSocket?: WebSocketFactory;
   // File operations on the sandbox filesystem.
   readonly files: SandboxFiles;
   // Process supervisor operations on the sandbox.
   readonly processes: SandboxProcesses;
+  // Interactive PTY sessions on the sandbox.
+  readonly pty: SandboxPty;
 
   constructor(opts: SandboxConnectionOptions) {
     this.base = opts.connectUrl.replace(/\/+$/, "");
     this.apiKey = opts.apiKey;
     this.dispatch = opts.dispatch;
+    this.webSocket = opts.webSocket;
     this.files = new SandboxFiles(this);
     this.processes = new SandboxProcesses(this);
+    this.pty = new SandboxPty(this);
+  }
+
+  // Opens a WebSocket to the daemon's PTY endpoint, applying the bearer auth header. Uses
+  // the configured WebSocket factory, else the runtime's global WebSocket. Used by the pty
+  // facade; not called directly.
+  openPtySocket(search: URLSearchParams): SandboxWebSocket {
+    // http(s) connect_url → ws(s) for the upgrade.
+    const wsBase = this.base.replace(/^http/, "ws");
+    const qs = search.toString();
+    const url = `${wsBase}/v1/pty${qs ? `?${qs}` : ""}`;
+    const headers = { authorization: `Bearer ${this.apiKey}` };
+    if (this.webSocket) return this.webSocket(url, { headers });
+    const Global = (globalThis as { WebSocket?: new (url: string) => SandboxWebSocket }).WebSocket;
+    if (Global) return new Global(url);
+    throw new NeevError(
+      "No WebSocket available for PTY. Pass `webSocket` to the Neev client (e.g. backed by the `ws` package in Node).",
+    );
   }
 
   // Issues a request to the daemon and returns the raw Response, throwing a typed

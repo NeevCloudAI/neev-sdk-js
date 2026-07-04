@@ -1,6 +1,7 @@
 import createClient, { type Client } from "openapi-fetch";
 import { NeevError } from "./errors.js";
 import { type Dispatch, type FetchLike, RawClient, createDispatch } from "./http.js";
+import type { WebSocketFactory } from "./pty.js";
 import { AgentTemplates } from "./resources/agent-templates.js";
 import { Agents } from "./resources/agents.js";
 import { Sandboxes } from "./resources/sandboxes.js";
@@ -31,6 +32,10 @@ export interface NeevOptions {
   maxRetries?: number;
   // Custom fetch implementation. Defaults to the runtime's global fetch.
   fetch?: FetchLike;
+  // WebSocket factory for interactive PTY sessions (`sandbox.pty`). Defaults to the
+  // runtime's global WebSocket if present. In Node, pass one backed by the `ws` package so
+  // the auth header is sent: `webSocket: (url, opts) => new WebSocket(url, opts)`.
+  webSocket?: WebSocketFactory;
 }
 
 // Internal contract the resource classes depend on. Provides both a typed,
@@ -75,6 +80,7 @@ export class Neev implements RequestContext {
   private readonly directDispatch: Dispatch;
   private readonly defaultOrgId?: string;
   private readonly defaultProjectId?: string;
+  private readonly webSocket?: WebSocketFactory;
 
   constructor(options: NeevOptions = {}) {
     const apiKey = options.apiKey ?? readEnv("NEEV_API_KEY");
@@ -95,6 +101,7 @@ export class Neev implements RequestContext {
     this.baseUrl = options.baseURL ?? readEnv("NEEV_BASE_URL") ?? DEFAULT_BASE_URL;
     this.defaultOrgId = options.orgId ?? readEnv("NEEV_ORG_ID");
     this.defaultProjectId = options.projectId ?? readEnv("NEEV_PROJECT_ID");
+    this.webSocket = options.webSocket;
     const boundFetch = baseFetch.bind(globalThis);
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.dispatch = createDispatch({
@@ -122,6 +129,7 @@ export class Neev implements RequestContext {
       connectUrl,
       apiKey: this.apiKey,
       dispatch: this.directDispatch,
+      webSocket: this.webSocket,
     });
   }
 

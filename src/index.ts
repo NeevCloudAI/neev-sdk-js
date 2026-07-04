@@ -39,6 +39,14 @@ export type {
   StartProcessOptions,
 } from "./processes.js";
 
+export { PtyHandle, SandboxPty } from "./pty.js";
+export type {
+  PtyCreateOptions,
+  PtyResult,
+  SandboxWebSocket,
+  WebSocketFactory,
+} from "./pty.js";
+
 export type {
   ListSandboxesParams,
   MetricsParams,

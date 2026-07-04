@@ -1,6 +1,7 @@
 import type { Scope } from "./client.js";
 import { NeevError } from "./errors.js";
 import { SandboxProcesses } from "./processes.js";
+import { SandboxPty } from "./pty.js";
 import type {
   ListSnapshotsParams,
   MetricsQuery,
@@ -49,6 +50,8 @@ export class Sandbox {
   private filesProxy?: SandboxFiles;
   // Cached processes facade; its connection is resolved lazily on first use.
   private processesProxy?: SandboxProcesses;
+  // Cached pty facade; its connection is resolved lazily on first use.
+  private ptyProxy?: SandboxPty;
 
   constructor(sandboxes: Sandboxes, data: SandboxData, scope?: Scope) {
     this.sandboxes = sandboxes;
@@ -114,6 +117,15 @@ export class Sandbox {
       this.processesProxy = new SandboxProcesses(() => this.ensureConnection());
     }
     return this.processesProxy;
+  }
+
+  // Interactive PTY sessions on this sandbox's daemon. Like `files`, the connection
+  // resolves lazily, waiting until the sandbox is Ready on first use.
+  get pty(): SandboxPty {
+    if (!this.ptyProxy) {
+      this.ptyProxy = new SandboxPty(() => this.ensureConnection());
+    }
+    return this.ptyProxy;
   }
 
   // Runs a command in the sandbox. By default it buffers and resolves to the full

@@ -7,7 +7,7 @@ One package, one auth model, one client — adopt new capabilities as they ship.
 
 **Available today**
 
-- **`neev.sandboxes`** — full agent-sandbox lifecycle: create, list, get, pause, resume, delete, live metrics, plus snapshots, restore, and fork. Inside a running sandbox: `files`, `exec`, and a `processes` supervisor for long-running, detached processes. Sandboxes are gVisor-isolated (`runsc`) compute environments for AI agents.
+- **`neev.sandboxes`** — full agent-sandbox lifecycle: create, list, get, pause, resume, delete, live metrics, plus snapshots, restore, and fork. Inside a running sandbox: `files`, `exec`, a `processes` supervisor for long-running, detached processes, and `pty` for interactive terminal sessions. Sandboxes are gVisor-isolated (`runsc`) compute environments for AI agents.
 - **`neev.templates`** — the platform sandbox-template catalogue (list, get). A template id (e.g. `sb-ubuntu-26-04-minimal`) is optional when creating a sandbox; omit it to use the platform's default template.
 - **`neev.agents`** — agent lifecycle: create from a catalogue template, list, get, update (in-place egress / cpu / memory), pause, resume, delete. Each agent runs on its own backing sandbox, reachable from the handle via `agent.sandbox()`.
 - **`neev.agentTemplates`** — the platform agent-template catalogue (list, get). A template name (e.g. `claude-code`) is passed as `agent_template` when creating an agent.
@@ -233,6 +233,31 @@ const count = await sandbox.processes.killAll();   // signal every running proce
 Output is captured in a bounded ring: `logs` returns plain-text `entries` plus a monotonic `cursor` to resume from, and `dropped: true` when the ring rolled past your cursor. `follow` is the streaming counterpart; a client abort ends it without an `exit` event. Like `files`/`exec`, the first process call waits until the sandbox is Ready to resolve its `connect_url`.
 
 The full example is [`examples/processes.ts`](./examples/processes.ts).
+
+### Interactive terminal (PTY)
+
+For a fully interactive session — a shell, a REPL, anything that needs a TTY — `sandbox.pty` opens a pseudo-terminal over a WebSocket. Output streams to your `onData` callback; you send keystrokes, forward window resizes, and await the exit code:
+
+```ts
+const pty = await sandbox.pty.create({
+  cols: 80,
+  rows: 24,
+  onData: (chunk) => process.stdout.write(chunk), // Uint8Array of terminal output
+});
+
+pty.sendInput("ls -la\n");      // string or Uint8Array → the terminal's stdin
+pty.resize(120, 40);            // on a window-size change
+pty.kill("SIGINT");             // signal the process group (default SIGTERM)
+
+const { exitCode } = await pty.wait(); // resolves when the session ends
+```
+
+The PTY needs a `WebSocket`. Browsers, Deno, Bun, and Node 22+ provide one globally. **In Node, pass a WebSocket that can send the auth header** (the global one cannot), e.g. with the [`ws`](https://www.npmjs.com/package/ws) package:
+
+```ts
+import WebSocket from "ws";
+const neev = new Neev({ webSocket: (url, opts) => new WebSocket(url, opts) });
+```
 
 ### Snapshots, fork & restore
 

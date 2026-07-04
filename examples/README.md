@@ -43,6 +43,7 @@ export NEEV_REGION=<your-region>
 | [`sandbox-metrics.ts`](./sandbox-metrics.ts) | `sandbox.metrics()` polled under CPU load | `npx tsx examples/sandbox-metrics.ts` |
 | [`processes.ts`](./processes.ts) | `sandbox.processes` — start a detached process, follow/poll its output, list, kill, wait | `npx tsx examples/processes.ts` |
 | [`process-pool.ts`](./process-pool.ts) | Manage several detached processes: start a pool, `list()`/`status()`, then `killAll()` | `npx tsx examples/process-pool.ts` |
+| [`pty.ts`](./pty.ts) | `sandbox.pty` — interactive terminal over a WebSocket (needs `pnpm add -D ws @types/ws`) | `npx tsx examples/pty.ts` |
 
 ## Examples — with an AI model
 
