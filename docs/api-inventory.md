@@ -1019,18 +1019,19 @@ Access via the `sandbox.pty` getter (a `SandboxPty`). Opens an interactive pseud
 create(options?: PtyCreateOptions): Promise<PtyHandle>
 ```
 
-Opens a PTY and resolves once connected. `PtyCreateOptions`: `program?: string`, `args?: string[]`, `cols?: number`, `rows?: number`, `onData?: (chunk: Uint8Array) => void`. Throws `NeevError` if no WebSocket is available.
+Opens a PTY (or reattaches to an existing terminal with `id`) and resolves once connected. `PtyCreateOptions`: `id?: string` (reattach; the sandbox replays recent scrollback, and program/args/size are ignored), `program?: string`, `args?: string[]`, `cols?: number`, `rows?: number`, `onData?: (chunk: Uint8Array) => void`. Throws `NeevError` if no WebSocket is available.
 
 ### `PtyHandle`
 
 | Member | Type | Description |
 | ------ | ---- | ----------- |
+| `id` | `string \| undefined` | Terminal id, for reattaching later with `create({ id })`. Set once connected. |
 | `sendInput(data)` | `void` | Send `string \| Uint8Array` to the terminal's stdin. |
 | `resize(cols, rows)` | `void` | Forward a window-size change. |
 | `kill(signal?)` | `void` | Signal the process group by name (default `"SIGTERM"`). |
 | `wait()` | `Promise<PtyResult>` | Resolves with `{ exitCode }` when the session ends. |
 | `connected()` | `Promise<void>` | Resolves once the socket is open (awaited by `create`). |
-| `disconnect()` | `void` | Close the socket; `wait` then resolves. |
+| `disconnect()` | `void` | Close the socket; the terminal keeps running. `wait` then resolves. |
 
 **Type shapes:** `PtyResult` = `{ exitCode: number }`; `WebSocketFactory` = `(url: string, options: { headers: Record<string,string> }) => SandboxWebSocket`; `SandboxWebSocket` is the minimal `binaryType`/`send`/`close`/`addEventListener` subset satisfied by the global `WebSocket` and Node's `ws`.
 
@@ -1519,7 +1520,7 @@ Compact reviewer index.
 | Symbol | Kind | Notes |
 | ------ | ---- | ----- |
 | `SandboxPty` | class | `create` → `PtyHandle`. |
-| `PtyHandle` | class | `sendInput`, `resize`, `kill`, `wait`, `connected`, `disconnect`. |
+| `PtyHandle` | class | `id`, `sendInput`, `resize`, `kill`, `wait`, `connected`, `disconnect`. |
 | `PtyCreateOptions`, `PtyResult` | types | Create options and exit result. |
 | `WebSocketFactory`, `SandboxWebSocket` | types | Pluggable WebSocket transport. |
 

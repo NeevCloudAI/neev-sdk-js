@@ -10,8 +10,18 @@ class FakeWS implements SandboxWebSocket {
   sent: unknown[] = [];
   private listeners = new Map<string, ((ev: unknown) => void)[]>();
 
-  constructor(opts: { fail?: boolean } = {}) {
-    queueMicrotask(() => this.emit(opts.fail ? "close" : "open"));
+  constructor(opts: { fail?: boolean; noSession?: boolean } = {}) {
+    queueMicrotask(() => {
+      if (opts.fail) {
+        this.emit("close");
+        return;
+      }
+      // The real daemon sends a session frame with the terminal id right after attach.
+      this.emit("open");
+      if (!opts.noSession) {
+        this.emit("message", { data: JSON.stringify({ type: "session", pty_id: "pty-abc" }) });
+      }
+    });
   }
   addEventListener(type: string, listener: (ev: unknown) => void): void {
     const arr = this.listeners.get(type) ?? [];
@@ -30,7 +40,7 @@ class FakeWS implements SandboxWebSocket {
 }
 
 // connWith builds a SandboxConnection whose PTY uses a captured FakeWS.
-function connWith(connectUrl: string, opts: { fail?: boolean } = {}) {
+function connWith(connectUrl: string, opts: { fail?: boolean; noSession?: boolean } = {}) {
   let ws!: FakeWS;
   const factory: WebSocketFactory = (url, options) => {
     ws = new FakeWS(opts);
@@ -115,6 +125,37 @@ describe("pty", () => {
       expect(() => conn.openPtySocket(new URLSearchParams())).toThrow(/No WebSocket available/);
     } finally {
       (globalThis as { WebSocket?: unknown }).WebSocket = saved;
+    }
+  });
+
+  it("exposes the terminal id from the session frame", async () => {
+    const { conn } = connWith("https://sbx.example");
+    const handle = await conn.pty.create({ program: "bash" });
+    expect(handle.id).toBe("pty-abc");
+    handle.disconnect();
+  });
+
+  it("reattaches by id, dialing ?id= without program/args", async () => {
+    const { conn, getWS } = connWith("https://sbx.example");
+    const handle = await conn.pty.create({ id: "pty-abc", program: "ignored", args: ["x"] });
+    const ws = getWS();
+    expect(ws.url).toBe("wss://sbx.example/v1/pty?id=pty-abc");
+    expect(handle.id).toBe("pty-abc");
+    handle.disconnect();
+  });
+
+  it("does not hang if the socket opens but no session frame arrives", async () => {
+    vi.useFakeTimers();
+    try {
+      const { conn } = connWith("https://sbx.example", { noSession: true });
+      const pending = conn.pty.create({ program: "sh" });
+      // Run the open microtask, then trip the safety-net timer (create must still resolve).
+      await vi.advanceTimersByTimeAsync(16_000);
+      const handle = await pending;
+      expect(handle.id).toBeUndefined();
+      handle.disconnect();
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

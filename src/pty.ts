@@ -1,6 +1,11 @@
 import { NeevError } from "./errors.js";
 import type { ConnectionResolver, SandboxConnection } from "./sandboxd.js";
 
+// If the sandbox never sends the session frame after the socket opens (a misbehaving
+// server), settle the id wait after this grace period — with id undefined — so `create`
+// can never hang. In normal operation the frame arrives immediately, well within this.
+const PTY_SESSION_TIMEOUT_MS = 15_000;
+
 // The minimal WebSocket the SDK drives for an interactive PTY. It is satisfied by the
 // browser/Deno/Bun global `WebSocket` and by Node's `ws` package.
 export interface SandboxWebSocket {
@@ -24,6 +29,10 @@ export type WebSocketFactory = (
 
 // Options for opening a PTY session.
 export interface PtyCreateOptions {
+  // Reattach to an existing terminal by id (a previous session's `handle.id`) rather
+  // than starting a new one; the sandbox replays recent scrollback. When set,
+  // program/args/cols/rows are ignored (the terminal already exists).
+  id?: string;
   // Program to run; defaults to the sandbox's default shell when omitted.
   program?: string;
   args?: string[];
@@ -52,15 +61,20 @@ export class SandboxPty {
   // output as it arrives; drive the session with the returned handle.
   async create(options: PtyCreateOptions = {}): Promise<PtyHandle> {
     const conn = await this.resolve();
-    const query: Record<string, string> = {};
-    if (options.program) query.program = options.program;
-    if (options.cols && options.cols > 0) query.cols = String(options.cols);
-    if (options.rows && options.rows > 0) query.rows = String(options.rows);
-    const search = new URLSearchParams(query);
-    for (const arg of options.args ?? []) search.append("arg", arg);
+    const search = new URLSearchParams();
+    if (options.id) {
+      // Reattach to an existing terminal; program/args/size don't apply.
+      search.set("id", options.id);
+    } else {
+      if (options.program) search.set("program", options.program);
+      if (options.cols && options.cols > 0) search.set("cols", String(options.cols));
+      if (options.rows && options.rows > 0) search.set("rows", String(options.rows));
+      for (const arg of options.args ?? []) search.append("arg", arg);
+    }
     const ws = conn.openPtySocket(search);
     const handle = new PtyHandle(ws, options.onData);
     await handle.connected();
+    await handle.whenReady();
     return handle;
   }
 }
@@ -84,6 +98,13 @@ export class PtyHandle {
   private resolveDone!: (result: PtyResult) => void;
   // Resolved on open, rejected if the socket errors/closes before opening.
   private readonly open: Promise<void>;
+  // The terminal id (from the server's session frame), used to reattach later.
+  private ptyId?: string;
+  // Resolved once the id is known (session frame) or the session ends first.
+  private readonly idSettled: Promise<void>;
+  private resolveIdSettled!: () => void;
+  // Safety-net timer started on open; fires if no session frame arrives.
+  private idTimer?: ReturnType<typeof setTimeout>;
 
   constructor(ws: SandboxWebSocket, onData?: (chunk: Uint8Array) => void) {
     this.ws = ws;
@@ -98,10 +119,15 @@ export class PtyHandle {
     this.done = new Promise((res) => {
       this.resolveDone = res;
     });
+    this.idSettled = new Promise((res) => {
+      this.resolveIdSettled = res;
+    });
 
     this.ws.addEventListener("open", () => {
       settledOpen = true;
       resolveOpen();
+      // Bound the id wait so `create` can't hang if the session frame never comes.
+      this.idTimer = setTimeout(() => this.settleId(), PTY_SESSION_TIMEOUT_MS);
     });
     this.ws.addEventListener("message", (event) => {
       // Binary frames are terminal output; a text frame is the terminal exit notice.
@@ -112,8 +138,15 @@ export class PtyHandle {
       }
       if (typeof event.data === "string") {
         try {
-          const frame = JSON.parse(event.data) as { type?: string; exit_code?: number };
-          if (frame.type === "exit" && typeof frame.exit_code === "number") {
+          const frame = JSON.parse(event.data) as {
+            type?: string;
+            exit_code?: number;
+            pty_id?: string;
+          };
+          if (frame.type === "session" && typeof frame.pty_id === "string") {
+            this.ptyId = frame.pty_id;
+            this.settleId();
+          } else if (frame.type === "exit" && typeof frame.exit_code === "number") {
             this.exitCode = frame.exit_code;
           }
         } catch {
@@ -123,6 +156,7 @@ export class PtyHandle {
     });
     this.ws.addEventListener("close", () => {
       if (!settledOpen) rejectOpen(new NeevError("pty connection closed before it opened"));
+      this.settleId();
       this.resolveDone({ exitCode: this.exitCode });
     });
     this.ws.addEventListener("error", (err) => {
@@ -132,6 +166,7 @@ export class PtyHandle {
       }
       // After open, an error may arrive without a subsequent close; end wait too
       // (resolve is idempotent, so a following close is harmless).
+      this.settleId();
       this.resolveDone({ exitCode: this.exitCode });
     });
   }
@@ -139,6 +174,28 @@ export class PtyHandle {
   // Resolves once the session is connected (or rejects if it failed to open).
   connected(): Promise<void> {
     return this.open;
+  }
+
+  // Resolves once the terminal id is known (the server's session frame), or the
+  // session ended before one arrived. `create` awaits this so `id` is set on return.
+  whenReady(): Promise<void> {
+    return this.idSettled;
+  }
+
+  // The terminal id, for reattaching later with `pty.create({ id })`. Available once
+  // the session is connected (undefined only if the session ended immediately).
+  get id(): string | undefined {
+    return this.ptyId;
+  }
+
+  // Settles the id wait — the session frame arrived, the session ended, or the safety-net
+  // grace period elapsed — clearing the timer. Idempotent.
+  private settleId(): void {
+    if (this.idTimer !== undefined) {
+      clearTimeout(this.idTimer);
+      this.idTimer = undefined;
+    }
+    this.resolveIdSettled();
   }
 
   // Sends keystrokes/bytes to the terminal's standard input.
