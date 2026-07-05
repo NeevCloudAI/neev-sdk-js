@@ -29,7 +29,7 @@ async function readySandbox(connectUrl: string | null, daemonQueue: Array<Respon
   return { sandbox, calls: mock.calls };
 }
 
-describe("sandboxd", () => {
+describe("runtime", () => {
   it("throws when a Ready sandbox exposes no connect_url", async () => {
     const { sandbox } = await readySandbox(null, []);
     await expect(sandbox.files.write("/a", "x")).rejects.toThrow(/connect_url/);

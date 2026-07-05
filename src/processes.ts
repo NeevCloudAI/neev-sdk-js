@@ -1,6 +1,6 @@
 import { decodeBase64 } from "./base64.js";
 import { NeevError } from "./errors.js";
-import type { ConnectionResolver, SandboxConnection } from "./sandboxd.js";
+import type { ConnectionResolver, SandboxConnection } from "./runtime.js";
 
 // Lifecycle state of a supervised process, as reported by the sandbox.
 export type ProcessState = "running" | "exited";

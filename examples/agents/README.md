@@ -48,7 +48,6 @@ That's the whole setup. Defaults applied for you:
 | Model | `gpt-oss-120b` | — |
 | Inference endpoint | `https://inference.ai.neevcloud.com/v1` | `NEEV_INFERENCE_BASE_URL` |
 | Inference key | `NEEV_API_KEY` | `NEEV_INFERENCE_API_KEY` |
-| Region | `as-south-1` | `new SandboxCodeExecutor({ region })` |
 | Template | `sb-ubuntu-26-04-minimal` | `new SandboxCodeExecutor({ templateId })` |
 
 **Templates and binaries.** Discover templates with `neev.templates.list()`

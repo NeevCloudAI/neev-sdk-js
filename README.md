@@ -57,7 +57,6 @@ const neev = new Neev({
 const sandbox = await neev.sandboxes.create({
   name: "my-agent",
   sandbox_template_id: "sb-ubuntu-26-04-minimal",
-  region: "as-south-1", // production region
 });
 await sandbox.waitUntilReady();
 
@@ -101,7 +100,6 @@ const fork = await neev.sandboxes.fork(id, "my-fork"); // fork the current live 
 const sandbox = await neev.sandboxes.create({
   name: "my-agent",
   sandbox_template_id: "sb-ubuntu-26-04-minimal",
-  region: "as-south-1", // production region
 });
 
 // Or discover what's available first.
@@ -338,7 +336,6 @@ const template = await neev.agentTemplates.get("ag-claude-code");
 const agent = await neev.agents.create({
   name: "my-coder",
   agent_template: "claude-code",
-  region: process.env.NEEV_REGION,
 });
 await agent.waitUntilReady();
 console.log(agent.id, agent.status, agent.sandboxId);

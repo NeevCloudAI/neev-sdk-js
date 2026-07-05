@@ -85,7 +85,7 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `restore(id, snapshotId, scope?)` | `Promise<Sandbox>` | Restores a sandbox **in place** from one of its snapshots. |
 | `fork(id, name, scope?)` | `Promise<Sandbox>` | Forks a sandbox into a new named sandbox from its **current live state**. |
 
-**`create(params, scope?)`** — only `name` is required; `sandbox_template_id` and `region` are optional and server-defaulted.
+**`create(params, scope?)`** — only `name` is required; `sandbox_template_id` is optional and platform-defaulted.
 
 ```ts
 const sandbox = await neev.sandboxes.create({ name: "my-agent" });
@@ -107,7 +107,7 @@ await neev.sandboxes.resume(id);
 await neev.sandboxes.delete(id);
 ```
 
-**`metrics(id, params?)`** — `params` is `{ from?, to?, step?, orgId?, projectId? }`; `from`/`to` are RFC3339, `step` is a Go duration (e.g. `"60s"`). The server defaults to the last hour.
+**`metrics(id, params?)`** — `params` is `{ from?, to?, step?, orgId?, projectId? }`; `from`/`to` are RFC3339, `step` is a Go duration (e.g. `"60s"`). The platform defaults to the last hour.
 
 ```ts
 const metrics = await neev.sandboxes.metrics(id, { step: "60s" });

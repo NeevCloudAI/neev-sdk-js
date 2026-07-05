@@ -4,8 +4,8 @@ import { NeevError } from "../errors.js";
 import type { paths } from "../generated/aiagent.js";
 import { ensureOk, unwrap } from "../http.js";
 import type { FetchLike } from "../http.js";
+import type { SandboxConnection } from "../runtime.js";
 import { Sandbox } from "../sandbox.js";
-import type { SandboxConnection } from "../sandboxd.js";
 import type {
   CreateSandboxParams,
   CreateSnapshotParams,
@@ -92,7 +92,7 @@ export interface WaitForSnapshotParams extends Scope {
 }
 
 // The time-window fields of a metrics read; shared by the resource method and the
-// Sandbox handle. All optional — the server defaults to the last hour.
+// Sandbox handle. All optional — the platform defaults to the last hour.
 export interface MetricsQuery {
   // Start of the window (RFC3339). Defaults to one hour before `to`.
   from?: string;

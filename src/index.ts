@@ -13,7 +13,7 @@ export type { SnapshotWaitOptions, WaitOptions } from "./sandbox.js";
 export { Agent } from "./agent.js";
 export type { AgentWaitOptions } from "./agent.js";
 
-export { SandboxConnection, SandboxFiles } from "./sandboxd.js";
+export { SandboxConnection, SandboxFiles } from "./runtime.js";
 export type {
   ExecOptions,
   ExecResult,
@@ -27,7 +27,7 @@ export type {
   WatchFilesOptions,
   WriteFileOptions,
   WriteFileResult,
-} from "./sandboxd.js";
+} from "./runtime.js";
 
 export { Process, SandboxProcesses, Signal } from "./processes.js";
 export type {

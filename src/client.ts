@@ -6,7 +6,7 @@ import { AgentTemplates } from "./resources/agent-templates.js";
 import { Agents } from "./resources/agents.js";
 import { Sandboxes } from "./resources/sandboxes.js";
 import { SandboxTemplates } from "./resources/templates.js";
-import { SandboxConnection } from "./sandboxd.js";
+import { SandboxConnection } from "./runtime.js";
 
 // Per-call override of the org/project the request targets. When omitted, the
 // client-level defaults (constructor args or NEEV_* env vars) are used.

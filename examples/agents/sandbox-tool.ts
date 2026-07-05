@@ -23,8 +23,6 @@ export interface SandboxCodeExecutorOptions {
   // Catalogue template id the sandbox is created from. Use a Python-capable
   // template for `runPython`.
   templateId?: string;
-  // Region to provision in. Defaults to the production region `as-south-1`.
-  region?: string;
   // Prefix for the generated sandbox name.
   namePrefix?: string;
 }
@@ -34,7 +32,6 @@ export interface SandboxCodeExecutorOptions {
 export class SandboxCodeExecutor {
   private readonly neev: Neev;
   private readonly templateId: string;
-  private readonly region: string;
   private readonly namePrefix: string;
   private sandbox?: Sandbox;
 
@@ -43,7 +40,6 @@ export class SandboxCodeExecutor {
     // and targets the Neev production API by default.
     this.neev = new Neev();
     this.templateId = options.templateId ?? "sb-ubuntu-26-04-minimal";
-    this.region = options.region ?? process.env.NEEV_REGION ?? "as-south-1";
     this.namePrefix = options.namePrefix ?? "agent-demo";
   }
 
@@ -52,11 +48,10 @@ export class SandboxCodeExecutor {
   private async ensure(): Promise<Sandbox> {
     if (!this.sandbox) {
       const suffix = Math.random().toString(36).slice(2, 8);
-      log(`creating sandbox (template=${this.templateId}, region=${this.region})…`);
+      log(`creating sandbox (template=${this.templateId})…`);
       this.sandbox = await this.neev.sandboxes.create({
         name: `${this.namePrefix}-${suffix}`,
         sandbox_template_id: this.templateId,
-        region: this.region,
       });
       log(`created ${this.sandbox.id} (${this.sandbox.phase}); waiting until ready…`);
       await this.sandbox.waitUntilReady();

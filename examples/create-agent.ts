@@ -2,9 +2,8 @@
  * Provision an agent from a catalogue template, wait for it to become Ready,
  * drive its backing sandbox, then clean up.
  *
- * Set NEEV_AGENT_TEMPLATE to pick a template (default "claude-code"),
- * NEEV_REGION to pin a region (e.g. on dev), and NEEV_BASE_URL to target
- * another environment.
+ * Set NEEV_AGENT_TEMPLATE to pick a template (default "claude-code") and
+ * NEEV_BASE_URL to target another environment.
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/create-agent.ts
  */
@@ -19,12 +18,10 @@ async function main(): Promise<void> {
   const { items } = await neev.agentTemplates.list();
   console.log(`templates: ${items.map((t) => t.name).join(", ") || "(none)"}`);
 
-  // Provision an agent from a template. It starts Provisioning; set NEEV_REGION
-  // to pin a region.
+  // Provision an agent from a template. It starts Provisioning.
   const agent = await neev.agents.create({
     name: "example-coder",
     agent_template: process.env.NEEV_AGENT_TEMPLATE ?? "claude-code",
-    region: process.env.NEEV_REGION,
   });
   console.log(`created ${agent.id} (status: ${agent.status}, sandbox: ${agent.sandboxId})`);
 

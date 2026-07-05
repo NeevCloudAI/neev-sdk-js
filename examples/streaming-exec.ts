@@ -24,7 +24,7 @@ function log(message: string): void {
 
 async function main(): Promise<void> {
   log("creating sandbox…");
-  // Platform defaults for template and region.
+  // Uses the default template.
   const sandbox = await neev.sandboxes.create({
     name: `stream-${Math.random().toString(36).slice(2, 8)}`,
   });
