@@ -77,6 +77,47 @@ export interface FileEntry {
   symlinkTarget?: string;
 }
 
+// Options for stat/exists/mkdir/move — a path resolved against an optional cwd.
+export interface FileOpOptions {
+  // Working directory the path is resolved against, if relative.
+  cwd?: string;
+  // Caller cancellation signal.
+  signal?: AbortSignal;
+}
+
+// Options for removing a file or directory.
+export interface RemoveFileOptions {
+  // Working directory the path is resolved against, if relative.
+  cwd?: string;
+  // Remove a non-empty directory and its contents. Defaults to false (server-side).
+  recursive?: boolean;
+  // Caller cancellation signal.
+  signal?: AbortSignal;
+}
+
+// Options for watching a directory for changes.
+export interface WatchFilesOptions {
+  // Working directory the path is resolved against, if relative.
+  cwd?: string;
+  // Watch the whole subtree, including entries created later. Defaults to false.
+  recursive?: boolean;
+  // Stop the stream after this many milliseconds; the server clamps to its ceiling.
+  // Omit to stream until the abort signal fires or the connection closes.
+  timeoutMs?: number;
+  // Caller cancellation signal.
+  signal?: AbortSignal;
+}
+
+// One filesystem change streamed by `files.watch`.
+export interface WatchEvent {
+  // The kind of change.
+  type: "create" | "write" | "remove" | "rename" | "chmod";
+  // Path of the changed entry, relative to the sandbox workspace root.
+  path: string;
+  // Metadata for the entry, when it still exists (absent on removal).
+  entry?: FileEntry;
+}
+
 // Options for running a command in the sandbox.
 export interface ExecOptions {
   // Arguments, when the command is given as a bare program name. Ignored if
@@ -299,6 +340,94 @@ export class SandboxFiles {
     const body = (await response.json()) as { entries: RawEntry[] };
     return body.entries.map(toFileEntry);
   }
+
+  // Returns metadata for a single entry.
+  async stat(path: string, options: FileOpOptions = {}): Promise<FileEntry> {
+    const conn = await this.resolve();
+    const response = await conn.request({
+      method: "POST",
+      path: "/v1/files/stat",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, cwd: options.cwd }),
+      signal: options.signal,
+    });
+    const body = (await response.json()) as { entry: RawEntry };
+    return toFileEntry(body.entry);
+  }
+
+  // Reports whether a path exists.
+  async exists(path: string, options: FileOpOptions = {}): Promise<boolean> {
+    const conn = await this.resolve();
+    const response = await conn.request({
+      method: "POST",
+      path: "/v1/files/exists",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, cwd: options.cwd }),
+      signal: options.signal,
+    });
+    const body = (await response.json()) as { exists: boolean };
+    return body.exists;
+  }
+
+  // Creates a directory, including any missing parents, and returns the entry.
+  async mkdir(path: string, options: FileOpOptions = {}): Promise<FileEntry> {
+    const conn = await this.resolve();
+    const response = await conn.request({
+      method: "POST",
+      path: "/v1/files/mkdir",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, cwd: options.cwd }),
+      signal: options.signal,
+    });
+    const body = (await response.json()) as { entry: RawEntry };
+    return toFileEntry(body.entry);
+  }
+
+  // Removes a file or directory. Pass `{ recursive: true }` for a non-empty directory.
+  async remove(path: string, options: RemoveFileOptions = {}): Promise<void> {
+    const conn = await this.resolve();
+    await conn.request({
+      method: "POST",
+      path: "/v1/files/remove",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, cwd: options.cwd, recursive: options.recursive }),
+      signal: options.signal,
+    });
+  }
+
+  // Moves or renames an entry, returning the moved entry.
+  async move(source: string, destination: string, options: FileOpOptions = {}): Promise<FileEntry> {
+    const conn = await this.resolve();
+    const response = await conn.request({
+      method: "POST",
+      path: "/v1/files/move",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source, destination, cwd: options.cwd }),
+      signal: options.signal,
+    });
+    const body = (await response.json()) as { entry: RawEntry };
+    return toFileEntry(body.entry);
+  }
+
+  // Streams filesystem change events for a directory as they occur, yielding one
+  // WatchEvent per change until the stream ends (its timeout, the abort signal, or
+  // the connection closing). A bad path throws before the first event.
+  async *watch(path: string, options: WatchFilesOptions = {}): AsyncGenerator<WatchEvent> {
+    const conn = await this.resolve();
+    const response = await conn.request({
+      method: "POST",
+      path: "/v1/files/watch",
+      headers: { "content-type": "application/json", accept: "application/x-ndjson" },
+      body: JSON.stringify({
+        path,
+        cwd: options.cwd,
+        recursive: options.recursive,
+        timeout_ms: options.timeoutMs,
+      }),
+      signal: options.signal,
+    });
+    yield* streamWatch(response);
+  }
 }
 
 // The wire shape of a directory entry as emitted by the sandbox.
@@ -419,6 +548,55 @@ async function* streamExec(response: Response): AsyncGenerator<ExecStreamEvent> 
     throw new NeevError(
       "exec stream ended without an exit status (the command may have timed out).",
     );
+  }
+}
+
+// One NDJSON frame of a file-watch stream.
+interface WatchFrame {
+  type: WatchEvent["type"];
+  path: string;
+  entry?: RawEntry;
+}
+
+// Parses an NDJSON watch stream incrementally, yielding one WatchEvent per frame
+// as it arrives. Unlike the exec stream there is no terminal frame: the stream
+// simply ends when the watch closes (timeout, cancellation, or disconnect).
+async function* streamWatch(response: Response): AsyncGenerator<WatchEvent> {
+  const toEvent = (frame: WatchFrame): WatchEvent => ({
+    type: frame.type,
+    path: frame.path,
+    entry: frame.entry ? toFileEntry(frame.entry) : undefined,
+  });
+
+  const lineDecoder = new TextDecoder();
+  let buffer = "";
+
+  if (response.body) {
+    const reader = response.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (value) buffer += lineDecoder.decode(value, { stream: true });
+        let newline = buffer.indexOf("\n");
+        while (newline !== -1) {
+          const line = buffer.slice(0, newline).trim();
+          buffer = buffer.slice(newline + 1);
+          if (line) yield toEvent(JSON.parse(line) as WatchFrame);
+          newline = buffer.indexOf("\n");
+        }
+        if (done) break;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const tail = (buffer + lineDecoder.decode()).trim();
+    if (tail) yield toEvent(JSON.parse(tail) as WatchFrame);
+  } else {
+    // Fallback when the runtime exposes no streaming body: parse the full text.
+    for (const line of (await response.text()).split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed) yield toEvent(JSON.parse(trimmed) as WatchFrame);
+    }
   }
 }
 

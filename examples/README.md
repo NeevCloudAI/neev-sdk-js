@@ -39,6 +39,7 @@ export NEEV_REGION=<your-region>
 | [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
 | [`snapshot-fork-restore.ts`](./snapshot-fork-restore.ts) | Snapshot a sandbox → fork a new one from it → restore the original in place | `npx tsx examples/snapshot-fork-restore.ts` |
 | [`streaming-exec.ts`](./streaming-exec.ts) | `sandbox.exec(cmd, { stream: true })` — output streamed line-by-line as it is produced | `npx tsx examples/streaming-exec.ts` |
+| [`files.ts`](./files.ts) | `sandbox.files` — write, read, stat/exists, mkdir, move, list, remove, and a live `watch` of changes | `npx tsx examples/files.ts` |
 | [`parallel-fanout.ts`](./parallel-fanout.ts) | Several isolated sandboxes run a map/reduce concurrently; reads `metrics()` | `npx tsx examples/parallel-fanout.ts` |
 | [`sandbox-metrics.ts`](./sandbox-metrics.ts) | `sandbox.metrics()` polled under CPU load | `npx tsx examples/sandbox-metrics.ts` |
 | [`processes.ts`](./processes.ts) | `sandbox.processes` — start a detached process, follow/poll its output, list, kill, wait | `npx tsx examples/processes.ts` |
@@ -93,6 +94,12 @@ npx tsx examples/snapshot-fork-restore.ts
 npx tsx examples/streaming-exec.ts
 ```
 → `line 1 … line 5`, each ~1s apart (the `+Nms` timestamps climb), then `exit 0`.
+
+**2b. Filesystem operations**
+```sh
+npx tsx examples/files.ts
+```
+→ a live `change: create notes/todo.md` as it writes → `read back: …` → `stat → file, N bytes, rw-r--r--` → `moved …` → a listing of the workspace → `change: remove …` events → `deleted`.
 
 **3. Parallel fan-out + metrics**
 ```sh

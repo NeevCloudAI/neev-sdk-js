@@ -19,8 +19,12 @@ export type {
   ExecResult,
   ExecStreamEvent,
   FileEntry,
+  FileOpOptions,
   ListFilesOptions,
   ReadFileOptions,
+  RemoveFileOptions,
+  WatchEvent,
+  WatchFilesOptions,
   WriteFileOptions,
   WriteFileResult,
 } from "./sandboxd.js";

@@ -10,31 +10,27 @@ import { Neev } from "@neevcloud/sdk";
 
 ## Table of contents
 
+**Getting started**
+
 - [Top-level exports](#top-level-exports)
 - [Client](#client)
-- [Sandboxes resource](#sandboxes-resource)
-  - [create](#clientsandboxescreateparams-scope)
-  - [list](#clientsandboxeslistparams)
-  - [get](#clientsandboxesgetid-scope)
-  - [pause](#clientsandboxespauseid-scope)
-  - [resume](#clientsandboxesresumeid-scope)
-  - [delete](#clientsandboxesdeleteid-scope)
-  - [metrics](#clientsandboxesmetricsid-params)
-  - [createSnapshot](#clientsandboxescreatesnapshotid-params-scope)
-  - [listSnapshots](#clientsandboxeslistsnapshotsid-params)
-  - [getSnapshot](#clientsandboxesgetsnapshotsnapshotid-scope)
-  - [waitForSnapshot](#clientsandboxeswaitforsnapshotsnapshotid-params)
-  - [deleteSnapshot](#clientsandboxesdeletesnapshotsnapshotid-scope)
-  - [restore](#clientsandboxesrestoreid-snapshotid-scope)
-  - [fork](#clientsandboxesforkid-name-scope)
-  - [connect](#clientsandboxesconnectconnecturl)
+
+**Resources** — client-level API
+
+- [Sandboxes resource](#sandboxes-resource) — create, list, get, pause, resume, delete, metrics, snapshots, restore, fork, connect
 - [Templates resource](#templates-resource)
+
+**Working with a sandbox** — the `Sandbox` handle and its facades
+
 - [Sandbox handle](#sandbox-handle)
 - [Exec and streaming](#exec-and-streaming)
-- [Files API](#files-api)
+- [Files API](#files-api) — write, read, list, stat, exists, mkdir, move, remove, watch
 - [Processes API](#processes-api)
 - [PTY API](#pty-api)
 - [Runtime connection](#runtime-connection)
+
+**Reference**
+
 - [Raw client](#raw-client)
 - [Types reference](#types-reference)
 - [Errors](#errors)
@@ -840,6 +836,74 @@ Lists directory entries at a path.
 const entries = await sandbox.files.list(".", { recursive: true });
 for (const e of entries) {
   console.log(`${e.type.padEnd(10)} ${e.path} (${e.size} bytes)`);
+}
+```
+
+### `sandbox.files.stat(path, options?)` / `exists(path, options?)`
+
+```ts
+stat(path: string, options?: FileOpOptions): Promise<FileEntry>
+exists(path: string, options?: FileOpOptions): Promise<boolean>
+```
+
+`stat` returns metadata for a single entry; `exists` reports whether a path is present. `FileOpOptions`: `cwd?`, `signal?`.
+
+```ts
+if (await sandbox.files.exists("src/main.py")) {
+  const info = await sandbox.files.stat("src/main.py");
+  console.log(`${info.path} is ${info.size} bytes`);
+}
+```
+
+### `sandbox.files.mkdir(path, options?)`
+
+```ts
+mkdir(path: string, options?: FileOpOptions): Promise<FileEntry>
+```
+
+Creates a directory, including any missing parent directories, and returns the created entry.
+
+```ts
+const dir = await sandbox.files.mkdir("out/logs");
+```
+
+### `sandbox.files.move(source, destination, options?)`
+
+```ts
+move(source: string, destination: string, options?: FileOpOptions): Promise<FileEntry>
+```
+
+Moves or renames an entry, returning the moved entry.
+
+```ts
+await sandbox.files.move("out/main.py", "out/app.py");
+```
+
+### `sandbox.files.remove(path, options?)`
+
+```ts
+remove(path: string, options?: RemoveFileOptions): Promise<void>
+```
+
+Deletes a file or directory. `RemoveFileOptions`: `cwd?`, `recursive?` (default false, server-side — required for a non-empty directory), `signal?`.
+
+```ts
+await sandbox.files.remove("out", { recursive: true });
+```
+
+### `sandbox.files.watch(path, options?)`
+
+```ts
+watch(path: string, options?: WatchFilesOptions): AsyncGenerator<WatchEvent>
+```
+
+Streams filesystem change events for a directory as they occur, yielding one `WatchEvent` per change. The stream ends when its timeout elapses, the abort signal fires, or the connection closes; a bad path is reported before the first event. `WatchFilesOptions`: `cwd?`, `recursive?`, `timeoutMs?`, `signal?`.
+
+`WatchEvent`: `{ type: "create" | "write" | "remove" | "rename" | "chmod"; path: string; entry?: FileEntry }`.
+
+```ts
+for await (const ev of sandbox.files.watch(".", { recursive: true })) {
+  console.log(`${ev.type} ${ev.path}`);
 }
 ```
 

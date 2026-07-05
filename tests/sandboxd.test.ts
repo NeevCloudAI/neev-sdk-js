@@ -284,6 +284,140 @@ describe("sandboxd", () => {
     });
   });
 
+  describe("files control ops", () => {
+    const entry = {
+      name: "a.txt",
+      type: "file" as const,
+      path: "work/a.txt",
+      size: 3,
+      mode: 420,
+      permissions: "rw-r--r--",
+      modified_time: "2026-06-05T00:00:00Z",
+    };
+
+    it("stat returns the entry mapped to camelCase", async () => {
+      const { sandbox, calls } = await readySandbox("https://sbx.sandboxes.example", [
+        json(200, { entry }),
+      ]);
+      const got = await sandbox.files.stat("a.txt", { cwd: "/work" });
+      expect(got.modifiedTime).toBe("2026-06-05T00:00:00Z");
+      expect(calls[1]?.url).toBe("https://sbx.sandboxes.example/v1/files/stat");
+      expect(calls[1]?.body).toEqual({ path: "a.txt", cwd: "/work" });
+    });
+
+    it("exists returns the boolean", async () => {
+      const { sandbox, calls } = await readySandbox("https://sbx.sandboxes.example", [
+        json(200, { exists: false }),
+      ]);
+      expect(await sandbox.files.exists("/nope")).toBe(false);
+      expect(calls[1]?.url).toBe("https://sbx.sandboxes.example/v1/files/exists");
+    });
+
+    it("mkdir returns the created directory entry", async () => {
+      const dir = { ...entry, name: "d", type: "directory" as const, path: "work/d" };
+      const { sandbox, calls } = await readySandbox("https://sbx.sandboxes.example", [
+        json(200, { entry: dir }),
+      ]);
+      const got = await sandbox.files.mkdir("d", { cwd: "/work" });
+      expect(got.type).toBe("directory");
+      expect(calls[1]?.url).toBe("https://sbx.sandboxes.example/v1/files/mkdir");
+    });
+
+    it("remove posts recursive and resolves void", async () => {
+      const { sandbox, calls } = await readySandbox("https://sbx.sandboxes.example", [
+        json(200, { removed: true }),
+      ]);
+      await expect(sandbox.files.remove("/work/d", { recursive: true })).resolves.toBeUndefined();
+      expect(calls[1]?.url).toBe("https://sbx.sandboxes.example/v1/files/remove");
+      expect(calls[1]?.body).toEqual({ path: "/work/d", recursive: true });
+    });
+
+    it("move posts source/destination and returns the moved entry", async () => {
+      const { sandbox, calls } = await readySandbox("https://sbx.sandboxes.example", [
+        json(200, { entry: { ...entry, path: "work/b.txt", name: "b.txt" } }),
+      ]);
+      const got = await sandbox.files.move("a.txt", "b.txt", { cwd: "/work" });
+      expect(got.name).toBe("b.txt");
+      expect(calls[1]?.url).toBe("https://sbx.sandboxes.example/v1/files/move");
+      expect(calls[1]?.body).toEqual({ source: "a.txt", destination: "b.txt", cwd: "/work" });
+    });
+
+    it("maps a control-op error to a typed error", async () => {
+      const { sandbox } = await readySandbox("https://sbx.sandboxes.example", [
+        json(404, { reason_code: "not_found", message: "no" }),
+      ]);
+      await expect(sandbox.files.stat("/missing")).rejects.toBeInstanceOf(NotFoundError);
+    });
+  });
+
+  describe("files.watch", () => {
+    // Builds an NDJSON watch stream Response from event frames.
+    function ndjson(frames: unknown[]): Response {
+      return new Response(frames.map((f) => JSON.stringify(f)).join("\n"), { status: 200 });
+    }
+
+    it("streams change events, mapping entries to camelCase", async () => {
+      const { sandbox, calls } = await readySandbox("https://sbx.sandboxes.example", [
+        ndjson([
+          {
+            type: "create",
+            path: "a.txt",
+            entry: {
+              name: "a.txt",
+              type: "file",
+              path: "a.txt",
+              size: 1,
+              mode: 420,
+              permissions: "rw-r--r--",
+              modified_time: "2026-06-05T00:00:00Z",
+            },
+          },
+          { type: "remove", path: "a.txt" },
+        ]),
+      ]);
+
+      const events = [];
+      for await (const ev of sandbox.files.watch(".", { recursive: true, timeoutMs: 2500 })) {
+        events.push(ev);
+      }
+      expect(events).toHaveLength(2);
+      expect(events[0]?.type).toBe("create");
+      expect(events[0]?.entry?.modifiedTime).toBe("2026-06-05T00:00:00Z");
+      expect(events[1]).toEqual({ type: "remove", path: "a.txt", entry: undefined });
+      expect(calls[1]?.url).toBe("https://sbx.sandboxes.example/v1/files/watch");
+      expect(calls[1]?.body).toEqual({ path: ".", recursive: true, timeout_ms: 2500 });
+    });
+
+    it("reassembles frames split across stream chunks", async () => {
+      // Two chunks that split the first frame mid-line, exercising the line buffer.
+      const chunks = ['{"type":"create","path":"a', '.txt"}\n{"type":"remove","path":"a.txt"}\n'];
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const enc = new TextEncoder();
+          for (const c of chunks) controller.enqueue(enc.encode(c));
+          controller.close();
+        },
+      });
+      const { sandbox } = await readySandbox("https://sbx.sandboxes.example", [
+        new Response(stream, { status: 200 }),
+      ]);
+
+      const seen = [];
+      for await (const ev of sandbox.files.watch(".")) {
+        seen.push(`${ev.type}:${ev.path}`);
+      }
+      expect(seen).toEqual(["create:a.txt", "remove:a.txt"]);
+    });
+
+    it("throws before the first event on a bad path", async () => {
+      const { sandbox } = await readySandbox("https://sbx.sandboxes.example", [
+        json(400, { reason_code: "invalid_argument", message: "not a directory" }),
+      ]);
+      const iter = sandbox.files.watch("/file.txt");
+      await expect(iter.next()).rejects.toBeInstanceOf(NeevError);
+    });
+  });
+
   describe("exec", () => {
     // Builds an NDJSON exec stream Response from frame objects.
     function ndjson(frames: unknown[]): Response {
