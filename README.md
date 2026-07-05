@@ -251,6 +251,17 @@ pty.kill("SIGINT");             // signal the process group (default SIGTERM)
 const { exitCode } = await pty.wait(); // resolves when the session ends
 ```
 
+If the connection drops, reattach to the same terminal — `pty.id` names it, and `create({ id })` reconnects (the sandbox replays recent scrollback, so you see what happened while you were away):
+
+```ts
+const pty = await sandbox.pty.create({ program: "sh" });
+const id = pty.id; // e.g. "pty_a79b1567…" — persist this to reconnect later
+pty.disconnect(); // the shell keeps running in the sandbox
+
+// …later, from a fresh process/connection:
+const again = await sandbox.pty.create({ id, onData: (c) => process.stdout.write(c) });
+```
+
 The PTY needs a `WebSocket`. Browsers, Deno, Bun, and Node 22+ provide one globally. **In Node, pass a WebSocket that can send the auth header** (the global one cannot), e.g. with the [`ws`](https://www.npmjs.com/package/ws) package:
 
 ```ts

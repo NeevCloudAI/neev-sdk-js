@@ -303,18 +303,22 @@ Opens an interactive pseudo-terminal over a WebSocket. `create` returns a `PtyHa
 
 | Member | Returns | Summary |
 | ------ | ------- | ------- |
-| `create(options?)` | `Promise<PtyHandle>` | Opens a PTY; `options` = `{ program?, args?, cols?, rows?, onData? }`. Resolves once connected. |
+| `create(options?)` | `Promise<PtyHandle>` | Opens a PTY (or reattaches with `{ id }`); `options` = `{ id?, program?, args?, cols?, rows?, onData? }`. Resolves once connected. |
+| `handle.id` | `string \| undefined` | The terminal id, for reattaching later with `create({ id })`. |
 | `handle.sendInput(data)` | `void` | Sends keystrokes/bytes (`string \| Uint8Array`) to the terminal. |
 | `handle.resize(cols, rows)` | `void` | Forwards a window-size change. |
 | `handle.kill(signal?)` | `void` | Signals the process group by name (default `"SIGTERM"`). |
 | `handle.wait()` | `Promise<PtyResult>` | Resolves with `{ exitCode }` when the session ends. |
-| `handle.disconnect()` | `void` | Closes the socket; `wait` then resolves. |
+| `handle.disconnect()` | `void` | Closes the socket; the terminal keeps running. `wait` then resolves. |
 
 ```ts
 const pty = await sandbox.pty.create({ cols: 80, rows: 24, onData: (b) => process.stdout.write(b) });
 pty.sendInput("ls -la\n");
 pty.resize(120, 40);
 const { exitCode } = await pty.wait();
+
+// Reattach after a dropped connection — the sandbox replays recent scrollback:
+const again = await sandbox.pty.create({ id: pty.id, onData: (b) => process.stdout.write(b) });
 ```
 
 The PTY needs a `WebSocket`. It uses the runtime's global one if present; in Node, pass a header-capable WebSocket (the global cannot send auth headers): `new Neev({ webSocket: (url, opts) => new WebSocket(url, opts) })` with the [`ws`](https://www.npmjs.com/package/ws) package.
