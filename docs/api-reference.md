@@ -4,11 +4,22 @@ Task-oriented API lists and copy-paste snippets for the public `@neevcloud/sdk` 
 
 ## Table of contents
 
+**Getting started**
+
 - [Client](#client)
+
+**Sandboxes** — client-level API
+
 - [Lifecycle](#lifecycle)
 - [Snapshots](#snapshots)
+
+**Working with a sandbox**
+
 - [Sandbox handle](#sandbox-handle)
-- [Runtime](#runtime)
+- [Runtime](#runtime) — exec, files (write, read, list, stat, exists, mkdir, move, remove, watch), processes, pty
+
+**Reference**
+
 - [Errors](#errors)
 - [Inline example snippets](#inline-example-snippets)
 - [Maintaining this reference](#maintaining-this-reference)
@@ -260,15 +271,33 @@ for await (const event of sandbox.exec(["sh", "-c", "for i in 1 2 3; do echo $i;
 | `read(path, options?)` | `Promise<Uint8Array>` | Reads a file as raw bytes (binary-safe). |
 | `readText(path, options?)` | `Promise<string>` | Reads a file and decodes it as UTF-8. |
 | `list(path, options?)` | `Promise<FileEntry[]>` | Lists directory entries; `options` = `{ cwd?, recursive?, maxCount?, signal? }`. |
+| `stat(path, options?)` | `Promise<FileEntry>` | Returns metadata for one entry; `options` = `{ cwd?, signal? }`. |
+| `exists(path, options?)` | `Promise<boolean>` | Reports whether a path exists. |
+| `mkdir(path, options?)` | `Promise<FileEntry>` | Creates a directory and any missing parents. |
+| `move(source, destination, options?)` | `Promise<FileEntry>` | Moves or renames an entry. |
+| `remove(path, options?)` | `Promise<void>` | Deletes a file or directory; `options` = `{ cwd?, recursive?, signal? }`. |
+| `watch(path, options?)` | `AsyncGenerator<WatchEvent>` | Streams filesystem changes live; `options` = `{ cwd?, recursive?, timeoutMs?, signal? }`. |
 
 ```ts
 await sandbox.files.write("main.py", "print('hi')"); // → { bytesWritten }
 const bytes = await sandbox.files.read("main.py");    // → Uint8Array
 const text = await sandbox.files.readText("main.py"); // → string
 const entries = await sandbox.files.list(".", { recursive: true }); // → FileEntry[]
+
+const info = await sandbox.files.stat("main.py");        // → FileEntry
+const there = await sandbox.files.exists("main.py");     // → boolean
+await sandbox.files.mkdir("out/logs");                   // → FileEntry
+await sandbox.files.move("main.py", "app.py");           // → FileEntry
+await sandbox.files.remove("out", { recursive: true });  // → void
+
+for await (const ev of sandbox.files.watch(".", { recursive: true })) {
+  console.log(ev.type, ev.path); // WatchEvent: { type, path, entry? }
+}
 ```
 
 `FileEntry`: `{ name; type: "file" | "directory" | "symlink"; path; size; mode; permissions; modifiedTime; symlinkTarget? }`.
+
+`WatchEvent`: `{ type: "create" | "write" | "remove" | "rename" | "chmod"; path; entry? }`.
 
 ### `sandbox.processes`
 

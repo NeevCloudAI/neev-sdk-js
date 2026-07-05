@@ -178,7 +178,18 @@ const bytes = await sandbox.files.read("main.py"); // → Uint8Array
 const text = await sandbox.files.readText("main.py"); // → string
 const entries = await sandbox.files.list(".", { recursive: true }); // → FileEntry[]
 
-const result = await sandbox.exec(["sh", "-c", "python3 main.py"]); // → { stdout, stderr, exitCode }
+const info = await sandbox.files.stat("main.py"); // → FileEntry
+const there = await sandbox.files.exists("main.py"); // → boolean
+await sandbox.files.mkdir("out/logs"); // → FileEntry (creates parents)
+await sandbox.files.move("main.py", "app.py"); // → FileEntry (moved)
+await sandbox.files.remove("out", { recursive: true }); // → void
+
+// Stream filesystem changes as they happen (until the timeout or an abort signal).
+for await (const ev of sandbox.files.watch(".", { recursive: true })) {
+  console.log(ev.type, ev.path); // e.g. "create app.py"
+}
+
+const result = await sandbox.exec(["sh", "-c", "python3 app.py"]); // → { stdout, stderr, exitCode }
 ```
 
 By default `exec` is buffered — it runs the command to completion and returns captured output; a non-zero `exitCode` is returned, not thrown.
