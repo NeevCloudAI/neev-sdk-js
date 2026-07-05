@@ -56,8 +56,8 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `Sandbox` | class | `sandbox.ts` |
 | `WaitOptions` | interface (type) | `sandbox.ts` |
 | `SnapshotWaitOptions` | interface (type) | `sandbox.ts` |
-| `SandboxConnection` | class | `sandboxd.ts` |
-| `SandboxFiles` | class | `sandboxd.ts` |
+| `SandboxConnection` | class | `runtime.ts` |
+| `SandboxFiles` | class | `runtime.ts` |
 | `SandboxProcesses` | class | `processes.ts` |
 | `Process` | class | `processes.ts` |
 | `Signal` | const (value) | `processes.ts` |
@@ -77,14 +77,14 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `PtyResult` | interface (type) | `pty.ts` |
 | `WebSocketFactory` | type alias | `pty.ts` |
 | `SandboxWebSocket` | interface (type) | `pty.ts` |
-| `ExecOptions` | interface (type) | `sandboxd.ts` |
-| `ExecResult` | interface (type) | `sandboxd.ts` |
-| `ExecStreamEvent` | type alias (union) | `sandboxd.ts` |
-| `FileEntry` | interface (type) | `sandboxd.ts` |
-| `ListFilesOptions` | interface (type) | `sandboxd.ts` |
-| `ReadFileOptions` | interface (type) | `sandboxd.ts` |
-| `WriteFileOptions` | interface (type) | `sandboxd.ts` |
-| `WriteFileResult` | interface (type) | `sandboxd.ts` |
+| `ExecOptions` | interface (type) | `runtime.ts` |
+| `ExecResult` | interface (type) | `runtime.ts` |
+| `ExecStreamEvent` | type alias (union) | `runtime.ts` |
+| `FileEntry` | interface (type) | `runtime.ts` |
+| `ListFilesOptions` | interface (type) | `runtime.ts` |
+| `ReadFileOptions` | interface (type) | `runtime.ts` |
+| `WriteFileOptions` | interface (type) | `runtime.ts` |
+| `WriteFileResult` | interface (type) | `runtime.ts` |
 | `ListSandboxesParams` | interface (type) | `resources/sandboxes.ts` |
 | `MetricsParams` | interface (type) | `resources/sandboxes.ts` |
 | `MetricsQuery` | interface (type) | `resources/sandboxes.ts` |
@@ -182,7 +182,7 @@ Creates a new sandbox in the resolved org/project. The returned handle may still
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| `params` | `CreateSandboxParams` | Create body. Only `name` is required; `sandbox_template_id` and `region` are optional and fall back to a server default when omitted. |
+| `params` | `CreateSandboxParams` | Create body. Only `name` is required; `sandbox_template_id` is optional and falls back to a platform default when omitted. |
 | `scope` | `Scope` (optional) | Per-call org/project override. |
 
 **Returns:** `Promise<Sandbox>` — a handle with the initial lifecycle state (typically `phase === "Pending"` immediately after create).
@@ -190,15 +190,14 @@ Creates a new sandbox in the resolved org/project. The returned handle may still
 **Raises:** `NeevError` (missing scope), `BadRequestError` (400), `AuthenticationError` (401), `PermissionDeniedError` (403), `ConflictError` (409), `RateLimitError` (429), `InternalServerError` (5xx), `APIConnectionError` / `APITimeoutError` on transport failure.
 
 ```ts
-// Minimal: name only — template and region default on the server.
+// Minimal: name only — the template defaults on the platform.
 const sandbox = await client.sandboxes.create({ name: "my-agent" });
 await sandbox.waitUntilReady();
 
-// Explicit template, region, and environment.
+// Explicit template and environment.
 const configured = await client.sandboxes.create({
   name: "configured-agent",
   sandbox_template_id: "sb-ubuntu-26-04-minimal",
-  region: "as-south-1",
   env: [{ name: "LOG_LEVEL", value: "debug" }],
 });
 ```
@@ -1116,17 +1115,16 @@ for (const item of data.items) console.log(item.name, item.id);
 
 ## Types reference
 
-Import from `@neevcloud/sdk`. Most lifecycle types are aliases over the generated OpenAPI schema (`src/generated/aiagent.ts`); the runtime types are hand-written in `src/sandboxd.ts`. Field shapes below reflect those generated/hand-written definitions.
+Import from `@neevcloud/sdk`. Most lifecycle types are aliases over the generated OpenAPI schema (`src/generated/aiagent.ts`); the runtime types are hand-written in `src/runtime.ts`. Field shapes below reflect those generated/hand-written definitions.
 
 ### `CreateSandboxParams`
 
-Alias for the generated `CreateSandboxRequest`. The request body for `sandboxes.create`. Only `name` is required; `sandbox_template_id` and `region` are optional (server defaults apply when omitted).
+Alias for the generated `CreateSandboxRequest`. The request body for `sandboxes.create`. Only `name` is required; `sandbox_template_id` is optional (a platform default applies when omitted).
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
 | `name` | `string` (DNS-1123 label) | yes |
-| `sandbox_template_id` | `string` | no (server default) |
-| `region` | `string` | no (server default) |
+| `sandbox_template_id` | `string` | no (platform default) |
 | `env` | `EnvVar[]` | no |
 | `resources` | `SandboxResources` | no |
 | `egress` | `SandboxEgressConfig` | no |
@@ -1492,7 +1490,7 @@ Compact reviewer index.
 | `toJSON` | method | `SandboxData` |
 | `WaitOptions` | type | Wait config. |
 
-### Runtime (`sandboxd.ts`)
+### Runtime (`runtime.ts`)
 
 | Symbol | Kind | Notes |
 | ------ | ---- | ----- |
@@ -1545,7 +1543,7 @@ Compact reviewer index.
 ## Contract notes
 
 - Client env vars: `NEEV_API_KEY`, `NEEV_ORG_ID`, `NEEV_PROJECT_ID` (not `NEEVAI_*`). The constructor throws `NeevError` if no API key resolves.
-- `create` requires only `name`; `sandbox_template_id` and `region` are optional and fall back to a server default.
+- `create` requires only `name`; `sandbox_template_id` is optional and falls back to a platform default.
 - `pause()` and `resume()` return the updated `Sandbox` handle (not `void`).
 - `connectUrl` is a getter returning `string | null`, not a method.
 - `createSnapshot` always sends `include_memory: false`; memory capture is unsupported and `CreateSnapshotParams` omits the field.
@@ -1566,7 +1564,7 @@ Compact reviewer index.
 Update manually when the public API changes. Cross-check against `src/`:
 
 - `src/index.ts` — the authoritative list of public exports.
-- `src/client.ts`, `src/resources/*.ts`, `src/sandbox.ts`, `src/sandboxd.ts` — method signatures and behaviors.
+- `src/client.ts`, `src/resources/*.ts`, `src/sandbox.ts`, `src/runtime.ts` — method signatures and behaviors.
 - `src/types.ts` + `src/generated/aiagent.ts` — lifecycle type shapes (regenerate generated types from the spec, then verify the field tables here).
 - `src/errors.ts` — the error hierarchy and status mapping.
 

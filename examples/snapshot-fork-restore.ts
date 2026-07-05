@@ -12,7 +12,7 @@ import { Neev } from "@neevcloud/sdk";
 const neev = new Neev();
 
 async function main(): Promise<void> {
-  // Template and region use the account defaults.
+  // Uses the default template.
   const sandbox = await neev.sandboxes.create({
     name: "snapshot-source",
   });

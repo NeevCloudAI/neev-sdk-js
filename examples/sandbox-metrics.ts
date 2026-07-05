@@ -19,8 +19,6 @@ import { Neev, type Sandbox, type SandboxMetricsResponse } from "@neevcloud/sdk"
 
 const neev = new Neev();
 
-// Production region; override with NEEV_REGION for another environment.
-const REGION = process.env.NEEV_REGION ?? "as-south-1";
 const TEMPLATE = "sb-ubuntu-26-04-minimal";
 // Drive load in BURSTS slices of BURST_SECONDS each, reading metrics between them.
 const BURSTS = 8;
@@ -50,11 +48,10 @@ function summarize(metrics: SandboxMetricsResponse): string {
 }
 
 async function main(): Promise<void> {
-  log(`creating sandbox (${TEMPLATE}, ${REGION})…`);
+  log(`creating sandbox (${TEMPLATE})…`);
   const sandbox = await neev.sandboxes.create({
     name: `metrics-${Math.random().toString(36).slice(2, 8)}`,
     sandbox_template_id: TEMPLATE,
-    region: REGION,
   });
 
   try {

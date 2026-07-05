@@ -18,18 +18,10 @@ export NEEV_ORG_ID=...
 export NEEV_PROJECT_ID=...
 ```
 
-By default examples target the **production** API (`https://api.ai.neevcloud.com/agent`).
-The basic lifecycle examples pass only a `name` and use the platform's **default
-template and region**; the richer ones (`parallel-fanout`, `sandbox-metrics`, and
-the agent examples) pin a specific template they need. To pin a region, set
-`NEEV_REGION`:
+By default the examples use your account's defaults; a few (`parallel-fanout`,
+`sandbox-metrics`, and the agent examples) pin a specific template they need.
 
-```sh
-export NEEV_REGION=<your-region>
-```
-
-> `NEEV_REGION` is optional on production (the platform picks a default). Re-run
-> `pnpm build` whenever you change SDK source.
+> Re-run `pnpm build` whenever you change SDK source.
 
 ## Examples — no model needed (pure SDK)
 
@@ -162,7 +154,6 @@ npx tsx examples/agents/genkit.ts
 | `NEEV_API_KEY` | all | — (required) |
 | `NEEV_ORG_ID` | all | — (required) |
 | `NEEV_PROJECT_ID` | all | — (required) |
-| `NEEV_REGION` | sandbox create | `as-south-1` |
 | `NEEV_AGENT_TEMPLATE` | `create-agent.ts` | `claude-code` |
 | `NEEV_INFERENCE_API_KEY` | model examples | falls back to `NEEV_API_KEY` |
 | `NEEV_INFERENCE_BASE_URL` | model examples | production inference endpoint |

@@ -1,5 +1,5 @@
 import { NeevError } from "./errors.js";
-import type { ConnectionResolver, SandboxConnection } from "./sandboxd.js";
+import type { ConnectionResolver, SandboxConnection } from "./runtime.js";
 
 // If the sandbox never sends the session frame after the socket opens (a misbehaving
 // server), settle the id wait after this grace period — with id undefined — so `create`

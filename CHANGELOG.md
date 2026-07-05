@@ -76,7 +76,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - HTTP transport with timeout and exponential-backoff retries on network errors, `429`, and `5xx`.
 - Generated TypeScript types from the AI Agent Service OpenAPI spec.
 - Sandbox files: `sandbox.files.write()` writes files to a running sandbox via
-  its sandboxd daemon (reached at `connect_url`; not retried).
+  its runtime (reached at `connect_url`; not retried).
 - Sandbox files: `sandbox.files.read()` (raw `Uint8Array`) and
   `sandbox.files.readText()` (UTF-8) read files from a running sandbox.
 - Sandbox files: `sandbox.files.list()` lists directory entries

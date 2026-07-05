@@ -23,7 +23,6 @@ const neev = new Neev({ webSocket: (url, opts) => new WebSocket(url, opts) });
 async function main(): Promise<void> {
   const sandbox = await neev.sandboxes.create({
     name: `pty-${Math.random().toString(36).slice(2, 8)}`,
-    region: process.env.NEEV_REGION,
   });
 
   try {

@@ -14,8 +14,6 @@ import { Neev, type Sandbox } from "@neevcloud/sdk";
 
 const neev = new Neev();
 
-// Production region; override with NEEV_REGION for another environment.
-const REGION = process.env.NEEV_REGION ?? "as-south-1";
 const TEMPLATE = "sb-ubuntu-26-04-minimal";
 // Split the range [1, TOTAL] into SHARDS contiguous slices, one per sandbox.
 const TOTAL = 3000;
@@ -44,13 +42,12 @@ async function main(): Promise<void> {
   }));
 
   // Provision one sandbox per slice, concurrently.
-  log(`provisioning ${SHARDS} sandboxes (${TEMPLATE}, ${REGION})…`);
+  log(`provisioning ${SHARDS} sandboxes (${TEMPLATE})…`);
   const sandboxes = await Promise.all(
     slices.map((_, i) =>
       neev.sandboxes.create({
         name: `fanout-${i}-${Math.random().toString(36).slice(2, 8)}`,
         sandbox_template_id: TEMPLATE,
-        region: REGION,
       }),
     ),
   );

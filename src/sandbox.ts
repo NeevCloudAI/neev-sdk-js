@@ -9,8 +9,8 @@ import type {
   Sandboxes,
   SnapshotPage,
 } from "./resources/sandboxes.js";
-import { SandboxFiles } from "./sandboxd.js";
-import type { ExecOptions, ExecResult, ExecStreamEvent, SandboxConnection } from "./sandboxd.js";
+import { SandboxFiles } from "./runtime.js";
+import type { ExecOptions, ExecResult, ExecStreamEvent, SandboxConnection } from "./runtime.js";
 import type {
   CreateSnapshotParams,
   SandboxData,

@@ -30,7 +30,6 @@ const TASK =
   "'count: N' with how many there were. Use the run_shell tool; the sandbox has " +
   "busybox sh only (no bash, no python).";
 
-const REGION = process.env.NEEV_REGION ?? "as-south-1";
 const MAX_STEPS = 6;
 
 // ANSI helpers for a readable transcript.
@@ -102,11 +101,10 @@ async function main(): Promise<void> {
   line(bold("AI code-interpreter (gpt-oss-120b → Neev sandbox)"));
   line(dim(`task: ${TASK}`));
 
-  line(dim(`\n[sandbox] creating (template=sb-ubuntu-26-04-minimal, region=${REGION})…`));
+  line(dim("\n[sandbox] creating (template=sb-ubuntu-26-04-minimal)…"));
   const sandbox = await neev.sandboxes.create({
     name: `ai-${Math.random().toString(36).slice(2, 8)}`,
     sandbox_template_id: "sb-ubuntu-26-04-minimal",
-    region: REGION,
   });
 
   const messages: ChatMessage[] = [

@@ -52,7 +52,6 @@ pass the equivalent options to `new Neev({ ... })`.
 | `NEEV_API_KEY` | `apiKey` | Bearer token (**required**) |
 | `NEEV_ORG_ID` | `orgId` | Default organization id |
 | `NEEV_PROJECT_ID` | `projectId` | Default project id |
-| `NEEV_REGION` | — | Default region for sandbox create (optional) |
 
 Notes:
 
@@ -60,8 +59,6 @@ Notes:
   `NEEV_API_KEY`.
 - `orgId` / `projectId` are required to make a call, but may be set on the client
   **or** overridden per call (see [per-call scope](#per-call-scope-override)).
-- `NEEV_REGION` is read by examples/your code when calling `create`; it is
-  optional (the platform picks a default when omitted).
 
 **Linux / macOS (bash/zsh)** — current session:
 
@@ -141,9 +138,8 @@ This section walks the full path from a clean project to a running sandbox.
    const neev = new Neev();
    ```
 
-4. **Create your first sandbox.** Only `name` is required — the server defaults
-   the template and region when you omit them. (Pass `sandbox_template_id` and/or
-   `region` to pin them.)
+4. **Create your first sandbox.** Only `name` is required — the platform defaults
+   the template when you omit it. (Pass `sandbox_template_id` to pin it.)
 
    ```ts
    const sandbox = await neev.sandboxes.create({ name: "my-first-sandbox" });
@@ -181,8 +177,8 @@ import { Neev } from "@neevcloud/sdk";
 const neev = new Neev();
 
 async function main(): Promise<void> {
-  // 1. Create a sandbox. Only `name` is required — the server defaults the
-  //    template and region.
+  // 1. Create a sandbox. Only `name` is required — the platform defaults the
+  //    template.
   const sandbox = await neev.sandboxes.create({
     name: "quickstart-demo",
   });
