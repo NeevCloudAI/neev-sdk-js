@@ -33,7 +33,13 @@ export interface paths {
         get: operations["getSandbox"];
         put?: never;
         post?: never;
-        /** Delete a sandbox */
+        /**
+         * Delete a sandbox
+         * @description Permanently deletes the sandbox and all associated snapshots. This operation
+         *     cannot be undone. All manual snapshots attached to this sandbox are permanently
+         *     deleted as part of the same operation; their stored data is reclaimed
+         *     automatically.
+         */
         delete: operations["deleteSandbox"];
         options?: never;
         head?: never;
@@ -52,8 +58,8 @@ export interface paths {
         /**
          * Pause a sandbox (stop billable runtime; preserve disks)
          * @description When `preserve_memory` is true the sandbox's full state (process memory
-         *     + filesystem) is captured as an implicit snapshot before the pod is
-         *     terminated. The snapshot is retained for the duration of the paused
+         *     + filesystem) is captured as an implicit snapshot before the sandbox is
+         *     stopped. The snapshot is retained for the duration of the paused
          *     state and consumed automatically on the next `resume`. When false
          *     (default) the existing volume-only behaviour applies.
          */
@@ -73,7 +79,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mint a short-lived data-plane connect-token for a sandbox */
+        /** Mint a short-lived connect token for a sandbox */
         post: operations["createConnectToken"];
         delete?: never;
         options?: never;
@@ -98,6 +104,58 @@ export interface paths {
          */
         post: operations["resumeSandbox"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the ports exposed for preview URLs
+         * @description Returns the ports currently exposed for this sandbox's preview URLs,
+         *     each with its public preview URL. Ports are private by default — a port
+         *     is only reachable through a preview URL after you expose it.
+         */
+        get: operations["listSandboxPorts"];
+        put?: never;
+        /**
+         * Expose a port for credential-free preview URLs
+         * @description Exposes a port so it can be reached through a public preview URL, and
+         *     returns that URL. Exposing a port that is already exposed returns the
+         *     same URL and makes no other change.
+         *
+         *     The port must be between 1 and 65535. Some ports are reserved by the
+         *     platform and cannot be exposed; requests for those are rejected.
+         */
+        post: operations["exposeSandboxPort"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports/{port}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a previously exposed preview port
+         * @description Stops serving a port through its preview URL. Revoking a port that is
+         *     not currently exposed succeeds and changes nothing.
+         */
+        delete: operations["revokeSandboxPort"];
         options?: never;
         head?: never;
         patch?: never;
@@ -145,7 +203,9 @@ export interface paths {
         post?: never;
         /**
          * Delete a snapshot
-         * @description Deletes the snapshot metadata row. Blob GC is handled asynchronously by the platform.
+         * @description Permanently deletes the snapshot and cancels any capture still in
+         *     progress. Its stored data is reclaimed automatically. This operation
+         *     cannot be undone.
          */
         delete: operations["deleteSnapshot"];
         options?: never;
@@ -232,7 +292,7 @@ export interface paths {
          * List sandbox templates
          * @description Returns platform-managed sandbox runtime templates available for
          *     sandbox create. Only templates with status `active` or `deprecated`
-         *     are returned. Registry paths are operator-internal and are not exposed.
+         *     are returned. Internal template details are not exposed.
          */
         get: operations["listSandboxTemplates"];
         put?: never;
@@ -308,9 +368,8 @@ export interface paths {
         /**
          * Update an agent in place
          * @description Updates mutable fields of an agent without recreating it. `egress` is
-         *     re-applied live (no pod disruption). `resources` (cpu/memory) are resized
-         *     in place on the running pod via the pod resize subresource; the new size
-         *     also persists to the backing sandbox so it survives a restart. Disk is
+         *     re-applied live without disruption. `resources` (cpu/memory) are resized
+         *     in place on the running sandbox and persist across a restart. Disk is
          *     not resizable in place. Fields omitted from the body are left unchanged.
          */
         patch: operations["updateAgent"];
@@ -350,6 +409,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mint a connect ticket to reach the agent
+         * @description Mints a short-lived, scoped ticket the client uses to talk to the agent
+         *     directly — our API is not on the data path and persists nothing about
+         *     what flows through. Only a `Ready` agent yields a ticket: a
+         *     still-provisioning agent returns `425`, a paused/failed/deleting one
+         *     returns `409`. How to drive the agent over the ticket (`http` to its own
+         *     port, or an `exec`/`pty` channel) is the agent's `drive_mode` field. The
+         *     token is bound to this project and agent and validated on each request.
+         */
+        post: operations["connectAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1beta1/agent-templates": {
         parameters: {
             query?: never;
@@ -360,8 +445,8 @@ export interface paths {
         /**
          * List agent templates
          * @description Returns platform-managed agent templates available for agent create.
-         *     Only templates with status `active` are returned. Registry paths and
-         *     other operator-internal fields are not exposed.
+         *     Only templates with status `active` are returned. Internal template
+         *     details are not exposed.
          */
         get: operations["listAgentTemplates"];
         put?: never;
@@ -406,7 +491,7 @@ export interface components {
             value: string;
         };
         /** @enum {string} */
-        SandboxPhase: "Pending" | "Ready" | "NotReady" | "Unknown" | "Paused";
+        SandboxPhase: "Pending" | "Ready" | "NotReady" | "Unknown" | "Paused" | "RestoreFailed";
         /** @description Sandbox compute size. Omitted fields use the platform default. */
         SandboxResources: {
             /**
@@ -443,6 +528,8 @@ export interface components {
             phase: components["schemas"]["SandboxPhase"];
             /** @description Public URL the SDK calls (API key + X-Sandbox-Id). null when not configured. */
             connect_url?: string | null;
+            /** @description Template for a public preview URL with {port} left for getUrl({port}) to fill client-side. null when not configured. */
+            preview_url_template?: string | null;
             /** @description 0 = paused, 1 = running. */
             replicas: number;
             egress?: components["schemas"]["SandboxEgressConfig"] | null;
@@ -457,10 +544,9 @@ export interface components {
         };
         CreateSandboxRequest: {
             /**
-             * @description Sandbox name. Used verbatim as the Sandbox CR name and as a routing
-             *     label, so it must be a valid DNS-1123 label: lowercase alphanumeric
-             *     characters or '-', starting and ending with an alphanumeric, max 63
-             *     characters.
+             * @description Sandbox name. Must be a valid DNS name: lowercase alphanumeric
+             *     characters or '-', starting with a letter, ending with an
+             *     alphanumeric, max 63 characters.
              * @example my-sandbox
              */
             name: string;
@@ -486,11 +572,24 @@ export interface components {
              */
             from_snapshot?: string | null;
         };
+        ExposePortRequest: {
+            /** @description User port to expose for preview URLs. */
+            port: number;
+        };
+        SandboxPort: {
+            /** @description The exposed user port. */
+            port: number;
+            /** @description Public credential-free preview URL for this port. */
+            preview_url: string;
+        };
+        SandboxPortList: {
+            ports: components["schemas"]["SandboxPort"][];
+        };
         /** @description Optional body for the pause endpoint. */
         PauseSandboxRequest: {
             /**
              * @description When true, capture FS+process memory as an implicit snapshot before
-             *     terminating the pod. The snapshot is auto-consumed on the next resume.
+             *     stopping the sandbox. The snapshot is auto-consumed on the next resume.
              * @default true
              */
             preserve_memory: boolean;
@@ -519,11 +618,11 @@ export interface components {
             status: components["schemas"]["SnapshotStatus"];
             /** @description True = FS+memory captured; false = FS only. */
             include_memory: boolean;
-            /** @description DP cluster slug where the blob lives. */
+            /** @description Region where the snapshot is stored. */
             source_region: string;
             /**
              * Format: int64
-             * @description Uncompressed blob size. Null until status=Ready.
+             * @description Uncompressed snapshot size in bytes. Null until status=Ready.
              */
             size_bytes?: number | null;
             /** @description Failure detail. Null unless status=Failed. */
@@ -533,6 +632,8 @@ export interface components {
              * @description When the platform will GC this snapshot. Null = no expiry.
              */
             expires_at?: string | null;
+            /** @description Identity that created the snapshot (user email, or "system" for system-initiated snapshots like pause/fork). */
+            created_by?: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -546,7 +647,11 @@ export interface components {
         };
         /** @description Optional body for POST .../snapshots. */
         CreateSnapshotRequest: {
-            /** @description Optional human-readable name for this snapshot. */
+            /**
+             * @description Optional name for this snapshot. Must be a valid DNS name (lowercase
+             *     alphanumeric or '-', starting with a letter, max 63 characters) so it
+             *     can name sandboxes created on fork and restore. Omit to leave unnamed.
+             */
             name?: string;
             /**
              * @description Capture process memory in addition to filesystem. Currently forced to false (RootFS only); memory capture is not yet supported.
@@ -570,7 +675,11 @@ export interface components {
         };
         /** @description Body for POST .../sandboxes/{id}/fork. */
         ForkSandboxRequest: {
-            /** @description Name for the new forked sandbox. Must be unique within the project. */
+            /**
+             * @description Name for the new forked sandbox. Must be unique within the project,
+             *     and a valid DNS name: lowercase alphanumeric characters or '-',
+             *     starting with a letter, ending with an alphanumeric, max 63 characters.
+             */
             name: string;
         };
         /** @description Network egress configuration rules for the sandbox. */
@@ -633,7 +742,7 @@ export interface components {
             points: number[][];
         };
         ConnectTokenResponse: {
-            /** @description Signed JWT connect-token, presented as a bearer credential to the sandbox data plane. */
+            /** @description Signed connect token, presented as a bearer credential when calling the sandbox directly. */
             token: string;
             /** @description Token lifetime in seconds. */
             expires_in: number;
@@ -662,6 +771,7 @@ export interface components {
             name: string;
             /** @description Catalogue template id the agent was created from (e.g. ag-claude-code). */
             agent_template_id: string;
+            drive_mode: components["schemas"]["DriveMode"];
             /**
              * Format: uuid
              * @description UUID of the backing sandbox that runs this agent.
@@ -672,16 +782,54 @@ export interface components {
                 [key: string]: unknown;
             };
             status: components["schemas"]["AgentStatus"];
+            /**
+             * @description Public URL of the agent's own web UI, reached directly. Present only
+             *     for web agents (drive_mode http with a declared UI port); null
+             *     otherwise.
+             */
+            web_ui_url?: string | null;
+            /**
+             * @description API path for the sandbox's live health metrics (the getSandboxMetrics
+             *     endpoint), relative to this API's base URL.
+             */
+            metrics_url: string;
+            /**
+             * @description Token the agent's web UI uses to authenticate. Present only for web
+             *     agents that gate the UI on a token; null otherwise.
+             */
+            gateway_token?: string | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             updated_at: string;
         };
+        /**
+         * @description How a client drives the agent — `http` proxies to the agent's own HTTP
+         *     port, `exec` runs a command, `pty` attaches an interactive terminal.
+         *     Derived from the agent template's declared mode. Pair it with a ticket
+         *     from `POST /agents/{agent_id}/connect` to reach the agent.
+         * @enum {string}
+         */
+        DriveMode: "http" | "exec" | "pty";
+        AgentConnectResponse: {
+            /** @description Direct address the client calls to reach the agent. */
+            connect_url: string;
+            /**
+             * @description Short-lived connect token, bound to this project and agent, presented
+             *     as a bearer credential when calling the agent directly.
+             */
+            token: string;
+            /**
+             * Format: date-time
+             * @description Absolute expiry of the ticket.
+             */
+            expires_at: string;
+        };
         CreateAgentRequest: {
             /**
-             * @description Agent name. Used verbatim as the backing Sandbox CR name, so it must
-             *     be a valid DNS-1123 label: lowercase alphanumeric characters or '-',
-             *     starting and ending with an alphanumeric, max 63 characters.
+             * @description Agent name. Must be a valid DNS name: lowercase alphanumeric
+             *     characters or '-', starting with a letter, ending with an
+             *     alphanumeric, max 63 characters.
              * @example my-agent
              */
             name: string;
@@ -718,10 +866,10 @@ export interface components {
          *     unchanged.
          */
         UpdateAgentRequest: {
-            /** @description Replace the agent's egress policy (re-applied live, no pod restart). */
+            /** @description Replace the agent's egress policy (re-applied live, no restart). */
             egress?: components["schemas"]["SandboxEgressConfig"];
             /**
-             * @description New cpu/memory sizing, resized in place on the running pod. Only the
+             * @description New cpu/memory sizing, resized in place on the running sandbox. Only the
              *     fields provided change. disk_gb is not resizable in place and is
              *     rejected if supplied with a different value.
              */
@@ -737,6 +885,8 @@ export interface components {
             id: string;
             name: string;
             description: string;
+            /** @description Display icon for the template (e.g. an SVG document) served as a string; null when the template has no icon. */
+            icon?: string | null;
             /** @description Template category (e.g. coding). */
             category: string;
             /** @enum {string} */
@@ -816,6 +966,15 @@ export interface components {
         };
         /** @description Resource already exists */
         Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Resource not ready yet; retry later */
+        TooEarly: {
             headers: {
                 [name: string]: unknown;
             };
@@ -967,7 +1126,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Sandbox deleted */
+            /** @description Sandbox and all associated snapshots deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -1072,6 +1231,105 @@ export interface operations {
                     "application/json": components["schemas"]["Sandbox"];
                 };
             };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    listSandboxPorts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description Sandbox UUID. */
+                sandbox_id: components["parameters"]["SandboxID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exposed ports */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxPortList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    exposeSandboxPort: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description Sandbox UUID. */
+                sandbox_id: components["parameters"]["SandboxID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExposePortRequest"];
+            };
+        };
+        responses: {
+            /** @description Port exposed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxPort"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    revokeSandboxPort: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description Sandbox UUID. */
+                sandbox_id: components["parameters"]["SandboxID"];
+                port: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Port revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
@@ -1589,9 +1847,43 @@ export interface operations {
                     "application/json": components["schemas"]["Agent"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    connectAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description Agent UUID. */
+                agent_id: components["parameters"]["AgentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connect ticket minted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentConnectResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            425: components["responses"]["TooEarly"];
             500: components["responses"]["InternalServerError"];
         };
     };

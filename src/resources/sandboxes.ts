@@ -3,6 +3,7 @@ import type { RequestContext, Scope } from "../client.js";
 import { NeevError } from "../errors.js";
 import type { paths } from "../generated/aiagent.js";
 import { ensureOk, unwrap } from "../http.js";
+import type { FetchLike } from "../http.js";
 import { Sandbox } from "../sandbox.js";
 import type { SandboxConnection } from "../sandboxd.js";
 import type {
@@ -11,6 +12,7 @@ import type {
   SandboxData,
   SandboxListResponse,
   SandboxMetricsResponse,
+  SandboxPort,
   SnapshotData,
   SnapshotListResponse,
 } from "../types.js";
@@ -27,6 +29,23 @@ const SNAPSHOTS =
 const SNAPSHOT_ITEM = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/snapshots/{snapshot_id}";
 const RESTORE = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/restore";
 const FORK = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/fork";
+const PORTS = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports";
+const PORT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports/{port}";
+
+// Defaults for getPortUrl's preview-URL readiness poll.
+const DEFAULT_PORT_WAIT_TIMEOUT_MS = 60_000;
+const DEFAULT_PORT_POLL_INTERVAL_MS = 2_000;
+
+// Options for getPortUrl / sandbox.getUrl: whether to wait for the preview URL to
+// become routable, and the poll timing while waiting.
+export interface GetPortUrlOptions {
+  // Poll the preview URL until it is routable before returning. Defaults to true.
+  waitUntilReady?: boolean;
+  // Overall wait budget in milliseconds. Defaults to 60000.
+  timeoutMs?: number;
+  // Delay between probes in milliseconds. Defaults to 2000.
+  pollIntervalMs?: number;
+}
 
 // Parameters for listing sandboxes: pagination plus an optional scope override.
 export interface ListSandboxesParams extends Scope {
@@ -180,6 +199,82 @@ export class Sandboxes {
     return unwrap<SandboxMetricsResponse>(res);
   }
 
+  // Exposes a port for credential-free preview URLs and returns it with its URL.
+  // Idempotent: exposing an already-exposed port returns the same URL.
+  async exposePort(id: string, port: number, scope?: Scope): Promise<SandboxPort> {
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.POST(PORTS, {
+      params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
+      body: { port },
+    });
+    return unwrap<SandboxPort>(res);
+  }
+
+  // Lists the ports currently exposed for this sandbox's preview URLs.
+  async listPorts(id: string, scope?: Scope): Promise<SandboxPort[]> {
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.GET(PORTS, {
+      params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
+    });
+    return unwrap<{ ports: SandboxPort[] }>(res).ports;
+  }
+
+  // Revokes a previously exposed preview port. Revoking a port that is not
+  // exposed succeeds and changes nothing.
+  async revokePort(id: string, port: number, scope?: Scope): Promise<void> {
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.DELETE(PORT, {
+      params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id, port } },
+    });
+    ensureOk(res);
+  }
+
+  // Exposes a port and returns its public preview URL. The gateway route is not
+  // live the instant a port is exposed, so by default this polls the URL until it
+  // is reachable before returning; pass `{ waitUntilReady: false }` to skip the
+  // wait and return immediately.
+  async getPortUrl(
+    id: string,
+    port: number,
+    options: GetPortUrlOptions = {},
+    scope?: Scope,
+  ): Promise<string> {
+    const { preview_url } = await this.exposePort(id, port, scope);
+    if (options.waitUntilReady === false) return preview_url;
+    await this.waitForPreviewUrl(preview_url, options);
+    return preview_url;
+  }
+
+  // Polls a preview URL until the gateway routes it (it stops returning the
+  // not-yet-provisioned 403/404, and any connection error clears). Throws on
+  // timeout. Note: a successful probe means the URL is routable — the server
+  // behind the port must still be listening to answer a real request.
+  private async waitForPreviewUrl(url: string, options: GetPortUrlOptions): Promise<void> {
+    const timeoutMs = options.timeoutMs ?? DEFAULT_PORT_WAIT_TIMEOUT_MS;
+    const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_PORT_POLL_INTERVAL_MS;
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new NeevError(
+        `getUrl: timeoutMs must be a positive, finite number (got ${timeoutMs}).`,
+      );
+    }
+    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+      throw new NeevError(
+        `getUrl: pollIntervalMs must be a positive, finite number (got ${pollIntervalMs}).`,
+      );
+    }
+    const deadline = Date.now() + timeoutMs;
+    while (true) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        throw new NeevError(`Preview URL ${url} was not routable within ${timeoutMs}ms.`);
+      }
+      // Bound each probe to the remaining budget so a stalled request can't outlast the deadline.
+      if (await previewUrlReachable(this.ctx.fetch, url, remaining)) return;
+      const wait = Math.min(pollIntervalMs, deadline - Date.now());
+      if (wait > 0) await sleep(wait);
+    }
+  }
+
   // Captures a snapshot of a sandbox. The returned snapshot starts Pending; poll
   // getSnapshot until its status is Ready before restoring or forking from it.
   async createSnapshot(
@@ -305,4 +400,27 @@ export class Sandboxes {
 // Resolves after the given number of milliseconds.
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Probes a preview URL to decide whether the gateway has finished routing it.
+// Right after a port is exposed the route is not yet live: the request either
+// fails to connect or the gateway returns 403/404 for the unprovisioned route.
+// Once routed, the gateway forwards to the sandbox (any other status, including a
+// 502 when nothing is listening yet), which counts as reachable.
+async function previewUrlReachable(
+  fetch: FetchLike,
+  url: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { method: "GET", redirect: "manual", signal: controller.signal });
+    return res.status !== 403 && res.status !== 404;
+  } catch {
+    // A connection error, DNS failure, or an abort when the budget ran out — not reachable yet.
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
