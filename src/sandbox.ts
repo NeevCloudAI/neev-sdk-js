@@ -3,6 +3,7 @@ import { NeevError } from "./errors.js";
 import { SandboxProcesses } from "./processes.js";
 import { SandboxPty } from "./pty.js";
 import type {
+  GetPortUrlOptions,
   ListSnapshotsParams,
   MetricsQuery,
   Sandboxes,
@@ -15,6 +16,7 @@ import type {
   SandboxData,
   SandboxMetricsResponse,
   SandboxPhase,
+  SandboxPort,
   SandboxResources,
   SnapshotData,
 } from "./types.js";
@@ -219,6 +221,32 @@ export class Sandbox {
   // Reads the live metric series for this sandbox.
   async metrics(params: MetricsQuery = {}): Promise<SandboxMetricsResponse> {
     return this.sandboxes.metrics(this.id, { ...params, ...this.scope });
+  }
+
+  // Exposes a port for credential-free preview URLs and returns its public URL.
+  // The route is not live the instant the port is exposed, so by default this
+  // waits until the URL is reachable before returning; pass
+  // `{ waitUntilReady: false }` to return immediately, and timeoutMs/pollIntervalMs
+  // to tune the wait.
+  async getUrl(options: { port: number } & GetPortUrlOptions): Promise<string> {
+    const { port, ...wait } = options;
+    return this.sandboxes.getPortUrl(this.id, port, wait, this.scope);
+  }
+
+  // Exposes a port for preview URLs and returns it with its URL (no readiness
+  // wait; use getUrl to wait until the URL is routable).
+  async exposePort(port: number): Promise<SandboxPort> {
+    return this.sandboxes.exposePort(this.id, port, this.scope);
+  }
+
+  // Lists the ports currently exposed for this sandbox's preview URLs.
+  async listPorts(): Promise<SandboxPort[]> {
+    return this.sandboxes.listPorts(this.id, this.scope);
+  }
+
+  // Revokes a previously exposed preview port.
+  async revokePort(port: number): Promise<void> {
+    return this.sandboxes.revokePort(this.id, port, this.scope);
   }
 
   // Captures a snapshot of this sandbox. By default the result starts Pending —

@@ -86,13 +86,18 @@ paths:
     delete:
       tags: [Sandboxes]
       summary: Delete a sandbox
+      description: |
+        Permanently deletes the sandbox and all associated snapshots. This operation
+        cannot be undone. All manual snapshots attached to this sandbox are permanently
+        deleted as part of the same operation; their stored data is reclaimed
+        automatically.
       operationId: deleteSandbox
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
         - {$ref: '#/components/parameters/SandboxID'}
       responses:
-        "204": {description: Sandbox deleted}
+        "204": {description: Sandbox and all associated snapshots deleted}
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
@@ -103,8 +108,8 @@ paths:
       summary: Pause a sandbox (stop billable runtime; preserve disks)
       description: |
         When `preserve_memory` is true the sandbox's full state (process memory
-        + filesystem) is captured as an implicit snapshot before the pod is
-        terminated. The snapshot is retained for the duration of the paused
+        + filesystem) is captured as an implicit snapshot before the sandbox is
+        stopped. The snapshot is retained for the duration of the paused
         state and consumed automatically on the next `resume`. When false
         (default) the existing volume-only behaviour applies.
       operationId: pauseSandbox
@@ -131,7 +136,7 @@ paths:
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/connect-token:
     post:
       tags: [Sandboxes]
-      summary: Mint a short-lived data-plane connect-token for a sandbox
+      summary: Mint a short-lived connect token for a sandbox
       operationId: createConnectToken
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
@@ -166,6 +171,84 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Sandbox'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports:
+    get:
+      tags: [Sandboxes]
+      summary: List the ports exposed for preview URLs
+      description: |
+        Returns the ports currently exposed for this sandbox's preview URLs,
+        each with its public preview URL. Ports are private by default — a port
+        is only reachable through a preview URL after you expose it.
+      operationId: listSandboxPorts
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/SandboxID'}
+      responses:
+        "200":
+          description: Exposed ports
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxPortList'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+    post:
+      tags: [Sandboxes]
+      summary: Expose a port for credential-free preview URLs
+      description: |
+        Exposes a port so it can be reached through a public preview URL, and
+        returns that URL. Exposing a port that is already exposed returns the
+        same URL and makes no other change.
+
+        The port must be between 1 and 65535. Some ports are reserved by the
+        platform and cannot be exposed; requests for those are rejected.
+      operationId: exposeSandboxPort
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/SandboxID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExposePortRequest'}
+      responses:
+        "200":
+          description: Port exposed
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxPort'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports/{port}:
+    delete:
+      tags: [Sandboxes]
+      summary: Revoke a previously exposed preview port
+      description: |
+        Stops serving a port through its preview URL. Revoking a port that is
+        not currently exposed succeeds and changes nothing.
+      operationId: revokeSandboxPort
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/SandboxID'}
+        - name: port
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1, maximum: 65535}
+      responses:
+        "204": {description: Port revoked}
+        "400": {$ref: '#/components/responses/BadRequest'}
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
@@ -244,7 +327,10 @@ paths:
     delete:
       tags: [Snapshots]
       summary: Delete a snapshot
-      description: Deletes the snapshot metadata row. Blob GC is handled asynchronously by the platform.
+      description: |
+        Permanently deletes the snapshot and cancels any capture still in
+        progress. Its stored data is reclaimed automatically. This operation
+        cannot be undone.
       operationId: deleteSnapshot
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
@@ -363,7 +449,7 @@ paths:
       description: |
         Returns platform-managed sandbox runtime templates available for
         sandbox create. Only templates with status `active` or `deprecated`
-        are returned. Registry paths are operator-internal and are not exposed.
+        are returned. Internal template details are not exposed.
       operationId: listSandboxTemplates
       parameters:
         - {$ref: '#/components/parameters/Page'}
@@ -468,9 +554,8 @@ paths:
       summary: Update an agent in place
       description: |
         Updates mutable fields of an agent without recreating it. `egress` is
-        re-applied live (no pod disruption). `resources` (cpu/memory) are resized
-        in place on the running pod via the pod resize subresource; the new size
-        also persists to the backing sandbox so it survives a restart. Disk is
+        re-applied live without disruption. `resources` (cpu/memory) are resized
+        in place on the running sandbox and persist across a restart. Disk is
         not resizable in place. Fields omitted from the body are left unchanged.
       operationId: updateAgent
       parameters:
@@ -542,9 +627,39 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Agent'}
+        "400": {$ref: '#/components/responses/BadRequest'}
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/connect:
+    post:
+      tags: [Agents]
+      summary: Mint a connect ticket to reach the agent
+      description: |
+        Mints a short-lived, scoped ticket the client uses to talk to the agent
+        directly — our API is not on the data path and persists nothing about
+        what flows through. Only a `Ready` agent yields a ticket: a
+        still-provisioning agent returns `425`, a paused/failed/deleting one
+        returns `409`. How to drive the agent over the ticket (`http` to its own
+        port, or an `exec`/`pty` channel) is the agent's `drive_mode` field. The
+        token is bound to this project and agent and validated on each request.
+      operationId: connectAgent
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/AgentID'}
+      responses:
+        "200":
+          description: Connect ticket minted
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AgentConnectResponse'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "425": {$ref: '#/components/responses/TooEarly'}
         "500": {$ref: '#/components/responses/InternalServerError'}
   # --- Agent Templates ---
   /api/v1beta1/agent-templates:
@@ -553,8 +668,8 @@ paths:
       summary: List agent templates
       description: |
         Returns platform-managed agent templates available for agent create.
-        Only templates with status `active` are returned. Registry paths and
-        other operator-internal fields are not exposed.
+        Only templates with status `active` are returned. Internal template
+        details are not exposed.
       operationId: listAgentTemplates
       parameters:
         - {$ref: '#/components/parameters/Page'}
@@ -675,6 +790,11 @@ components:
       content:
         application/json:
           schema: {$ref: '#/components/schemas/ErrorResponse'}
+    TooEarly:
+      description: Resource not ready yet; retry later
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
     InternalServerError:
       description: Internal server error
       content:
@@ -695,7 +815,7 @@ components:
         value: {type: string}
     SandboxPhase:
       type: string
-      enum: [Pending, Ready, NotReady, Unknown, Paused]
+      enum: [Pending, Ready, NotReady, Unknown, Paused, RestoreFailed]
     SandboxResources:
       type: object
       description: |
@@ -736,6 +856,7 @@ components:
         resources: {$ref: '#/components/schemas/SandboxResources'}
         phase: {$ref: '#/components/schemas/SandboxPhase'}
         connect_url: {type: string, nullable: true, description: "Public URL the SDK calls (API key + X-Sandbox-Id). null when not configured."}
+        preview_url_template: {type: string, nullable: true, description: "Template for a public preview URL with {port} left for getUrl({port}) to fill client-side. null when not configured."}
         replicas: {type: integer, minimum: 0, maximum: 1, description: "0 = paused, 1 = running."}
         egress:
           allOf:
@@ -759,12 +880,11 @@ components:
           type: string
           minLength: 1
           maxLength: 63
-          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          pattern: '^[a-z]([-a-z0-9]*[a-z0-9])?$'
           description: |
-            Sandbox name. Used verbatim as the Sandbox CR name and as a routing
-            label, so it must be a valid DNS-1123 label: lowercase alphanumeric
-            characters or '-', starting and ending with an alphanumeric, max 63
-            characters.
+            Sandbox name. Must be a valid DNS name: lowercase alphanumeric
+            characters or '-', starting with a letter, ending with an
+            alphanumeric, max 63 characters.
           example: my-sandbox
         region: {type: string, description: "Region to provision in; omit to use the platform default.", example: "dev"}
         env: {type: array, items: {$ref: '#/components/schemas/EnvVar'}}
@@ -786,6 +906,24 @@ components:
             When set, the new sandbox is restored from this snapshot instead of
             cold-starting from the image. Snapshot must belong to the same
             project. Sizing and region must match the snapshot's origin.
+    ExposePortRequest:
+      type: object
+      required: [port]
+      properties:
+        port: {type: integer, minimum: 1, maximum: 65535, description: "User port to expose for preview URLs."}
+    SandboxPort:
+      type: object
+      required: [port, preview_url]
+      properties:
+        port: {type: integer, description: "The exposed user port."}
+        preview_url: {type: string, description: "Public credential-free preview URL for this port."}
+    SandboxPortList:
+      type: object
+      required: [ports]
+      properties:
+        ports:
+          type: array
+          items: {$ref: '#/components/schemas/SandboxPort'}
     PauseSandboxRequest:
       type: object
       description: Optional body for the pause endpoint.
@@ -795,7 +933,7 @@ components:
           default: true
           description: |
             When true, capture FS+process memory as an implicit snapshot before
-            terminating the pod. The snapshot is auto-consumed on the next resume.
+            stopping the sandbox. The snapshot is auto-consumed on the next resume.
     # --- Snapshot schemas ---
     SnapshotStatus:
       type: string
@@ -815,12 +953,12 @@ components:
         include_memory:
           type: boolean
           description: True = FS+memory captured; false = FS only.
-        source_region: {type: string, description: DP cluster slug where the blob lives.}
+        source_region: {type: string, description: Region where the snapshot is stored.}
         size_bytes:
           type: integer
           format: int64
           nullable: true
-          description: Uncompressed blob size. Null until status=Ready.
+          description: Uncompressed snapshot size in bytes. Null until status=Ready.
         error_message:
           type: string
           nullable: true
@@ -830,6 +968,10 @@ components:
           format: date-time
           nullable: true
           description: When the platform will GC this snapshot. Null = no expiry.
+        created_by:
+          type: string
+          nullable: true
+          description: Identity that created the snapshot (user email, or "system" for system-initiated snapshots like pause/fork).
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
     SnapshotListResponse:
@@ -846,7 +988,12 @@ components:
       properties:
         name:
           type: string
-          description: Optional human-readable name for this snapshot.
+          maxLength: 63
+          pattern: '^[a-z]([-a-z0-9]*[a-z0-9])?$'
+          description: |
+            Optional name for this snapshot. Must be a valid DNS name (lowercase
+            alphanumeric or '-', starting with a letter, max 63 characters) so it
+            can name sandboxes created on fork and restore. Omit to leave unnamed.
         include_memory:
           type: boolean
           default: false
@@ -876,8 +1023,11 @@ components:
           type: string
           minLength: 1
           maxLength: 63
-          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
-          description: Name for the new forked sandbox. Must be unique within the project.
+          pattern: '^[a-z]([-a-z0-9]*[a-z0-9])?$'
+          description: |
+            Name for the new forked sandbox. Must be unique within the project,
+            and a valid DNS name: lowercase alphanumeric characters or '-',
+            starting with a letter, ending with an alphanumeric, max 63 characters.
     SandboxEgressConfig:
       type: object
       description: Network egress configuration rules for the sandbox.
@@ -970,7 +1120,7 @@ components:
       type: object
       required: [token, expires_in]
       properties:
-        token: {type: string, description: "Signed JWT connect-token, presented as a bearer credential to the sandbox data plane."}
+        token: {type: string, description: "Signed connect token, presented as a bearer credential when calling the sandbox directly."}
         expires_in: {type: integer, description: "Token lifetime in seconds."}
     SandboxMetricsResponse:
       type: object
@@ -988,7 +1138,7 @@ components:
       enum: [Provisioning, Ready, Paused, Failed, Deleting]
     Agent:
       type: object
-      required: [id, org_id, project_id, name, agent_template_id, sandbox_id, status, created_at, updated_at]
+      required: [id, org_id, project_id, name, agent_template_id, sandbox_id, status, drive_mode, metrics_url, created_at, updated_at]
       properties:
         id: {type: string, format: uuid}
         org_id: {type: string}
@@ -997,6 +1147,7 @@ components:
         agent_template_id:
           type: string
           description: Catalogue template id the agent was created from (e.g. ag-claude-code).
+        drive_mode: {$ref: '#/components/schemas/DriveMode'}
         sandbox_id:
           type: string
           format: uuid
@@ -1006,8 +1157,50 @@ components:
           additionalProperties: true
           description: Effective agent configuration (template defaults merged with create-time overrides).
         status: {$ref: '#/components/schemas/AgentStatus'}
+        web_ui_url:
+          type: string
+          nullable: true
+          description: |
+            Public URL of the agent's own web UI, reached directly. Present only
+            for web agents (drive_mode http with a declared UI port); null
+            otherwise.
+        metrics_url:
+          type: string
+          description: |
+            API path for the sandbox's live health metrics (the getSandboxMetrics
+            endpoint), relative to this API's base URL.
+        gateway_token:
+          type: string
+          nullable: true
+          description: |
+            Token the agent's web UI uses to authenticate. Present only for web
+            agents that gate the UI on a token; null otherwise.
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+    DriveMode:
+      type: string
+      description: |
+        How a client drives the agent — `http` proxies to the agent's own HTTP
+        port, `exec` runs a command, `pty` attaches an interactive terminal.
+        Derived from the agent template's declared mode. Pair it with a ticket
+        from `POST /agents/{agent_id}/connect` to reach the agent.
+      enum: [http, exec, pty]
+    AgentConnectResponse:
+      type: object
+      required: [connect_url, token, expires_at]
+      properties:
+        connect_url:
+          type: string
+          description: Direct address the client calls to reach the agent.
+        token:
+          type: string
+          description: |
+            Short-lived connect token, bound to this project and agent, presented
+            as a bearer credential when calling the agent directly.
+        expires_at:
+          type: string
+          format: date-time
+          description: Absolute expiry of the ticket.
     CreateAgentRequest:
       type: object
       required: [name, agent_template]
@@ -1016,11 +1209,11 @@ components:
           type: string
           minLength: 1
           maxLength: 63
-          pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+          pattern: '^[a-z]([-a-z0-9]*[a-z0-9])?$'
           description: |
-            Agent name. Used verbatim as the backing Sandbox CR name, so it must
-            be a valid DNS-1123 label: lowercase alphanumeric characters or '-',
-            starting and ending with an alphanumeric, max 63 characters.
+            Agent name. Must be a valid DNS name: lowercase alphanumeric
+            characters or '-', starting with a letter, ending with an
+            alphanumeric, max 63 characters.
           example: my-agent
         agent_template:
           type: string
@@ -1060,12 +1253,12 @@ components:
         egress:
           allOf:
             - $ref: '#/components/schemas/SandboxEgressConfig'
-          description: Replace the agent's egress policy (re-applied live, no pod restart).
+          description: Replace the agent's egress policy (re-applied live, no restart).
         resources:
           allOf:
             - $ref: '#/components/schemas/SandboxResources'
           description: |
-            New cpu/memory sizing, resized in place on the running pod. Only the
+            New cpu/memory sizing, resized in place on the running sandbox. Only the
             fields provided change. disk_gb is not resizable in place and is
             rejected if supplied with a different value.
     AgentListResponse:
@@ -1085,6 +1278,10 @@ components:
           pattern: '^ag-[a-zA-Z0-9-]+$'
         name: {type: string}
         description: {type: string}
+        icon:
+          type: string
+          nullable: true
+          description: "Display icon for the template (e.g. an SVG document) served as a string; null when the template has no icon."
         category: {type: string, description: "Template category (e.g. coding)."}
         status: {type: string, enum: [active, deprecated, disabled]}
         agent_version: {type: string, nullable: true, description: "Version of the packaged agent binary."}

@@ -294,3 +294,111 @@ describe("sandbox snapshots, restore, and fork", () => {
     expect(calls).toHaveLength(2);
   });
 });
+
+describe("preview ports", () => {
+  it("exposes a port and returns it with its preview URL", async () => {
+    const { neev, calls } = client([
+      json(200, { port: 3000, preview_url: "https://p.example/app" }),
+    ]);
+    const p = await neev.sandboxes.exposePort("sb-1", 3000);
+    expect(p).toEqual({ port: 3000, preview_url: "https://p.example/app" });
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.url).toMatch(/\/sandboxes\/sb-1\/ports$/);
+    expect(calls[0]?.body).toEqual({ port: 3000 });
+  });
+
+  it("lists exposed ports", async () => {
+    const { neev, calls } = client([
+      json(200, { ports: [{ port: 3000, preview_url: "https://p.example/a" }] }),
+    ]);
+    const ports = await neev.sandboxes.listPorts("sb-1");
+    expect(ports).toHaveLength(1);
+    expect(ports[0]?.port).toBe(3000);
+    expect(calls[0]?.url).toMatch(/\/sandboxes\/sb-1\/ports$/);
+  });
+
+  it("revokes a port by number", async () => {
+    const { neev, calls } = client([new Response(null, { status: 204 })]);
+    await neev.sandboxes.revokePort("sb-1", 3000);
+    expect(calls[0]?.method).toBe("DELETE");
+    expect(calls[0]?.url).toMatch(/\/sandboxes\/sb-1\/ports\/3000$/);
+  });
+
+  it("getPortUrl without waiting returns the URL after a single expose call", async () => {
+    const { neev, calls } = client([
+      json(200, { port: 3000, preview_url: "https://p.example/app" }),
+    ]);
+    const url = await neev.sandboxes.getPortUrl("sb-1", 3000, { waitUntilReady: false });
+    expect(url).toBe("https://p.example/app");
+    expect(calls).toHaveLength(1); // expose only — no readiness probe
+  });
+
+  it("getPortUrl polls the preview URL until the gateway routes it", async () => {
+    const { neev, calls } = client([
+      json(200, { port: 3000, preview_url: "https://p.example/app" }),
+      new Response(null, { status: 404 }), // route not provisioned yet
+      new Response(null, { status: 502 }), // routed — nothing listening yet, but reachable
+    ]);
+    const url = await neev.sandboxes.getPortUrl("sb-1", 3000, {
+      pollIntervalMs: 1,
+      timeoutMs: 5000,
+    });
+    expect(url).toBe("https://p.example/app");
+    expect(calls).toHaveLength(3);
+    expect(calls[1]?.url).toBe("https://p.example/app"); // probed the preview URL itself
+    expect(calls[1]?.method).toBe("GET");
+  });
+
+  it("getPortUrl throws when the preview URL never becomes routable", async () => {
+    const notReady = Array.from({ length: 20 }, () => new Response(null, { status: 404 }));
+    const { neev } = client([
+      json(200, { port: 3000, preview_url: "https://p.example/app" }),
+      ...notReady,
+    ]);
+    await expect(
+      neev.sandboxes.getPortUrl("sb-1", 3000, { pollIntervalMs: 1, timeoutMs: 15 }),
+    ).rejects.toThrow(/not routable/);
+  });
+
+  it("getPortUrl aborts a stalled probe so the timeout budget is honored", async () => {
+    // The expose call returns normally; the readiness probe stalls until aborted.
+    let probeAborted = false;
+    const urlOf = (input: RequestInfo | URL): string =>
+      typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (urlOf(input).endsWith("/ports")) {
+        return json(200, { port: 3000, preview_url: "https://p.example/app" });
+      }
+      // The readiness probe: never resolve until its abort signal fires.
+      const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
+      return new Promise<Response>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => {
+          probeAborted = true;
+          reject(new Error("aborted"));
+        });
+      });
+    }) as typeof fetch;
+    const neev = new Neev({
+      apiKey: "k",
+      orgId: "o",
+      projectId: "p",
+      maxRetries: 0,
+      fetch: fetchImpl,
+    });
+    await expect(
+      neev.sandboxes.getPortUrl("sb-1", 3000, { pollIntervalMs: 5, timeoutMs: 30 }),
+    ).rejects.toThrow(/not routable/);
+    expect(probeAborted).toBe(true);
+  });
+
+  it("sandbox.getUrl delegates through the handle", async () => {
+    const { neev, calls } = client([
+      json(200, sandboxData({ id: "sb-1", phase: "Ready" })),
+      json(200, { port: 8080, preview_url: "https://p.example/ui" }),
+    ]);
+    const sandbox: Sandbox = await neev.sandboxes.get("sb-1");
+    const url = await sandbox.getUrl({ port: 8080, waitUntilReady: false });
+    expect(url).toBe("https://p.example/ui");
+    expect(calls[1]?.body).toEqual({ port: 8080 });
+  });
+});

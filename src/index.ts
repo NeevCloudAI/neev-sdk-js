@@ -48,6 +48,7 @@ export type {
 } from "./pty.js";
 
 export type {
+  GetPortUrlOptions,
   ListSandboxesParams,
   MetricsParams,
   MetricsQuery,
@@ -84,6 +85,7 @@ export type {
   SandboxListResponse,
   SandboxMetricsResponse,
   SandboxPhase,
+  SandboxPort,
   SandboxResources,
   SandboxTemplate,
   SandboxTemplateCategory,

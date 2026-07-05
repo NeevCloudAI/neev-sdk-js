@@ -258,6 +258,23 @@ import WebSocket from "ws";
 const neev = new Neev({ webSocket: (url, opts) => new WebSocket(url, opts) });
 ```
 
+### Preview URLs
+
+Run a server inside the sandbox and get a public, credential-free preview URL for one of its ports. Ports are private until you expose them; `getUrl` exposes the port and waits until the gateway has provisioned the route before returning the URL.
+
+```ts
+// Start a web server on port 3000, then get its preview URL.
+await sandbox.processes.start(["busybox", "httpd", "-f", "-p", "3000"]);
+const url = await sandbox.getUrl({ port: 3000 }); // → "https://3000-….neevsandbox.app"
+
+// Pass { waitUntilReady: false } to skip the readiness wait, and tune it with
+// timeoutMs / pollIntervalMs.
+
+// Lower-level control if you need it:
+const ports = await sandbox.listPorts(); // → SandboxPort[] ({ port, preview_url })
+await sandbox.revokePort(3000); // stop serving the port
+```
+
 ### Snapshots, fork & restore
 
 Capture a sandbox's state as a **snapshot**, then **restore** the same sandbox back to that snapshot. A snapshot is created `Pending` and must reach `Ready` before it can be restored. Pass `{ waitUntilReady: true }` to block until it is `Ready` (or use `neev.sandboxes.waitForSnapshot(id)`); otherwise read `snapshot.status` yourself. **Fork** is separate: it atomically snapshots a sandbox's *current* live state into a brand-new sandbox (it does not reuse an existing snapshot), and the source keeps running:

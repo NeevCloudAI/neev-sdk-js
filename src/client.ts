@@ -51,6 +51,9 @@ export interface RequestContext {
   createSandboxConnection(connectUrl: string): SandboxConnection;
   // Resolves the effective org/project for a call.
   resolveScope(scope?: Scope): { orgId: string; projectId: string };
+  // The configured fetch, for probing arbitrary URLs (e.g. a preview URL) outside
+  // the API base.
+  readonly fetch: FetchLike;
 }
 
 // Default base URL of the Neev production API.
@@ -73,6 +76,9 @@ export class Neev implements RequestContext {
   readonly agents: Agents;
   // Read-only agent-template catalogue (template names for `agents.create`).
   readonly agentTemplates: AgentTemplates;
+
+  // The configured fetch, exposed for probing non-API URLs (e.g. preview URLs).
+  readonly fetch: FetchLike;
 
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -103,6 +109,7 @@ export class Neev implements RequestContext {
     this.defaultProjectId = options.projectId ?? readEnv("NEEV_PROJECT_ID");
     this.webSocket = options.webSocket;
     const boundFetch = baseFetch.bind(globalThis);
+    this.fetch = boundFetch;
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.dispatch = createDispatch({
       fetch: boundFetch,

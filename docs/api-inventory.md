@@ -690,6 +690,38 @@ const fork = await sandbox.fork("fork-name");
 await fork.waitUntilReady();
 ```
 
+### `sandbox.getUrl(options)`
+
+```ts
+getUrl(options: { port: number } & GetPortUrlOptions): Promise<string>
+```
+
+Exposes `options.port` for preview URLs and returns its public URL. The gateway route is not live the instant a port is exposed, so by default this polls the URL until it is routable before returning. `GetPortUrlOptions`: `waitUntilReady?` (default true), `timeoutMs?` (default 60000), `pollIntervalMs?` (default 2000).
+
+**Returns:** `Promise<string>` — the preview URL.
+
+```ts
+await sandbox.processes.start(["busybox", "httpd", "-f", "-p", "3000"]);
+const url = await sandbox.getUrl({ port: 3000 });
+```
+
+### `sandbox.exposePort(port)` / `listPorts()` / `revokePort(port)`
+
+```ts
+exposePort(port: number): Promise<SandboxPort>
+listPorts(): Promise<SandboxPort[]>
+revokePort(port: number): Promise<void>
+```
+
+Lower-level port control: `exposePort` exposes a port without the readiness wait (idempotent — re-exposing returns the same URL), `listPorts` returns the exposed ports, and `revokePort` stops serving one.
+
+`SandboxPort`: `{ port: number; preview_url: string }`.
+
+```ts
+const ports = await sandbox.listPorts();
+await sandbox.revokePort(3000);
+```
+
 ### `sandbox.exec(...)` / `sandbox.execStream(...)`
 
 See [Exec and streaming](#exec-and-streaming).

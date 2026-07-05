@@ -35,6 +35,9 @@ export type SandboxMetricsResponse = components["schemas"]["SandboxMetricsRespon
 // One named time series within a metrics response.
 export type MetricSeries = components["schemas"]["MetricSeries"];
 
+// A port exposed for credential-free preview URLs, with its public URL.
+export type SandboxPort = components["schemas"]["SandboxPort"];
+
 // A platform-managed sandbox runtime template, referenced as
 // `sandbox_template_id` at create time.
 export type SandboxTemplate = components["schemas"]["SandboxTemplate"];

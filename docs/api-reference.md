@@ -200,6 +200,10 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | `snapshots(params?)` | `Promise<SnapshotPage>` | Lists this sandbox's snapshots (paginated: `{ page, limit }`). |
 | `restore(snapshotId)` | `Promise<this>` | Restores this sandbox in place from a chosen snapshot. |
 | `fork(name)` | `Promise<Sandbox>` | Forks the current live state into a new sandbox handle. |
+| `getUrl(options)` | `Promise<string>` | Exposes `options.port` and returns its public preview URL, waiting until the URL is routable. `options` = `{ port, waitUntilReady?, timeoutMs?, pollIntervalMs? }`. |
+| `exposePort(port)` | `Promise<SandboxPort>` | Exposes a port for preview URLs (no readiness wait). |
+| `listPorts()` | `Promise<SandboxPort[]>` | Lists the ports currently exposed for preview URLs. |
+| `revokePort(port)` | `Promise<void>` | Stops serving a previously exposed port. |
 | `files` | `SandboxFiles` (getter) | Filesystem operations on this sandbox (see runtime). |
 | `processes` | `SandboxProcesses` (getter) | Detached-process supervisor on this sandbox (see runtime). |
 | `exec(command, options?)` | `Promise<ExecResult>` \| `AsyncGenerator<ExecStreamEvent>` | Runs a command (see runtime). |
