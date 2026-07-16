@@ -27,6 +27,7 @@ import { Neev } from "@neevcloud/sdk";
 - [Files API](#files-api) — write, read, list, stat, exists, mkdir, move, remove, watch
 - [Processes API](#processes-api)
 - [PTY API](#pty-api)
+- [SSH API](#ssh-api)
 - [Runtime connection](#runtime-connection)
 
 **Reference**
@@ -77,6 +78,9 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `PtyResult` | interface (type) | `pty.ts` |
 | `WebSocketFactory` | type alias | `pty.ts` |
 | `SandboxWebSocket` | interface (type) | `pty.ts` |
+| `openSshTunnel` | function | `ssh.ts` |
+| `SshTunnel` | interface (type) | `ssh.ts` |
+| `SshTunnelOptions` | interface (type) | `ssh.ts` |
 | `ExecOptions` | interface (type) | `runtime.ts` |
 | `ExecResult` | interface (type) | `runtime.ts` |
 | `ExecStreamEvent` | type alias (union) | `runtime.ts` |
@@ -1038,6 +1042,32 @@ The WebSocket comes from the client's `webSocket` option, else the runtime globa
 
 ---
 
+## SSH API
+
+Access via `sandbox.ssh()`. Opens a local SSH tunnel — a loopback TCP listener that forwards each accepted connection to the sandbox over an authenticated WebSocket — so any ssh client, `scp`/`rsync`, or IDE remote-dev points at it with no keys to manage and no public port. The first call waits for the sandbox to be `Ready`. Node only: it opens a local TCP listener, which a browser cannot provide.
+
+### `sandbox.ssh(options?)`
+
+```ts
+ssh(options?: SshTunnelOptions): Promise<SshTunnel>
+```
+
+Binds the listener and resolves once it is listening. `SshTunnelOptions`: `port?: number` (local port to bind; 0 or omitted picks a free ephemeral port), `host?: string` (local bind address; default `127.0.0.1`, loopback-only). Throws `NeevError` if `ws` is not installed and no `webSocket` factory is configured, or if the runtime has no `node:net`.
+
+**Returns:** `Promise<SshTunnel>`.
+
+`SshTunnel`: `{ host: string; port: number; close(): Promise<void> }`. `close()` stops the listener and drops in-flight connections; it is idempotent.
+
+```ts
+const tunnel = await sandbox.ssh();
+console.log(`ssh -p ${tunnel.port} neev@localhost`);
+await tunnel.close();
+```
+
+The WebSocket comes from the client's `webSocket` option, else the [`ws`](https://www.npmjs.com/package/ws) package loaded on demand — resolved once when the tunnel opens, so a missing install fails fast rather than dropping every connection. `openSshTunnel(connection, options?)` is exported for use with a low-level `SandboxConnection`.
+
+---
+
 ## Runtime connection
 
 Low-level connection to the sandbox runtime, reached directly at the sandbox's `connect_url`. Constructed internally by the `Sandbox` handle; exposed for advanced use via `client.sandboxes.connect(connectUrl)` or `new SandboxConnection(...)`.
@@ -1521,6 +1551,13 @@ Compact reviewer index.
 | `PtyHandle` | class | `id`, `sendInput`, `resize`, `kill`, `wait`, `connected`, `disconnect`. |
 | `PtyCreateOptions`, `PtyResult` | types | Create options and exit result. |
 | `WebSocketFactory`, `SandboxWebSocket` | types | Pluggable WebSocket transport. |
+
+### SSH (`ssh.ts`)
+
+| Symbol | Kind | Notes |
+| ------ | ---- | ----- |
+| `openSshTunnel` | function | Opens a local SSH tunnel to a sandbox connection. |
+| `SshTunnel`, `SshTunnelOptions` | types | Tunnel handle (`host`/`port`/`close`) and open options (`port`/`host`). |
 
 ### HTTP / raw (`http.ts`)
 
