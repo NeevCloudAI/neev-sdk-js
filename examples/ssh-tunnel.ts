@@ -47,10 +47,7 @@ function ssh(port: number, command: string): Promise<number> {
 async function main(): Promise<void> {
   const neev = new Neev();
   log("creating sandbox…");
-  const sandbox = await neev.sandboxes.create({
-    name: `ssh-${Math.random().toString(36).slice(2, 8)}`,
-    sandbox_template_id: "sb-ubuntu-24-04-minimal",
-  });
+  const sandbox = await neev.sandboxes.create({});
 
   try {
     await sandbox.waitUntilReady({ timeoutMs: 120_000 });
