@@ -16,9 +16,7 @@ import { Neev, Signal } from "@neevcloud/sdk";
 const neev = new Neev();
 
 async function main(): Promise<void> {
-  const sandbox = await neev.sandboxes.create({
-    name: `pool-${Math.random().toString(36).slice(2, 8)}`,
-  });
+  const sandbox = await neev.sandboxes.create({});
 
   try {
     // Start three detached workers, each ticking on its own interval.

@@ -24,9 +24,7 @@ function log(message: string): void {
 
 async function main(): Promise<void> {
   log("creating sandbox…");
-  const sandbox = await neev.sandboxes.create({
-    name: `files-${Math.random().toString(36).slice(2, 8)}`,
-  });
+  const sandbox = await neev.sandboxes.create({});
 
   try {
     // Watch the whole workspace in the background. `files.watch` is an async

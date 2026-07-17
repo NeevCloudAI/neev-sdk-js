@@ -15,9 +15,7 @@ async function main(): Promise<void> {
   // Provision a sandbox from the platform defaults. (Browse the catalogue with
   // `neev.templates.list()` to choose a specific template via
   // `sandbox_template_id`.)
-  const sandbox = await neev.sandboxes.create({
-    name: "example-agent",
-  });
+  const sandbox = await neev.sandboxes.create({});
   console.log(`created ${sandbox.id} (phase: ${sandbox.phase})`);
 
   // Block until the platform reports the sandbox as Ready.

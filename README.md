@@ -53,11 +53,8 @@ const neev = new Neev({
   projectId: process.env.NEEV_PROJECT_ID,
 });
 
-// Create a sandbox from a template and wait for it to come up.
-const sandbox = await neev.sandboxes.create({
-  name: "my-agent",
-  sandbox_template_id: "sb-ubuntu-26-04-minimal",
-});
+// Create a sandbox on the platform defaults and wait for it to come up.
+const sandbox = await neev.sandboxes.create({});
 await sandbox.waitUntilReady();
 
 console.log(sandbox.id, sandbox.phase, sandbox.connectUrl);
@@ -98,7 +95,6 @@ const fork = await neev.sandboxes.fork(id, "my-fork"); // fork the current live 
 ```ts
 // Create directly from a known template id.
 const sandbox = await neev.sandboxes.create({
-  name: "my-agent",
   sandbox_template_id: "sb-ubuntu-26-04-minimal",
 });
 
