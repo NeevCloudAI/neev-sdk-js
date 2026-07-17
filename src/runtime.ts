@@ -197,6 +197,21 @@ export class SandboxConnection {
     );
   }
 
+  // Returns a factory that opens a WebSocket to this sandbox's SSH endpoint (bearer
+  // auth) on each call, used by the SSH tunnel for one socket per accepted connection.
+  // The underlying WebSocket implementation — the configured factory, else the `ws`
+  // package loaded on demand — resolves once, here, so a missing `ws` fails fast. SSH
+  // tunnelling is Node-only, so there is no browser-global fallback: that global
+  // cannot send the auth header, nor open the local listener the tunnel needs.
+  async sshSocketOpener(): Promise<() => SandboxWebSocket> {
+    // http(s) connect_url → ws(s) for the upgrade.
+    const wsBase = this.base.replace(/^http/, "ws");
+    const url = `${wsBase}/v1/ssh`;
+    const headers = { authorization: `Bearer ${this.apiKey}` };
+    const factory = this.webSocket ?? (await loadNodeWebSocket());
+    return () => factory(url, { headers });
+  }
+
   // Issues a request to the sandbox runtime and returns the raw Response, throwing a typed
   // APIError (mapped from the sandbox's {reason_code, message}) on a non-2xx status.
   async request(req: SandboxRequest): Promise<Response> {
@@ -268,6 +283,24 @@ export class SandboxConnection {
     });
     yield* streamExec(response);
   }
+}
+
+// Loads the `ws` package as a WebSocketFactory for Node, where the SSH tunnel runs.
+// It is imported on demand so browser/edge bundles never pull it in, and a missing
+// install surfaces as an actionable error instead of a bare module-not-found.
+async function loadNodeWebSocket(): Promise<WebSocketFactory> {
+  let mod: {
+    default: new (url: string, opts: { headers: Record<string, string> }) => SandboxWebSocket;
+  };
+  try {
+    mod = (await import("ws")) as unknown as typeof mod;
+  } catch {
+    throw new NeevError(
+      "SSH tunnelling needs the `ws` package. Install it with `npm install ws` (Node only).",
+    );
+  }
+  const WS = mod.default;
+  return (url, options) => new WS(url, options);
 }
 
 // Resolves the sandbox connection for a file operation. The Sandbox handle

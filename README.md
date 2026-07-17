@@ -278,6 +278,20 @@ import WebSocket from "ws";
 const neev = new Neev({ webSocket: (url, opts) => new WebSocket(url, opts) });
 ```
 
+### SSH access
+
+Point any `ssh` client, `scp`/`rsync`, or IDE remote-dev at a sandbox — no keys to manage and no public port. `sandbox.ssh()` opens a local loopback listener that forwards each connection to the sandbox over an authenticated WebSocket, and returns its `host`/`port`:
+
+```ts
+const tunnel = await sandbox.ssh(); // binds 127.0.0.1 on a free port
+console.log(`ssh -p ${tunnel.port} neev@localhost`);
+console.log(`rsync -e "ssh -p ${tunnel.port}" -av ./src neev@localhost:/workspace/`);
+
+await tunnel.close(); // stop the listener when you're done
+```
+
+Node only — it opens a local TCP listener. It needs the [`ws`](https://www.npmjs.com/package/ws) package, which it loads automatically (no `webSocket` factory required, unlike the PTY above); `npm install ws` if you don't already have it.
+
 ### Preview URLs
 
 Run a server inside the sandbox and get a public, credential-free preview URL for one of its ports. Ports are private until you expose them; `getUrl` exposes the port and waits until the gateway has provisioned the route before returning the URL.

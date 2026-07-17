@@ -38,6 +38,7 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 | [`process-pool.ts`](./process-pool.ts) | Manage several detached processes: start a pool, `list()`/`status()`, then `killAll()` | `npx tsx examples/process-pool.ts` |
 | [`pty.ts`](./pty.ts) | `sandbox.pty` — interactive terminal over a WebSocket (needs `pnpm add -D ws @types/ws`) | `npx tsx examples/pty.ts` |
 | [`preview-url.ts`](./preview-url.ts) | `sandbox.getUrl({ port })` — serve on a port, get its preview URL, list and revoke ports | `npx tsx examples/preview-url.ts` |
+| [`ssh-tunnel.ts`](./ssh-tunnel.ts) | `sandbox.ssh()` over a BYOI image — exec, `rsync` upload, and `ssh -L` port-forward through one tunnel (needs `pnpm add -D ws`) | `npx tsx examples/ssh-tunnel.ts` |
 
 ## Examples — with an AI model
 

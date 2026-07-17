@@ -16,7 +16,7 @@ Task-oriented API lists and copy-paste snippets for the public `@neevcloud/sdk` 
 **Working with a sandbox**
 
 - [Sandbox handle](#sandbox-handle)
-- [Runtime](#runtime) — exec, files (write, read, list, stat, exists, mkdir, move, remove, watch), processes, pty
+- [Runtime](#runtime) — exec, files (write, read, list, stat, exists, mkdir, move, remove, watch), processes, pty, ssh
 
 **Reference**
 
@@ -215,6 +215,7 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | `exposePort(port)` | `Promise<SandboxPort>` | Exposes a port for preview URLs (no readiness wait). |
 | `listPorts()` | `Promise<SandboxPort[]>` | Lists the ports currently exposed for preview URLs. |
 | `revokePort(port)` | `Promise<void>` | Stops serving a previously exposed port. |
+| `ssh(options?)` | `Promise<SshTunnel>` | Opens a local SSH tunnel (loopback listener) to the sandbox; `options` = `{ port?, host? }`. Node only (see runtime). |
 | `files` | `SandboxFiles` (getter) | Filesystem operations on this sandbox (see runtime). |
 | `processes` | `SandboxProcesses` (getter) | Detached-process supervisor on this sandbox (see runtime). |
 | `exec(command, options?)` | `Promise<ExecResult>` \| `AsyncGenerator<ExecStreamEvent>` | Runs a command (see runtime). |
@@ -356,6 +357,24 @@ const again = await sandbox.pty.create({ id: pty.id, onData: (b) => process.stdo
 
 The PTY needs a `WebSocket`. It uses the runtime's global one if present; in Node, pass a header-capable WebSocket (the global cannot send auth headers): `new Neev({ webSocket: (url, opts) => new WebSocket(url, opts) })` with the [`ws`](https://www.npmjs.com/package/ws) package.
 
+### `sandbox.ssh`
+
+Opens an SSH tunnel: a loopback TCP listener that forwards each connection to the sandbox over an authenticated WebSocket, so any ssh client, `scp`/`rsync`, or IDE remote-dev points at the returned `{ host, port }` with no keys to manage and no public port.
+
+| Member | Returns | Summary |
+| ------ | ------- | ------- |
+| `sandbox.ssh(options?)` | `Promise<SshTunnel>` | Binds the listener (`options` = `{ port?, host? }`; defaults to a free ephemeral port on `127.0.0.1`) and resolves once it is listening. |
+| `tunnel.host` / `tunnel.port` | `string` / `number` | Address the listener is bound to. |
+| `tunnel.close()` | `Promise<void>` | Stops the listener and drops in-flight connections. Idempotent. |
+
+```ts
+const tunnel = await sandbox.ssh(); // binds 127.0.0.1 on a free port
+console.log(`ssh -p ${tunnel.port} neev@localhost`);
+await tunnel.close();
+```
+
+Node only — it opens a local TCP listener. It uses the client's `webSocket` factory when set, else loads the [`ws`](https://www.npmjs.com/package/ws) package automatically (no factory required, unlike the PTY); resolved once up front, so a missing `ws` throws immediately.
+
 ### Low-level connection types
 
 Listed for completeness; prefer the handle methods above.
@@ -456,6 +475,7 @@ Minimal one-liners for each public API.
 | `sandbox.files.read(...)` | `const bytes = await sandbox.files.read("main.py");` |
 | `sandbox.files.readText(...)` | `const text = await sandbox.files.readText("main.py");` |
 | `sandbox.files.list(...)` | `const entries = await sandbox.files.list(".", { recursive: true });` |
+| `sandbox.ssh()` | `const t = await sandbox.ssh(); // then: ssh -p ${t.port} neev@localhost` |
 | `SandboxConnection` (low-level) | `const conn = neev.createSandboxConnection(sandbox.connectUrl!);` |
 | `SandboxFiles` (low-level) | via `sandbox.files` or `conn.files` |
 

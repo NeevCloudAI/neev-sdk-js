@@ -11,6 +11,8 @@ import type {
 } from "./resources/sandboxes.js";
 import { SandboxFiles } from "./runtime.js";
 import type { ExecOptions, ExecResult, ExecStreamEvent, SandboxConnection } from "./runtime.js";
+import { openSshTunnel } from "./ssh.js";
+import type { SshTunnel, SshTunnelOptions } from "./ssh.js";
 import type {
   CreateSnapshotParams,
   SandboxData,
@@ -137,6 +139,15 @@ export class Sandbox {
       this.ptyProxy = new SandboxPty(() => this.ensureConnection());
     }
     return this.ptyProxy;
+  }
+
+  // Opens an SSH tunnel to this sandbox: a loopback TCP listener that forwards each
+  // connection over an authenticated WebSocket, so any ssh client or IDE points at the
+  // returned { host, port } with no keys to manage and no public port. Waits for the
+  // sandbox to be Ready on first use. Node only. Close the returned tunnel when done.
+  async ssh(options: SshTunnelOptions = {}): Promise<SshTunnel> {
+    const conn = await this.ensureConnection();
+    return openSshTunnel(conn, options);
   }
 
   // Runs a command in the sandbox. By default it buffers and resolves to the full

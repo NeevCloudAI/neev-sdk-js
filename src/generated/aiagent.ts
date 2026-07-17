@@ -11,10 +11,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List sandboxes in a project */
+        /**
+         * List sandboxes in a project
+         * @description Return the list of sandboxes in a project.
+         */
         get: operations["listSandboxes"];
         put?: never;
-        /** Create a sandbox */
+        /**
+         * Create a sandbox
+         * @description Create from a catalogue template or BYOI image; set exactly one of `sandbox_template_id` or `image`.
+         */
         post: operations["createSandbox"];
         delete?: never;
         options?: never;
@@ -544,12 +550,13 @@ export interface components {
         };
         CreateSandboxRequest: {
             /**
-             * @description Sandbox name. Must be a valid DNS name: lowercase alphanumeric
-             *     characters or '-', starting with a letter, ending with an
-             *     alphanumeric, max 63 characters.
+             * @description Sandbox name. Optional — when omitted, the server generates one (a
+             *     "sandbox-" prefix plus a short random suffix). When provided, must be
+             *     a valid DNS name: lowercase alphanumeric characters or '-', starting
+             *     with a letter, ending with an alphanumeric, max 63 characters.
              * @example my-sandbox
              */
-            name: string;
+            name?: string;
             /**
              * @description Region to provision in; omit to use the platform default.
              * @example dev
@@ -558,20 +565,30 @@ export interface components {
             env?: components["schemas"]["EnvVar"][];
             resources?: components["schemas"]["SandboxResources"];
             egress?: components["schemas"]["SandboxEgressConfig"];
-            /**
-             * @description Catalogue template id (e.g. sb-ubuntu-26-04-minimal). The server
-             *     validates the template exists and is active, then provisions the
-             *     sandbox image and command from that template.
-             */
+            /** @description Catalogue template id. Mutually exclusive with `image`. */
             sandbox_template_id?: string;
+            /**
+             * @description Public OCI image reference with an explicit tag or digest. Mutually exclusive with `sandbox_template_id`.
+             * @example docker.io/library/python:3.12
+             */
+            image?: string;
+            /**
+             * @description Optional container command for BYOI creates; defaults to sleep infinity when omitted.
+             * @example [
+             *       "sleep",
+             *       "infinity"
+             *     ]
+             */
+            command?: string[];
             /**
              * Format: uuid
              * @description When set, the new sandbox is restored from this snapshot instead of
              *     cold-starting from the image. Snapshot must belong to the same
-             *     project. Sizing and region must match the snapshot's origin.
+             *     project. Sizing and region must match the snapshot's origin. Must not
+             *     be combined with `image`.
              */
             from_snapshot?: string | null;
-        };
+        } & (unknown | unknown | unknown | unknown);
         ExposePortRequest: {
             /** @description User port to expose for preview URLs. */
             port: number;
@@ -1136,6 +1153,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -1172,6 +1190,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -1235,6 +1254,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -1302,6 +1322,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -1333,6 +1354,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -1403,6 +1425,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -1499,6 +1522,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };
     };

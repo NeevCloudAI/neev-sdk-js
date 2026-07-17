@@ -51,6 +51,9 @@ export type {
   WebSocketFactory,
 } from "./pty.js";
 
+export { openSshTunnel } from "./ssh.js";
+export type { SshTunnel, SshTunnelOptions } from "./ssh.js";
+
 export type {
   GetPortUrlOptions,
   ListSandboxesParams,
