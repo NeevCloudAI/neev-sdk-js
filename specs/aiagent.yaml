@@ -26,6 +26,7 @@ paths:
     get:
       tags: [Sandboxes]
       summary: List sandboxes in a project
+      description: Return the list of sandboxes in a project.
       operationId: listSandboxes
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
@@ -44,6 +45,7 @@ paths:
     post:
       tags: [Sandboxes]
       summary: Create a sandbox
+      description: Create from a catalogue template or BYOI image; set exactly one of `sandbox_template_id` or `image`.
       operationId: createSandbox
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
@@ -101,6 +103,7 @@ paths:
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
+        "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/pause:
     post:
@@ -132,6 +135,7 @@ paths:
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
+        "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/connect-token:
     post:
@@ -175,6 +179,7 @@ paths:
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
+        "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports:
     get:
@@ -229,6 +234,7 @@ paths:
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
+        "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports/{port}:
     delete:
@@ -252,6 +258,7 @@ paths:
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
+        "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
   # --- Sandbox Memory Snapshots ---
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/snapshots:
@@ -303,6 +310,7 @@ paths:
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
+        "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/snapshots/{snapshot_id}:
     get:
@@ -371,6 +379,7 @@ paths:
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
+        "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/fork:
     post:
@@ -874,7 +883,6 @@ components:
         updated_at: {type: string, format: date-time}
     CreateSandboxRequest:
       type: object
-      required: [name]
       properties:
         name:
           type: string
@@ -882,9 +890,10 @@ components:
           maxLength: 63
           pattern: '^[a-z]([-a-z0-9]*[a-z0-9])?$'
           description: |
-            Sandbox name. Must be a valid DNS name: lowercase alphanumeric
-            characters or '-', starting with a letter, ending with an
-            alphanumeric, max 63 characters.
+            Sandbox name. Optional — when omitted, the server generates one (a
+            "sandbox-" prefix plus a short random suffix). When provided, must be
+            a valid DNS name: lowercase alphanumeric characters or '-', starting
+            with a letter, ending with an alphanumeric, max 63 characters.
           example: my-sandbox
         region: {type: string, description: "Region to provision in; omit to use the platform default.", example: "dev"}
         env: {type: array, items: {$ref: '#/components/schemas/EnvVar'}}
@@ -894,10 +903,19 @@ components:
           type: string
           minLength: 1
           pattern: '^sb-[a-zA-Z0-9-]+$'
-          description: |
-            Catalogue template id (e.g. sb-ubuntu-26-04-minimal). The server
-            validates the template exists and is active, then provisions the
-            sandbox image and command from that template.
+          description: Catalogue template id. Mutually exclusive with `image`.
+        image:
+          type: string
+          minLength: 1
+          maxLength: 512
+          pattern: '^[^/@\s]+(/[^/@\s]+)+(:[^/@\s]+|@sha256:[a-fA-F0-9]+)$'
+          description: Public OCI image reference with an explicit tag or digest. Mutually exclusive with `sandbox_template_id`.
+          example: docker.io/library/python:3.12
+        command:
+          type: array
+          items: {type: string}
+          description: Optional container command for BYOI creates; defaults to sleep infinity when omitted.
+          example: ["sleep", "infinity"]
         from_snapshot:
           type: string
           format: uuid
@@ -905,7 +923,18 @@ components:
           description: |
             When set, the new sandbox is restored from this snapshot instead of
             cold-starting from the image. Snapshot must belong to the same
-            project. Sizing and region must match the snapshot's origin.
+            project. Sizing and region must match the snapshot's origin. Must not
+            be combined with `image`.
+      oneOf:
+        - required: [sandbox_template_id]
+        - required: [image]
+        - required: [from_snapshot]
+        # Omit all three to use the platform default catalogue template (when configured).
+        - not:
+            anyOf:
+              - required: [sandbox_template_id]
+              - required: [image]
+              - required: [from_snapshot]
     ExposePortRequest:
       type: object
       required: [port]
