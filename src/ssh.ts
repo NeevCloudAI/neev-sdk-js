@@ -48,7 +48,13 @@ export async function openSshTunnel(
   const server: Server = net.createServer((socket) => {
     live.add(socket);
     socket.once("close", () => live.delete(socket));
-    bridge(openSocket, socket);
+    // A throwing socket factory (e.g. a misconfigured `webSocket`) must drop just
+    // this connection, not crash the process out of the accept callback.
+    try {
+      bridge(openSocket, socket);
+    } catch {
+      socket.destroy();
+    }
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -60,6 +66,11 @@ export async function openSshTunnel(
       resolve();
     });
   });
+
+  // After a successful listen, swallow late accept-time errors (e.g. EMFILE): an
+  // unhandled 'error' event would otherwise crash the host process. A bind-time
+  // failure is still surfaced by the listen promise above; close() tears down cleanly.
+  server.on("error", () => {});
 
   const address = server.address() as AddressInfo;
   let closed = false;

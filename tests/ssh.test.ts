@@ -155,4 +155,25 @@ describe("ssh tunnel", () => {
     await tunnel.close();
     await expect(connectOnce(port)).rejects.toThrow();
   });
+
+  it("drops a connection whose socket factory throws, without crashing", async () => {
+    const factory: WebSocketFactory = () => {
+      throw new Error("boom");
+    };
+    const conn = new SandboxConnection({
+      connectUrl: "https://sbx.example",
+      apiKey: "k",
+      dispatch: async () => new Response(),
+      webSocket: factory,
+    });
+    const tunnel = await openSshTunnel(conn);
+    // The factory throws inside the accept callback; the process must survive and
+    // the offending connection must be dropped.
+    await new Promise<void>((resolve) => {
+      const client = net.connect(tunnel.port, "127.0.0.1");
+      client.on("close", () => resolve());
+      client.on("error", () => resolve());
+    });
+    await tunnel.close();
+  });
 });
