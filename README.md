@@ -107,6 +107,34 @@ const { items } = await neev.templates.list();
 const template = await neev.templates.get("sb-ubuntu-26-04-minimal"); // inspect one
 ```
 
+### Network egress
+
+Sandboxes (and agents) are **deny-all by default** — no outbound network. Open egress at create time with the convenience fields, on either `sandboxes.create` or `agents.create`:
+
+```ts
+// allow the whole internet
+await neev.sandboxes.create({ name: "web", allowInternet: true });
+
+// allow only specific hosts (FQDN or CIDR; wildcards supported)
+await neev.sandboxes.create({ name: "ci", allowEgress: ["github.com", "*.npmjs.org"] });
+
+// same on agents
+await neev.agents.create({ name: "coder", agent_template: "claude-code", allowInternet: true });
+```
+
+`allowInternet: true` opens `0.0.0.0/0` and `::/0`. For finer control (ports, protocols, a mix of rules) pass a full `egress` object instead — it takes precedence over the convenience fields:
+
+```ts
+await neev.sandboxes.create({
+  name: "adv",
+  egress: {
+    mode: "allow_list",
+    allow_internet: false,
+    allow: [{ host: "api.example.com", ports: [443], protocol: "TCP" }],
+  },
+});
+```
+
 ### Sandbox handles
 
 `create`, `get`, and `list` return `Sandbox` handles with lifecycle methods on the object itself:

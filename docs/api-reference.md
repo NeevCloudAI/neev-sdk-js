@@ -85,11 +85,16 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `restore(id, snapshotId, scope?)` | `Promise<Sandbox>` | Restores a sandbox **in place** from one of its snapshots. |
 | `fork(id, name, scope?)` | `Promise<Sandbox>` | Forks a sandbox into a new named sandbox from its **current live state**. |
 
-**`create(params, scope?)`** — only `name` is required; `sandbox_template_id` is optional and platform-defaulted.
+**`create(params, scope?)`** — only `name` is required; `sandbox_template_id` is optional and platform-defaulted. Egress is deny-all by default; open it with the `allowInternet` / `allowEgress` convenience fields (same on `agents.create`), or a full `egress` object for finer control (which takes precedence).
 
 ```ts
 const sandbox = await neev.sandboxes.create({ name: "my-agent" });
 await sandbox.waitUntilReady();
+
+// open all egress (0.0.0.0/0 + ::/0)
+await neev.sandboxes.create({ name: "web", allowInternet: true });
+// allow specific hosts (FQDN or CIDR, wildcards supported)
+await neev.sandboxes.create({ name: "ci", allowEgress: ["github.com", "*.npmjs.org"] });
 ```
 
 **`list(params?)`** — `params` is `{ page?, limit?, orgId?, projectId? }`; returns `SandboxPage` = `{ items: Sandbox[]; total; page; limit }`.

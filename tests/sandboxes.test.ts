@@ -35,6 +35,54 @@ describe("sandboxes resource", () => {
     });
   });
 
+  it("allowInternet translates to a full-open egress policy", async () => {
+    const { neev, calls } = client([json(201, sandboxData({ name: "web" }))]);
+    await neev.sandboxes.create({ name: "web", sandbox_template_id: "sb-x", allowInternet: true });
+    // The gate alone is a server-side no-op, so the 0.0.0.0/0 + ::/0 routes must ride along.
+    expect(calls[0]?.body).toEqual({
+      name: "web",
+      sandbox_template_id: "sb-x",
+      egress: {
+        mode: "allow_list",
+        allow_internet: true,
+        allow: [{ host: "0.0.0.0/0" }, { host: "::/0" }],
+      },
+    });
+  });
+
+  it("allowEgress translates to an allow-list of hosts, no internet gate", async () => {
+    const { neev, calls } = client([json(201, sandboxData({ name: "ci" }))]);
+    await neev.sandboxes.create({
+      name: "ci",
+      sandbox_template_id: "sb-x",
+      allowEgress: ["github.com", "*.npmjs.org"],
+    });
+    expect(calls[0]?.body).toEqual({
+      name: "ci",
+      sandbox_template_id: "sb-x",
+      egress: {
+        mode: "allow_list",
+        allow_internet: false,
+        allow: [{ host: "github.com" }, { host: "*.npmjs.org" }],
+      },
+    });
+  });
+
+  it("an explicit egress wins, and the convenience fields are stripped from the body", async () => {
+    const { neev, calls } = client([json(201, sandboxData({ name: "adv" }))]);
+    await neev.sandboxes.create({
+      name: "adv",
+      sandbox_template_id: "sb-x",
+      allowInternet: true,
+      egress: { mode: "deny_all", allow_internet: false },
+    });
+    expect(calls[0]?.body).toEqual({
+      name: "adv",
+      sandbox_template_id: "sb-x",
+      egress: { mode: "deny_all", allow_internet: false },
+    });
+  });
+
   it("lists sandboxes with pagination and wraps items as handles", async () => {
     const { neev, calls } = client([
       json(200, {

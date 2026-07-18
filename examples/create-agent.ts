@@ -19,6 +19,8 @@ async function main(): Promise<void> {
   console.log(`templates: ${items.map((t) => t.name).join(", ") || "(none)"}`);
 
   // Provision an agent from a template. It starts Provisioning.
+  // The agent's backing sandbox is deny-all egress by default — add
+  // `allowInternet: true`, or `allowEgress: ["api.anthropic.com"]` for specific hosts.
   const agent = await neev.agents.create({
     name: "example-coder",
     agent_template: process.env.NEEV_AGENT_TEMPLATE ?? "claude-code",

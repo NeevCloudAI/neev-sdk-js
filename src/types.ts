@@ -9,9 +9,19 @@ export type SandboxData = components["schemas"]["Sandbox"];
 // Lifecycle phase reported by the service.
 export type SandboxPhase = components["schemas"]["SandboxPhase"];
 
+// SDK-only convenience fields on sandbox and agent create that translate into the
+// `egress` policy. Pass a full `egress` object for anything these don't cover; an
+// explicit `egress` always wins over them.
+export interface EgressConvenience {
+  // Open all egress (0.0.0.0/0 and ::/0). Default is deny-all; opt in with true.
+  allowInternet?: boolean;
+  // Allow egress to specific hosts — FQDN or CIDR (wildcards supported).
+  allowEgress?: string[];
+}
+
 // Request body accepted by `sandboxes.create`. Requires `sandbox_template_id`;
 // the server resolves the image and default command from the chosen template.
-export type CreateSandboxParams = components["schemas"]["CreateSandboxRequest"];
+export type CreateSandboxParams = components["schemas"]["CreateSandboxRequest"] & EgressConvenience;
 
 // Compute size (cpu / memory_gb / disk_gb) for a sandbox. Omitted fields use the
 // platform default.
@@ -76,7 +86,7 @@ export type AgentStatus = components["schemas"]["AgentStatus"];
 
 // Request body accepted by `agents.create`. Requires `name` and a catalogue
 // `agent_template` name; the server provisions the backing sandbox from it.
-export type CreateAgentParams = components["schemas"]["CreateAgentRequest"];
+export type CreateAgentParams = components["schemas"]["CreateAgentRequest"] & EgressConvenience;
 
 // Partial in-place update accepted by `agents.update` (egress and/or resources).
 export type UpdateAgentParams = components["schemas"]["UpdateAgentRequest"];

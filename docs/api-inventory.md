@@ -98,6 +98,7 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `SandboxTemplatePage` | interface (type) | `resources/templates.ts` |
 | `CreateSandboxParams` | type alias | `types.ts` |
 | `CreateSnapshotParams` | type alias | `types.ts` |
+| `EgressConvenience` | interface (type) | `types.ts` |
 | `EnvVar` | type alias | `types.ts` |
 | `MetricSeries` | type alias | `types.ts` |
 | `SandboxData` | type alias | `types.ts` |
@@ -1149,7 +1150,7 @@ Import from `@neevcloud/sdk`. Most lifecycle types are aliases over the generate
 
 ### `CreateSandboxParams`
 
-Alias for the generated `CreateSandboxRequest`. The request body for `sandboxes.create`. Only `name` is required; `sandbox_template_id` is optional (a platform default applies when omitted).
+The generated `CreateSandboxRequest` plus the SDK-only `EgressConvenience` fields. The request body for `sandboxes.create`. Only `name` is required; `sandbox_template_id` is optional (a platform default applies when omitted).
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
@@ -1158,6 +1159,8 @@ Alias for the generated `CreateSandboxRequest`. The request body for `sandboxes.
 | `env` | `EnvVar[]` | no |
 | `resources` | `SandboxResources` | no |
 | `egress` | `SandboxEgressConfig` | no |
+| `allowInternet` | `boolean` | no (SDK convenience — opens all egress) |
+| `allowEgress` | `string[]` | no (SDK convenience — allow specific hosts) |
 
 > Exact optionality/extra fields follow the generated OpenAPI schema; consult `src/generated/aiagent.ts` if the spec changes.
 
@@ -1195,6 +1198,10 @@ Compute size for a sandbox (e.g. `cpu` / `memory_gb` / `disk_gb`). Omitted field
 ### `SandboxEgressConfig` / `SandboxEgressRule`
 
 `SandboxEgressConfig` — network egress policy (mode plus optional allow rules). `SandboxEgressRule` — a single egress allow rule (host plus optional ports/protocol). Shapes per the generated schema.
+
+### `EgressConvenience`
+
+SDK-only fields on `CreateSandboxParams` and `CreateAgentParams` that translate into `egress`: `allowInternet?: boolean` opens all egress (emits the `allow_internet` gate plus the `0.0.0.0/0` and `::/0` routes), `allowEgress?: string[]` allows specific hosts (FQDN or CIDR). An explicit `egress` takes precedence over both.
 
 ### `EnvVar`
 

@@ -220,6 +220,9 @@ Key points:
 
 - Use `sandbox_template_id` (not `template_id`) in `create` params when you want a
   specific template; omit it to use the platform default.
+- Egress is **deny-all** by default. Pass `allowInternet: true` to open all outbound
+  network, or `allowEgress: ["github.com", "*.npmjs.org"]` for specific hosts. The same
+  fields work on `agents.create`.
 - `connectUrl` is a getter on the handle; it is populated once the sandbox is
   Ready.
 - Always `await sandbox.waitUntilReady()` before `exec` or `files` operations. The

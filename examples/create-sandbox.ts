@@ -13,8 +13,9 @@ const neev = new Neev();
 
 async function main(): Promise<void> {
   // Provision a sandbox from the platform defaults. (Browse the catalogue with
-  // `neev.templates.list()` to choose a specific template via
-  // `sandbox_template_id`.)
+  // `neev.templates.list()` to choose a specific template via `sandbox_template_id`.)
+  // Egress is deny-all by default — add `allowInternet: true`, or
+  // `allowEgress: ["github.com", "*.npmjs.org"]` for specific hosts, to open it.
   const sandbox = await neev.sandboxes.create({
     name: "example-agent",
   });
