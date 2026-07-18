@@ -19,6 +19,9 @@ import { Neev } from "@neevcloud/sdk";
 
 - [Sandboxes resource](#sandboxes-resource) — create, list, get, pause, resume, delete, metrics, snapshots, restore, fork, connect
 - [Templates resource](#templates-resource)
+- [Agents resource](#agents-resource) — create, list, get, update, pause, resume, delete
+- [Agent templates resource](#agent-templates-resource)
+- [Agent handle](#agent-handle)
 
 **Working with a sandbox** — the `Sandbox` handle and its facades
 
@@ -57,6 +60,8 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `Sandbox` | class | `sandbox.ts` |
 | `WaitOptions` | interface (type) | `sandbox.ts` |
 | `SnapshotWaitOptions` | interface (type) | `sandbox.ts` |
+| `Agent` | class | `agent.ts` |
+| `AgentWaitOptions` | interface (type) | `agent.ts` |
 | `SandboxConnection` | class | `runtime.ts` |
 | `SandboxFiles` | class | `runtime.ts` |
 | `SandboxProcesses` | class | `processes.ts` |
@@ -96,6 +101,17 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `WaitForSnapshotParams` | interface (type) | `resources/sandboxes.ts` |
 | `ListTemplatesParams` | interface (type) | `resources/templates.ts` |
 | `SandboxTemplatePage` | interface (type) | `resources/templates.ts` |
+| `ListAgentsParams` | interface (type) | `resources/agents.ts` |
+| `AgentPage` | interface (type) | `resources/agents.ts` |
+| `ListAgentTemplatesParams` | interface (type) | `resources/agent-templates.ts` |
+| `AgentTemplatePage` | interface (type) | `resources/agent-templates.ts` |
+| `CreateAgentParams` | type alias | `types.ts` |
+| `UpdateAgentParams` | type alias | `types.ts` |
+| `AgentData` | type alias | `types.ts` |
+| `AgentStatus` | type alias | `types.ts` |
+| `AgentListResponse` | type alias | `types.ts` |
+| `AgentTemplate` | type alias | `types.ts` |
+| `AgentTemplateListResponse` | type alias | `types.ts` |
 | `CreateSandboxParams` | type alias | `types.ts` |
 | `CreateSnapshotParams` | type alias | `types.ts` |
 | `EgressConvenience` | interface (type) | `types.ts` |
@@ -134,6 +150,8 @@ The platform client. Construct once and reuse. Exposes two resource namespaces p
 
 - `client.sandboxes` — sandbox lifecycle operations (`Sandboxes`)
 - `client.templates` — read-only template catalogue (`SandboxTemplates`)
+- `client.agents` — agent lifecycle operations (`Agents`)
+- `client.agentTemplates` — read-only agent-template catalogue (`AgentTemplates`)
 - `client.raw` — untyped lifecycle HTTP escape hatch (`RawClient`)
 
 **Parameters (`NeevOptions`, all optional):**
@@ -562,6 +580,126 @@ Fetches a single sandbox template by id.
 ```ts
 const tmpl = await client.templates.get("sb-ubuntu-26-04-minimal");
 console.log(tmpl.description);
+```
+
+---
+
+## Agents resource
+
+Access via `client.agents` (an `Agents` instance). An agent is a managed workload that runs on its own 1:1 backing sandbox; the handle's `sandbox()` resolves that sandbox for runtime access (files/exec/PTY/SSH). Lifecycle mirrors the sandboxes resource.
+
+### `client.agents.create(params, scope?)`
+
+```ts
+create(params: CreateAgentParams, scope?: Scope): Promise<Agent>
+```
+
+Creates an agent from a catalogue template. `name` and `agent_template` are required. Egress is deny-all by default; open it with the `allowInternet` / `allowEgress` convenience fields (see `EgressConvenience`) or a full `egress` object.
+
+**Returns:** `Promise<Agent>` — the handle may still be `Provisioning`; call `waitUntilReady`.
+
+**Raises:** `BadRequestError` (invalid template/config/egress), plus auth/transport errors.
+
+```ts
+const agent = await client.agents.create({
+  name: "coder",
+  agent_template: "claude-code",
+  allowInternet: true,
+});
+await agent.waitUntilReady();
+```
+
+### `client.agents.list(params?)`
+
+```ts
+list(params?: ListAgentsParams): Promise<AgentPage>
+```
+
+Lists agents in the resolved org/project. `params` = `{ page?, limit?, orgId?, projectId? }`; returns `AgentPage` = `{ items: Agent[]; total; page; limit }`.
+
+### `client.agents.get(id, scope?)`
+
+```ts
+get(id: string, scope?: Scope): Promise<Agent>
+```
+
+Fetches a single agent by id (a UUID, from `agents.list`).
+
+### `client.agents.update(id, params, scope?)`
+
+```ts
+update(id: string, params: UpdateAgentParams, scope?: Scope): Promise<Agent>
+```
+
+Updates an agent in place. `UpdateAgentParams` = `{ egress?: SandboxEgressConfig; resources?: SandboxResources }`; at least one field is required.
+
+### `client.agents.pause(id, scope?)` / `resume(id, scope?)` / `delete(id, scope?)`
+
+```ts
+pause(id: string, scope?: Scope): Promise<Agent>
+resume(id: string, scope?: Scope): Promise<Agent>
+delete(id: string, scope?: Scope): Promise<void>
+```
+
+Pause suspends the backing sandbox; resume restarts it; delete removes the agent (resolves to `void`).
+
+---
+
+## Agent templates resource
+
+Access via `client.agentTemplates` (an `AgentTemplates` instance). Read-only catalogue of agent templates (the template names passed to `agents.create`), platform-managed, with no org/project scope.
+
+### `client.agentTemplates.list(params?)`
+
+```ts
+list(params?: ListAgentTemplatesParams): Promise<AgentTemplatePage>
+```
+
+Lists available agent templates. `params` = `{ page?, limit? }`; returns `AgentTemplatePage` = `{ items: AgentTemplate[]; total; page; limit }`.
+
+### `client.agentTemplates.get(id)`
+
+```ts
+get(id: string): Promise<AgentTemplate>
+```
+
+Fetches a single agent template by id (e.g. `"ag-claude-code"`).
+
+---
+
+## Agent handle
+
+`Agent` instances are returned by `agents.create()`, `get()`, `update()`, `pause()`, `resume()`, and `list().items`. They hold the latest known server state (`AgentData`) and expose lifecycle actions plus `sandbox()` to reach the backing sandbox's runtime. Construct via the `agents` resource, never directly.
+
+### Getters
+
+| Getter | Type | Description |
+| ------ | ---- | ----------- |
+| `id` | `string` | Agent id (UUID). |
+| `name` | `string` | Agent name. |
+| `status` | `AgentStatus` | Lifecycle status. |
+| `templateId` | `string` | Agent template id it was created from. |
+| `sandboxId` | `string` | Id of the 1:1 backing sandbox. |
+| `config` | `Record<string, unknown> \| undefined` | Effective config (template defaults merged with create-time overrides). |
+| `data` | `AgentData` | Raw server record. |
+
+### Methods
+
+| Method | Returns | Description |
+| ------ | ------- | ----------- |
+| `sandbox()` | `Promise<Sandbox>` | Resolves the backing sandbox handle for files/exec/PTY/SSH. |
+| `refresh()` | `Promise<this>` | Re-fetches the latest server state. |
+| `update(params)` | `Promise<this>` | Updates in place (`UpdateAgentParams`), refreshing the handle. |
+| `pause()` / `resume()` | `Promise<this>` | Suspend / restart the backing sandbox. |
+| `delete()` | `Promise<void>` | Deletes the agent. |
+| `waitUntilReady(options?)` | `Promise<this>` | Polls until the status is Ready. `options` = `{ timeoutMs?; pollIntervalMs? }`. |
+| `toJSON()` | `AgentData` | The raw server record (for `JSON.stringify`). |
+
+```ts
+const agent = await client.agents.get(id);
+await agent.waitUntilReady();
+const box = await agent.sandbox(); // reach the runtime
+await box.exec("echo", { args: ["hi"] });
 ```
 
 ---
@@ -1203,6 +1341,43 @@ Compute size for a sandbox (e.g. `cpu` / `memory_gb` / `disk_gb`). Omitted field
 
 SDK-only fields on `CreateSandboxParams` and `CreateAgentParams` that translate into `egress`: `allowInternet?: boolean` opens all egress (emits the `allow_internet` gate plus the `0.0.0.0/0` and `::/0` routes), `allowEgress?: string[]` allows specific hosts (FQDN or CIDR). An explicit `egress` takes precedence over both.
 
+### `CreateAgentParams`
+
+The generated `CreateAgentRequest` plus the SDK-only `EgressConvenience` fields. The request body for `agents.create`. `name` and `agent_template` are required.
+
+| Field | Type | Required |
+| ----- | ---- | -------- |
+| `name` | `string` (DNS-1123 label) | yes |
+| `agent_template` | `string` (catalogue name) | yes |
+| `region` | `string` | no |
+| `env` | `EnvVar[]` | no |
+| `config` | `Record<string, unknown>` | no (template-specific overrides) |
+| `resources` | `SandboxResources` | no |
+| `egress` | `SandboxEgressConfig` | no |
+| `allowInternet` | `boolean` | no (SDK convenience — opens all egress) |
+| `allowEgress` | `string[]` | no (SDK convenience — allow specific hosts) |
+
+### `UpdateAgentParams`
+
+Alias for the generated `UpdateAgentRequest` — the body for `agents.update`. At least one field must be provided.
+
+| Field | Type | Required |
+| ----- | ---- | -------- |
+| `egress` | `SandboxEgressConfig` | no |
+| `resources` | `SandboxResources` | no |
+
+### `AgentData`
+
+Alias for the generated `Agent` schema — the full agent record wrapped by the `Agent` handle: `id`, `org_id`, `project_id`, `name`, `agent_template_id`, `sandbox_id` (the 1:1 backing sandbox), `drive_mode`, `status` (`AgentStatus`), `config?`, `metrics_url`, `web_ui_url?`, `gateway_token?`, `created_at`, `updated_at`.
+
+### `AgentStatus`
+
+Alias for the generated `AgentStatus` enum: `"Provisioning" | "Ready" | "Paused" | "Failed" | "Deleting"`. `Agent.waitUntilReady` treats `"Ready"` as success.
+
+### `AgentTemplate` / `AgentTemplateListResponse`
+
+`AgentTemplate` — a platform-managed agent template (id, name, description, etc.), the catalogue for `agents.create`. `AgentTemplateListResponse` — the paginated list payload from `agentTemplates.list`. Shapes per the generated schema.
+
 ### `EnvVar`
 
 A single environment variable passed to a sandbox.
@@ -1472,7 +1647,7 @@ Compact reviewer index.
 
 | Symbol | Kind | Description |
 | ------ | ---- | ----------- |
-| `Neev` | class | Platform client; exposes `.sandboxes`, `.templates`, `.raw`. |
+| `Neev` | class | Platform client; exposes `.sandboxes`, `.templates`, `.agents`, `.agentTemplates`, `.raw`. |
 | `Neev` constructor | method | `NeevOptions`: `apiKey`, `orgId`, `projectId`, `baseURL`, `timeoutMs`, `maxRetries`, `fetch`. |
 | `Neev.createSandboxConnection` | method | `SandboxConnection` for a `connect_url` (internal use). |
 | `NeevOptions` | type | Constructor options. |
@@ -1505,6 +1680,39 @@ Compact reviewer index.
 | `SandboxTemplates.list` | method | `Promise<SandboxTemplatePage>` |
 | `SandboxTemplates.get` | method | `Promise<SandboxTemplate>` |
 | `ListTemplatesParams`, `SandboxTemplatePage` | types | Params/return shapes. |
+
+### Agents resource (`resources/agents.ts`)
+
+| Symbol | Kind | Returns |
+| ------ | ---- | ------- |
+| `Agents.create` | method | `Promise<Agent>` |
+| `Agents.list` | method | `Promise<AgentPage>` |
+| `Agents.get` | method | `Promise<Agent>` |
+| `Agents.update` | method | `Promise<Agent>` (in place) |
+| `Agents.pause` / `resume` | methods | `Promise<Agent>` |
+| `Agents.delete` | method | `Promise<void>` |
+| `ListAgentsParams`, `AgentPage` | types | Params/return shapes. |
+
+### Agent templates resource (`resources/agent-templates.ts`)
+
+| Symbol | Kind | Returns |
+| ------ | ---- | ------- |
+| `AgentTemplates.list` | method | `Promise<AgentTemplatePage>` |
+| `AgentTemplates.get` | method | `Promise<AgentTemplate>` |
+| `ListAgentTemplatesParams`, `AgentTemplatePage` | types | Params/return shapes. |
+
+### Agent handle (`agent.ts`)
+
+| Symbol | Kind | Notes |
+| ------ | ---- | ----- |
+| `id`, `name`, `status`, `templateId`, `sandboxId`, `config`, `data` | getters | `config` is `Record<string, unknown> \| undefined`. |
+| `sandbox` | method | `Promise<Sandbox>` (backing sandbox for runtime access). |
+| `refresh` | method | `Promise<this>` |
+| `update` | method | `Promise<this>`; `UpdateAgentParams`. |
+| `pause` / `resume` | methods | `Promise<this>` |
+| `delete` | method | `Promise<void>` |
+| `waitUntilReady` | method | `Promise<this>`; `AgentWaitOptions`. |
+| `toJSON` | method | `AgentData`. |
 
 ### Sandbox handle (`sandbox.ts`)
 
