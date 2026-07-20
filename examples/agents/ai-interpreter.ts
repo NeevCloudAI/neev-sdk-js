@@ -103,7 +103,6 @@ async function main(): Promise<void> {
 
   line(dim("\n[sandbox] creating (template=sb-ubuntu-26-04-minimal)…"));
   const sandbox = await neev.sandboxes.create({
-    name: `ai-${Math.random().toString(36).slice(2, 8)}`,
     sandbox_template_id: "sb-ubuntu-26-04-minimal",
   });
 

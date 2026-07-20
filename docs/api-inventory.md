@@ -186,7 +186,7 @@ Creates a new sandbox in the resolved org/project. The returned handle may still
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| `params` | `CreateSandboxParams` | Create body. Only `name` is required; `sandbox_template_id` is optional and falls back to a platform default when omitted. |
+| `params` | `CreateSandboxParams` | Create body. All fields optional; the platform generates a name when omitted and defaults the template. |
 | `scope` | `Scope` (optional) | Per-call org/project override. |
 
 **Returns:** `Promise<Sandbox>` — a handle with the initial lifecycle state (typically `phase === "Pending"` immediately after create).
@@ -194,13 +194,12 @@ Creates a new sandbox in the resolved org/project. The returned handle may still
 **Raises:** `NeevError` (missing scope), `BadRequestError` (400), `AuthenticationError` (401), `PermissionDeniedError` (403), `ConflictError` (409), `RateLimitError` (429), `InternalServerError` (5xx), `APIConnectionError` / `APITimeoutError` on transport failure.
 
 ```ts
-// Minimal: name only — the template defaults on the platform.
-const sandbox = await client.sandboxes.create({ name: "my-agent" });
+// Minimal: no fields — the platform generates a name and defaults the template.
+const sandbox = await client.sandboxes.create({});
 await sandbox.waitUntilReady();
 
 // Explicit template and environment.
 const configured = await client.sandboxes.create({
-  name: "configured-agent",
   sandbox_template_id: "sb-ubuntu-26-04-minimal",
   env: [{ name: "LOG_LEVEL", value: "debug" }],
 });
@@ -1149,11 +1148,11 @@ Import from `@neevcloud/sdk`. Most lifecycle types are aliases over the generate
 
 ### `CreateSandboxParams`
 
-Alias for the generated `CreateSandboxRequest`. The request body for `sandboxes.create`. Only `name` is required; `sandbox_template_id` is optional (a platform default applies when omitted).
+Alias for the generated `CreateSandboxRequest`. The request body for `sandboxes.create`. All fields are optional — the platform generates a name when omitted and defaults the template.
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
-| `name` | `string` (DNS-1123 label) | yes |
+| `name` | `string` (DNS-1123 label) | no (server-generated) |
 | `sandbox_template_id` | `string` | no (platform default) |
 | `env` | `EnvVar[]` | no |
 | `resources` | `SandboxResources` | no |
@@ -1580,7 +1579,7 @@ Compact reviewer index.
 ## Contract notes
 
 - Client env vars: `NEEV_API_KEY`, `NEEV_ORG_ID`, `NEEV_PROJECT_ID` (not `NEEVAI_*`). The constructor throws `NeevError` if no API key resolves.
-- `create` requires only `name`; `sandbox_template_id` is optional and falls back to a platform default.
+- `create` takes all-optional fields; the platform generates a name when omitted and defaults the template.
 - `pause()` and `resume()` return the updated `Sandbox` handle (not `void`).
 - `connectUrl` is a getter returning `string | null`, not a method.
 - `createSnapshot` always sends `include_memory: false`; memory capture is unsupported and `CreateSnapshotParams` omits the field.
