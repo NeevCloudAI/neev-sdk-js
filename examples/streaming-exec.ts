@@ -25,9 +25,7 @@ function log(message: string): void {
 async function main(): Promise<void> {
   log("creating sandbox…");
   // Uses the default template.
-  const sandbox = await neev.sandboxes.create({
-    name: `stream-${Math.random().toString(36).slice(2, 8)}`,
-  });
+  const sandbox = await neev.sandboxes.create({});
 
   try {
     // Emit one line per second for 5 seconds, then a line on stderr.

@@ -138,11 +138,12 @@ This section walks the full path from a clean project to a running sandbox.
    const neev = new Neev();
    ```
 
-4. **Create your first sandbox.** Only `name` is required — the platform defaults
-   the template when you omit it. (Pass `sandbox_template_id` to pin it.)
+4. **Create your first sandbox.** Every field is optional — the platform generates
+   a name and defaults the template when you omit them. (Pass `name` to label it,
+   or `sandbox_template_id` to pin a template.)
 
    ```ts
-   const sandbox = await neev.sandboxes.create({ name: "my-first-sandbox" });
+   const sandbox = await neev.sandboxes.create({});
    console.log(`created ${sandbox.id} (phase: ${sandbox.phase})`);
    ```
 
@@ -177,11 +178,9 @@ import { Neev } from "@neevcloud/sdk";
 const neev = new Neev();
 
 async function main(): Promise<void> {
-  // 1. Create a sandbox. Only `name` is required — the platform defaults the
-  //    template.
-  const sandbox = await neev.sandboxes.create({
-    name: "quickstart-demo",
-  });
+  // 1. Create a sandbox. Every field is optional — the platform generates a
+  //    name and defaults the template.
+  const sandbox = await neev.sandboxes.create({});
   console.log(`created ${sandbox.id} (phase: ${sandbox.phase})`);
 
   try {

@@ -85,10 +85,10 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `restore(id, snapshotId, scope?)` | `Promise<Sandbox>` | Restores a sandbox **in place** from one of its snapshots. |
 | `fork(id, name, scope?)` | `Promise<Sandbox>` | Forks a sandbox into a new named sandbox from its **current live state**. |
 
-**`create(params, scope?)`** — only `name` is required; `sandbox_template_id` is optional and platform-defaulted. Egress is deny-all by default; open it with the `allowInternet` / `allowEgress` convenience fields (same on `agents.create`), or a full `egress` object for finer control (which takes precedence).
+**`create(params, scope?)`** — every field is optional; the platform generates a name and defaults the template when omitted. Egress is deny-all by default; open it with the `allowInternet` / `allowEgress` convenience fields (same on `agents.create`), or a full `egress` object for finer control (which takes precedence).
 
 ```ts
-const sandbox = await neev.sandboxes.create({ name: "my-agent" });
+const sandbox = await neev.sandboxes.create({});
 await sandbox.waitUntilReady();
 
 // open all egress (0.0.0.0/0 + ::/0)
@@ -438,7 +438,7 @@ Minimal one-liners for each public API.
 | API | Snippet |
 | --- | ------- |
 | `new Neev(...)` | `const neev = new Neev({ apiKey, orgId, projectId });` |
-| `neev.sandboxes.create(...)` | `const sandbox = await neev.sandboxes.create({ name: "my-agent" });` |
+| `neev.sandboxes.create(...)` | `const sandbox = await neev.sandboxes.create({});` |
 | `neev.sandboxes.list(...)` | `const { items } = await neev.sandboxes.list({ limit: 50 });` |
 | `neev.sandboxes.get(id)` | `const sandbox = await neev.sandboxes.get(id);` |
 | `neev.sandboxes.pause(id)` | `await neev.sandboxes.pause(id);` |

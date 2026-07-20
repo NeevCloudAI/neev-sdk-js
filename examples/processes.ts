@@ -25,9 +25,7 @@ function log(message: string): void {
 async function main(): Promise<void> {
   log("creating sandbox…");
   // Uses the default template.
-  const sandbox = await neev.sandboxes.create({
-    name: `proc-${Math.random().toString(36).slice(2, 8)}`,
-  });
+  const sandbox = await neev.sandboxes.create({});
 
   try {
     // Start a detached process that emits a line per second.

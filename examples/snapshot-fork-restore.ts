@@ -13,9 +13,7 @@ const neev = new Neev();
 
 async function main(): Promise<void> {
   // Uses the default template.
-  const sandbox = await neev.sandboxes.create({
-    name: "snapshot-source",
-  });
+  const sandbox = await neev.sandboxes.create({});
   await sandbox.waitUntilReady();
   await sandbox.files.write("state.txt", "captured-at-snapshot");
   console.log(`source ${sandbox.id} ready with state written`);

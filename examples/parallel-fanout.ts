@@ -46,7 +46,6 @@ async function main(): Promise<void> {
   const sandboxes = await Promise.all(
     slices.map((_, i) =>
       neev.sandboxes.create({
-        name: `fanout-${i}-${Math.random().toString(36).slice(2, 8)}`,
         sandbox_template_id: TEMPLATE,
       }),
     ),

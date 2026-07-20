@@ -21,9 +21,7 @@ import WebSocket from "ws";
 const neev = new Neev({ webSocket: (url, opts) => new WebSocket(url, opts) });
 
 async function main(): Promise<void> {
-  const sandbox = await neev.sandboxes.create({
-    name: `pty-${Math.random().toString(36).slice(2, 8)}`,
-  });
+  const sandbox = await neev.sandboxes.create({});
 
   try {
     const decoder = new TextDecoder();

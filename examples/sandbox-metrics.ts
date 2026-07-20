@@ -50,7 +50,6 @@ function summarize(metrics: SandboxMetricsResponse): string {
 async function main(): Promise<void> {
   log(`creating sandbox (${TEMPLATE})…`);
   const sandbox = await neev.sandboxes.create({
-    name: `metrics-${Math.random().toString(36).slice(2, 8)}`,
     sandbox_template_id: TEMPLATE,
   });
 
