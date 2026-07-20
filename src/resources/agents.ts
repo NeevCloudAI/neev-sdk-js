@@ -1,6 +1,7 @@
 import type { Client } from "openapi-fetch";
 import { Agent } from "../agent.js";
 import type { RequestContext, Scope } from "../client.js";
+import { withEgressConvenience } from "../egress.js";
 import { NeevError } from "../errors.js";
 import type { paths } from "../generated/aiagent.js";
 import { ensureOk, unwrap } from "../http.js";
@@ -61,7 +62,7 @@ export class Agents {
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.POST(COLLECTION, {
       params: { path: { org_id: orgId, project_id: projectId } },
-      body: params,
+      body: withEgressConvenience(params),
     });
     return new Agent(this, unwrap<AgentData>(res), scope);
   }

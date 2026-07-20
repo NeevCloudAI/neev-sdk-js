@@ -30,6 +30,34 @@ describe("agents resource", () => {
     expect(calls[0]?.body).toEqual({ name: "demo", agent_template: "claude-code" });
   });
 
+  it("allowInternet translates to a full-open egress policy on agent create", async () => {
+    const { neev, calls } = client([json(201, agentData({ name: "web" }))]);
+    await neev.agents.create({ name: "web", agent_template: "claude-code", allowInternet: true });
+    expect(calls[0]?.body).toEqual({
+      name: "web",
+      agent_template: "claude-code",
+      egress: {
+        mode: "allow_list",
+        allow_internet: true,
+        allow: [{ host: "0.0.0.0/0" }, { host: "::/0" }],
+      },
+    });
+  });
+
+  it("allowEgress translates to an allow-list on agent create, and strips the field", async () => {
+    const { neev, calls } = client([json(201, agentData({ name: "ci" }))]);
+    await neev.agents.create({
+      name: "ci",
+      agent_template: "claude-code",
+      allowEgress: ["github.com"],
+    });
+    expect(calls[0]?.body).toEqual({
+      name: "ci",
+      agent_template: "claude-code",
+      egress: { mode: "allow_list", allow_internet: false, allow: [{ host: "github.com" }] },
+    });
+  });
+
   it("lists agents with pagination and wraps items as handles", async () => {
     const { neev, calls } = client([
       json(200, {

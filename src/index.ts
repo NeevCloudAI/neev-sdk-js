@@ -84,6 +84,7 @@ export type {
   CreateAgentParams,
   CreateSandboxParams,
   CreateSnapshotParams,
+  EgressConvenience,
   EnvVar,
   MetricSeries,
   SandboxData,
