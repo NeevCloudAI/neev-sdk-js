@@ -1,6 +1,6 @@
 {
   "name": "@neevcloud/sdk",
-  "version": "0.6.1-beta",
+  "version": "0.7.0-beta",
   "description": "Official NeevCloud SDK for the Neev platform — Node, Bun, Deno & edge. First up: agent sandboxes.",
   "license": "Apache-2.0",
   "author": "NeevCloud",
