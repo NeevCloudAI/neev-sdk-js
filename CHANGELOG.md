@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0-beta
+
+### Minor Changes
+
+- 7b85157: Add `allowInternet` and `allowEgress` convenience options to `sandboxes.create` and `agents.create`. `allowInternet: true` opens all egress (it emits the `allow_internet` gate plus the `0.0.0.0/0` and `::/0` routes the server needs to actually open it); `allowEgress: ["github.com", "*.npmjs.org"]` allows specific hosts (FQDN or CIDR). Both translate to the `egress` policy; pass a full `egress` object for finer control (ports, protocols) and it takes precedence.
+- ee48df0: Add PTY reattach. `PtyHandle` now exposes the terminal `id`, and `sandbox.pty.create({ id })` reconnects to an existing terminal after a dropped connection — the sandbox replays recent scrollback and the session keeps running while detached.
+- 4ce4ac6: Add the remaining sandbox filesystem operations to `sandbox.files`: `stat`, `exists`, `mkdir`, `move`, `remove`, and a streaming `watch` that yields `WatchEvent`s as the workspace changes.
+- d6bddd4: Add preview URLs for sandbox ports. `sandbox.getUrl({ port })` exposes a port and returns its public, credential-free preview URL, waiting until the URL is routable before it resolves. Lower-level `sandbox.exposePort`, `listPorts`, and `revokePort` (and the `SandboxPort` type) are exposed for direct control.
+- e8b06c9: Add SSH tunnelling for sandboxes. `sandbox.ssh()` opens a local loopback TCP listener that forwards each connection to the sandbox over an authenticated WebSocket and returns `{ host, port, close }`, so any ssh client, `scp`/`rsync`, or IDE remote-dev points at it with no keys to manage and no public port. Node only; install the optional `ws` peer dependency, which the tunnel loads automatically.
+
 ## 0.6.1-beta
 
 ### Minor Changes
