@@ -147,6 +147,12 @@ This section walks the full path from a clean project to a running sandbox.
    console.log(`created ${sandbox.id} (phase: ${sandbox.phase})`);
    ```
 
+   > **Resources.** When both the request and the selected template omit `resources`,
+   > the platform assigns 1 vCPU / 2 GB memory / 10 GB disk; a template's
+   > `default_resources` takes precedence over the platform default. Valid ranges are
+   > cpu 0.5–8 (step 0.5), memory 1–16 GB, disk 10–100 GB (step 10). See
+   > [`SandboxResources`](./api-inventory.md#sandboxresources).
+
 5. **Wait until it is Ready**, then work inside it:
 
    ```ts

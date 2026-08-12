@@ -1330,7 +1330,17 @@ Alias for the generated `SandboxPhase` enum — the lifecycle phase reported by 
 
 ### `SandboxResources`
 
-Compute size for a sandbox (e.g. `cpu` / `memory_gb` / `disk_gb`). Omitted fields use the platform default. Shape per the generated schema.
+Compute size for a sandbox / agent (`cpu` / `memory_gb` / `disk_gb`, all optional). Omitted fields resolve to the platform default. Shape per the generated schema.
+
+| Field | Type | Default | Range |
+| ----- | ---- | ------- | ----- |
+| `cpu` | `number` (vCPUs) | the platform assigns 1 vCPU | 0.5–8, in steps of 0.5 |
+| `memory_gb` | `number` (GB) | the platform assigns 2 GB | 1–16 |
+| `disk_gb` | `number` (GB) | the platform assigns 10 GB | 10–100, in steps of 10 |
+
+Per-field resolution order: a caller-supplied value wins, else the selected template's `default_resources`, else the platform default above.
+
+`cpu` and `memory_gb` are resizable in place via [`agents.update`](#clientagentsupdateid-params-scope) (resized on the running sandbox); `disk_gb` is fixed at creation and is rejected if `update` supplies a different value.
 
 ### `SandboxEgressConfig` / `SandboxEgressRule`
 
