@@ -198,7 +198,7 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | `replicas` | `number` | Desired replica count (0 paused, 1 running). |
 | `region` | `string` | Region slug the sandbox runs in. |
 | `templateId` | `string \| null` | Template id it was created from, or `null`. |
-| `resources` | `SandboxResources \| undefined` | Provisioned compute size, or `undefined` when defaulted. |
+| `resources` | `SandboxResources \| undefined` | Provisioned compute size, or `undefined` when defaulted. See [`SandboxResources`](./api-inventory.md#sandboxresources) for defaults and ranges. |
 | `connectUrl` | `string \| null` | Runtime address, or `null` when not yet configured. |
 | `data` | `SandboxData` | Full raw API record. |
 
