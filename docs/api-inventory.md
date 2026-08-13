@@ -1330,7 +1330,7 @@ Alias for the generated `SandboxPhase` enum — the lifecycle phase reported by 
 
 ### `SandboxResources`
 
-Compute size for a sandbox / agent (`cpu` / `memory_gb` / `disk_gb`, all optional). Omitted fields resolve to the platform default. Shape per the generated schema.
+Compute size for a sandbox / agent (`cpu` / `memory_gb` / `disk_gb`, all optional). Omitted fields resolve according to the precedence below. Shape per the generated schema.
 
 | Field | Type | Default | Range |
 | ----- | ---- | ------- | ----- |
