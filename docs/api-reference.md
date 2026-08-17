@@ -85,7 +85,7 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `restore(id, snapshotId, scope?)` | `Promise<Sandbox>` | Restores a sandbox **in place** from one of its snapshots. |
 | `fork(id, name, scope?)` | `Promise<Sandbox>` | Forks a sandbox into a new named sandbox from its **current live state**. |
 
-**`create(params, scope?)`** — every field is optional; the platform generates a name and defaults the template when omitted. Egress is deny-all by default; open it with the `allowInternet` / `allowEgress` convenience fields (same on `agents.create`), or a full `egress` object for finer control (which takes precedence).
+**`create(params, scope?)`** — every field is optional; the platform generates a name and defaults the template when omitted. Compute size is set with `resources` (`cpu` / `memory_gb` / `disk_gb`); omit it (or any field) to take the platform default — see [`SandboxResources`](./api-inventory.md#sandboxresources) for defaults and ranges. Egress is deny-all by default; open it with the `allowInternet` / `allowEgress` convenience fields (same on `agents.create`), or a full `egress` object for finer control (which takes precedence).
 
 ```ts
 const sandbox = await neev.sandboxes.create({});
@@ -198,7 +198,7 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | `replicas` | `number` | Desired replica count (0 paused, 1 running). |
 | `region` | `string` | Region slug the sandbox runs in. |
 | `templateId` | `string \| null` | Template id it was created from, or `null`. |
-| `resources` | `SandboxResources \| undefined` | Provisioned compute size, or `undefined` when defaulted. See [`SandboxResources`](./api-inventory.md#sandboxresources) for defaults and ranges. |
+| `resources` | `SandboxResources \| undefined` | Provisioned compute size, or `undefined` when defaulted. |
 | `connectUrl` | `string \| null` | Runtime address, or `null` when not yet configured. |
 | `data` | `SandboxData` | Full raw API record. |
 
