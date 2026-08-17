@@ -1344,7 +1344,7 @@ Per-field resolution order: a caller-supplied value wins, else the selected temp
 
 ### Agent resources
 
-An agent runs on a 1:1 backing sandbox, so **agent resources use the same `SandboxResources` shape, defaults, and bounds** as sandboxes (above). On `agents.create`, the `resources` field sizes that backing sandbox; the resolution order is caller value → the **agent template's** `default_resources` (`AgentTemplate.default_resources`) → platform default (1 vCPU / 2 GB / 10 GB).
+An agent runs on a 1:1 backing sandbox, so **agent resources use the same `SandboxResources` shape and bounds** as sandboxes (above). On `agents.create`, the `resources` field sizes that backing sandbox. Each field resolves as: caller value → the **agent template's** `default_resources` (`AgentTemplate.default_resources`) → platform default. Platform agent templates ship their own `default_resources`, so an agent created without `resources` inherits the **template's** sizing (which varies by template and is typically larger than the bare-sandbox platform default of 1 vCPU / 2 GB / 10 GB) — not the platform default.
 
 `agents.update` resizes `cpu` / `memory_gb` in place on the running sandbox; `disk_gb` cannot be changed after creation.
 
