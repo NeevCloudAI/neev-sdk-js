@@ -630,7 +630,7 @@ Fetches a single agent by id (a UUID, from `agents.list`).
 update(id: string, params: UpdateAgentParams, scope?: Scope): Promise<Agent>
 ```
 
-Updates an agent in place. `UpdateAgentParams` = `{ egress?: SandboxEgressConfig; resources?: SandboxResources }`; at least one field is required.
+Updates an agent in place. `UpdateAgentParams` = `{ egress?: SandboxEgressConfig; resources?: SandboxResources }`; at least one field is required. `resources` resizes `cpu` / `memory_gb` in place (`disk_gb` is fixed at creation) — see [Agent resources](#agent-resources) for defaults and bounds.
 
 ### `client.agents.pause(id, scope?)` / `resume(id, scope?)` / `delete(id, scope?)`
 
@@ -1341,6 +1341,12 @@ Compute size for a sandbox / agent (`cpu` / `memory_gb` / `disk_gb`, all optiona
 Per-field resolution order: a caller-supplied value wins, else the selected template's `default_resources`, else the platform default above.
 
 `cpu` and `memory_gb` are resizable in place via [`agents.update`](#clientagentsupdateid-params-scope) (resized on the running sandbox); `disk_gb` is fixed at creation and is rejected if `update` supplies a different value.
+
+### Agent resources
+
+An agent runs on a 1:1 backing sandbox, so **agent resources use the same `SandboxResources` shape, defaults, and bounds** as sandboxes (above). On `agents.create`, the `resources` field sizes that backing sandbox; the resolution order is caller value → the **agent template's** `default_resources` (`AgentTemplate.default_resources`) → platform default (1 vCPU / 2 GB / 10 GB).
+
+`agents.update` resizes `cpu` / `memory_gb` in place on the running sandbox; `disk_gb` cannot be changed after creation.
 
 ### `SandboxEgressConfig` / `SandboxEgressRule`
 
