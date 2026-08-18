@@ -33,6 +33,15 @@ paths:
         - {$ref: '#/components/parameters/ProjectID'}
         - {$ref: '#/components/parameters/Page'}
         - {$ref: '#/components/parameters/Limit'}
+        - {$ref: '#/components/parameters/SandboxNameSearch'}
+        - name: status
+          in: query
+          required: false
+          description: Filter by lifecycle phase.
+          schema:
+            type: string
+            enum: [Pending, Ready, NotReady, Unknown, Pausing, Paused, RestoreFailed]
+        - {$ref: '#/components/parameters/SandboxIDFilter'}
       responses:
         "200":
           description: Paginated list of sandboxes
@@ -760,6 +769,18 @@ components:
       in: query
       required: false
       schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+    SandboxNameSearch:
+      name: name
+      in: query
+      required: false
+      description: Case-insensitive substring match on the sandbox name.
+      schema: {type: string, maxLength: 63}
+    SandboxIDFilter:
+      name: sandbox_id
+      in: query
+      required: false
+      description: Filter to a single sandbox by its id.
+      schema: {type: string, format: uuid}
     AgentID:
       name: agent_id
       in: path
@@ -824,7 +845,7 @@ components:
         value: {type: string}
     SandboxPhase:
       type: string
-      enum: [Pending, Ready, NotReady, Unknown, Paused, RestoreFailed]
+      enum: [Pending, Ready, NotReady, Unknown, Pausing, Paused, RestoreFailed]
     SandboxResources:
       type: object
       description: |

@@ -100,6 +100,24 @@ describe("sandboxes resource", () => {
     expect(calls[0]?.url).toContain("limit=20");
   });
 
+  it("forwards the name, status, and sandboxId filters as query params", async () => {
+    const { neev, calls } = client([json(200, { items: [], total: 0, page: 1, limit: 20 })]);
+    await neev.sandboxes.list({ name: "web", status: "Paused", sandboxId: "sb-1" });
+    const url = calls[0]?.url ?? "";
+    expect(url).toContain("name=web");
+    expect(url).toContain("status=Paused");
+    expect(url).toContain("sandbox_id=sb-1");
+  });
+
+  it("omits filter query params when they are unset", async () => {
+    const { neev, calls } = client([json(200, { items: [], total: 0, page: 1, limit: 20 })]);
+    await neev.sandboxes.list();
+    const url = calls[0]?.url ?? "";
+    expect(url).not.toContain("name=");
+    expect(url).not.toContain("status=");
+    expect(url).not.toContain("sandbox_id=");
+  });
+
   it("targets the pause and resume sub-paths", async () => {
     const { neev, calls } = client([
       json(200, sandboxData({ phase: "Paused", replicas: 0 })),

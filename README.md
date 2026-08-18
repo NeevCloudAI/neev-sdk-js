@@ -75,6 +75,7 @@ To run the examples from a clone (including against dev), see [`examples/README.
 
 ```ts
 const page = await neev.sandboxes.list({ limit: 50 });
+const paused = await neev.sandboxes.list({ name: "web", status: "Paused" });
 const sandbox = await neev.sandboxes.get(id);
 await neev.sandboxes.pause(id);
 await neev.sandboxes.resume(id);

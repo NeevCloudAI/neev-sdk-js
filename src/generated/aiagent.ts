@@ -497,7 +497,7 @@ export interface components {
             value: string;
         };
         /** @enum {string} */
-        SandboxPhase: "Pending" | "Ready" | "NotReady" | "Unknown" | "Paused" | "RestoreFailed";
+        SandboxPhase: "Pending" | "Ready" | "NotReady" | "Unknown" | "Pausing" | "Paused" | "RestoreFailed";
         /** @description Sandbox compute size. Omitted fields use the platform default. */
         SandboxResources: {
             /**
@@ -1021,6 +1021,10 @@ export interface components {
         Page: number;
         SandboxTemplateID: string;
         Limit: number;
+        /** @description Case-insensitive substring match on the sandbox name. */
+        SandboxNameSearch: string;
+        /** @description Filter to a single sandbox by its id. */
+        SandboxIDFilter: string;
         /** @description Agent UUID. */
         AgentID: string;
         AgentTemplateID: string;
@@ -1036,6 +1040,12 @@ export interface operations {
             query?: {
                 page?: components["parameters"]["Page"];
                 limit?: components["parameters"]["Limit"];
+                /** @description Case-insensitive substring match on the sandbox name. */
+                name?: components["parameters"]["SandboxNameSearch"];
+                /** @description Filter by lifecycle phase. */
+                status?: "Pending" | "Ready" | "NotReady" | "Unknown" | "Pausing" | "Paused" | "RestoreFailed";
+                /** @description Filter to a single sandbox by its id. */
+                sandbox_id?: components["parameters"]["SandboxIDFilter"];
             };
             header?: never;
             path: {
