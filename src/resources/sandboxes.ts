@@ -13,6 +13,7 @@ import type {
   SandboxData,
   SandboxListResponse,
   SandboxMetricsResponse,
+  SandboxPhase,
   SandboxPort,
   SnapshotData,
   SnapshotListResponse,
@@ -48,10 +49,17 @@ export interface GetPortUrlOptions {
   pollIntervalMs?: number;
 }
 
-// Parameters for listing sandboxes: pagination plus an optional scope override.
+// Parameters for listing sandboxes: pagination and optional filters, plus an
+// optional scope override. Filters combine with AND; omit one to leave it off.
 export interface ListSandboxesParams extends Scope {
   page?: number;
   limit?: number;
+  // Case-insensitive substring match on the sandbox name.
+  name?: string;
+  // Exact lifecycle-phase match.
+  status?: SandboxPhase;
+  // Narrow to a single sandbox by its id.
+  sandboxId?: string;
 }
 
 // A page of sandboxes, with the handles already wrapped and the paging metadata.
@@ -137,10 +145,13 @@ export class Sandboxes {
 
   // Lists sandboxes in the resolved org/project, returning wrapped handles.
   async list(params: ListSandboxesParams = {}): Promise<SandboxPage> {
-    const { page, limit, ...scope } = params;
+    const { page, limit, name, status, sandboxId, ...scope } = params;
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.GET(COLLECTION, {
-      params: { path: { org_id: orgId, project_id: projectId }, query: { page, limit } },
+      params: {
+        path: { org_id: orgId, project_id: projectId },
+        query: { page, limit, name, status, sandbox_id: sandboxId },
+      },
     });
     const data = unwrap<SandboxListResponse>(res);
     return {
