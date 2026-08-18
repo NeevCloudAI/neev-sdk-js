@@ -5,6 +5,8 @@
 `@neevcloud/sdk` is the single, growing TypeScript client for the **Neev platform**.
 One package, one auth model, one client — adopt new capabilities as they ship.
 
+> **Using DeepSeek Harness?** [`@neevcloud/dsh-sandbox`](https://github.com/NeevCloudAI/dsh-neev-sandbox) is a DSH plugin built on this SDK that runs the Harness's Bash, PTY, files, and LSP inside a NeevCloud Sandbox — `dsh plugin add @neevcloud/dsh-sandbox`.
+
 **Available today**
 
 - **`neev.sandboxes`** — full agent-sandbox lifecycle: create, list, get, pause, resume, delete, live metrics, plus snapshots, restore, and fork. Inside a running sandbox: `files`, `exec`, a `processes` supervisor for long-running, detached processes, and `pty` for interactive terminal sessions. Sandboxes are strongly isolated compute environments for AI agents.
