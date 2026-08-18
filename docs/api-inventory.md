@@ -238,7 +238,12 @@ Lists sandboxes in the resolved org/project with server-side pagination, returni
 | ---- | ---- | ----------- |
 | `page` | `number` (optional) | 1-based page number. |
 | `limit` | `number` (optional) | Page size. |
+| `name` | `string` (optional) | Case-insensitive substring match on the sandbox name. |
+| `status` | `SandboxPhase` (optional) | Exact lifecycle-phase match. |
+| `sandboxId` | `string` (optional) | Narrow to a single sandbox by its id. |
 | `orgId` / `projectId` | `string` (optional) | Per-call scope override. |
+
+The filters combine with AND; each is omitted from the request when unset.
 
 **Returns:** `Promise<SandboxPage>` with `{ items: Sandbox[]; total; page; limit }`. Each item is a `Sandbox` handle bound to the client.
 
@@ -250,6 +255,9 @@ for (const sb of page.items) {
   console.log(sb.id, sb.name, sb.phase, sb.replicas);
 }
 console.log(`Showing ${page.items.length} of ${page.total}`);
+
+// Filter by name substring and lifecycle phase.
+const pausedWeb = await client.sandboxes.list({ name: "web", status: "Paused" });
 ```
 
 ### `client.sandboxes.get(id, scope?)`

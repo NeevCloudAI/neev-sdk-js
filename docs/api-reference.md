@@ -439,7 +439,7 @@ Minimal one-liners for each public API.
 | --- | ------- |
 | `new Neev(...)` | `const neev = new Neev({ apiKey, orgId, projectId });` |
 | `neev.sandboxes.create(...)` | `const sandbox = await neev.sandboxes.create({});` |
-| `neev.sandboxes.list(...)` | `const { items } = await neev.sandboxes.list({ limit: 50 });` |
+| `neev.sandboxes.list(...)` | `const { items } = await neev.sandboxes.list({ name: "web", status: "Paused" });` |
 | `neev.sandboxes.get(id)` | `const sandbox = await neev.sandboxes.get(id);` |
 | `neev.sandboxes.pause(id)` | `await neev.sandboxes.pause(id);` |
 | `neev.sandboxes.resume(id)` | `await neev.sandboxes.resume(id);` |
