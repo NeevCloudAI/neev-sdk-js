@@ -49,7 +49,13 @@ export interface paths {
         delete: operations["deleteSandbox"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update a sandbox in place
+         * @description Updates mutable fields of a sandbox without restarting it. `resources`
+         *     (cpu/memory) are resized in place on the running sandbox. Disk is not
+         *     resizable in place. Fields omitted from the body are left unchanged.
+         */
+        patch: operations["updateSandbox"];
         trace?: never;
     };
     "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/pause": {
@@ -63,11 +69,10 @@ export interface paths {
         put?: never;
         /**
          * Pause a sandbox (stop billable runtime; preserve disks)
-         * @description When `preserve_memory` is true the sandbox's full state (process memory
-         *     + filesystem) is captured as an implicit snapshot before the sandbox is
+         * @description The sandbox's full state (root filesystem, process memory, and
+         *     workspace) is captured as an implicit snapshot before the sandbox is
          *     stopped. The snapshot is retained for the duration of the paused
-         *     state and consumed automatically on the next `resume`. When false
-         *     (default) the existing volume-only behaviour applies.
+         *     state and consumed automatically on the next `resume`.
          */
         post: operations["pauseSandbox"];
         delete?: never;
@@ -104,9 +109,9 @@ export interface paths {
         put?: never;
         /**
          * Resume a paused sandbox
-         * @description Restores a paused sandbox. When the sandbox was paused with
-         *     `preserve_memory=true` it resumes from the implicit memory snapshot;
-         *     otherwise it cold-starts from the original image.
+         * @description Restores a paused sandbox from the implicit snapshot taken at pause, so
+         *     it comes back with its root filesystem, process memory, and workspace
+         *     intact.
          */
         post: operations["resumeSandbox"];
         delete?: never;
@@ -589,6 +594,15 @@ export interface components {
              */
             from_snapshot?: string | null;
         } & (unknown | unknown | unknown | unknown);
+        /** @description In-place update of a sandbox's mutable fields. */
+        UpdateSandboxRequest: {
+            /**
+             * @description New cpu/memory sizing, resized in place on the running sandbox. Only the
+             *     fields provided change. disk_gb is not resizable in place and is
+             *     rejected if supplied with a different value.
+             */
+            resources: components["schemas"]["SandboxResources"];
+        };
         ExposePortRequest: {
             /** @description User port to expose for preview URLs. */
             port: number;
@@ -602,15 +616,11 @@ export interface components {
         SandboxPortList: {
             ports: components["schemas"]["SandboxPort"][];
         };
-        /** @description Optional body for the pause endpoint. */
-        PauseSandboxRequest: {
-            /**
-             * @description When true, capture FS+process memory as an implicit snapshot before
-             *     stopping the sandbox. The snapshot is auto-consumed on the next resume.
-             * @default true
-             */
-            preserve_memory: boolean;
-        };
+        /**
+         * @description Optional body for the pause endpoint. It carries no fields — a pause
+         *     always captures the full snapshot.
+         */
+        PauseSandboxRequest: Record<string, never>;
         /**
          * @description Lifecycle phase of a snapshot.
          * @enum {string}
@@ -1164,6 +1174,42 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    updateSandbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description Sandbox UUID. */
+                sandbox_id: components["parameters"]["SandboxID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSandboxRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated sandbox */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Sandbox"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
         };
     };

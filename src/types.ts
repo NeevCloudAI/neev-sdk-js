@@ -23,6 +23,9 @@ export interface EgressConvenience {
 // the server resolves the image and default command from the chosen template.
 export type CreateSandboxParams = components["schemas"]["CreateSandboxRequest"] & EgressConvenience;
 
+// In-place update accepted by `sandboxes.update` (cpu/memory resize).
+export type UpdateSandboxParams = components["schemas"]["UpdateSandboxRequest"];
+
 // Compute size (cpu / memory_gb / disk_gb) for a sandbox. Omitted fields use the
 // platform default.
 export type SandboxResources = components["schemas"]["SandboxResources"];
@@ -47,6 +50,9 @@ export type MetricSeries = components["schemas"]["MetricSeries"];
 
 // A port exposed for credential-free preview URLs, with its public URL.
 export type SandboxPort = components["schemas"]["SandboxPort"];
+
+// Short-lived connect token for a sandbox, with its lifetime in seconds.
+export type ConnectTokenResponse = components["schemas"]["ConnectTokenResponse"];
 
 // A platform-managed sandbox runtime template, referenced as
 // `sandbox_template_id` at create time.

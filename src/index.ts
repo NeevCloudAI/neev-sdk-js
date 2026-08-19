@@ -81,6 +81,7 @@ export type {
   AgentStatus,
   AgentTemplate,
   AgentTemplateListResponse,
+  ConnectTokenResponse,
   CreateAgentParams,
   CreateSandboxParams,
   CreateSnapshotParams,
@@ -103,6 +104,7 @@ export type {
   SnapshotListResponse,
   SnapshotStatus,
   UpdateAgentParams,
+  UpdateSandboxParams,
 } from "./types.js";
 
 export {

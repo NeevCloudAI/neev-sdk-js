@@ -14,6 +14,7 @@ import type { ExecOptions, ExecResult, ExecStreamEvent, SandboxConnection } from
 import { openSshTunnel } from "./ssh.js";
 import type { SshTunnel, SshTunnelOptions } from "./ssh.js";
 import type {
+  ConnectTokenResponse,
   CreateSnapshotParams,
   SandboxData,
   SandboxMetricsResponse,
@@ -21,6 +22,7 @@ import type {
   SandboxPort,
   SandboxResources,
   SnapshotData,
+  UpdateSandboxParams,
 } from "./types.js";
 
 // Options controlling how long `waitUntilReady` polls before giving up.
@@ -210,6 +212,14 @@ export class Sandbox {
     return this;
   }
 
+  // Resizes this sandbox in place (cpu/memory) and updates this handle. The sandbox
+  // keeps running; disk is not resizable in place.
+  async update(params: UpdateSandboxParams): Promise<this> {
+    const next = await this.sandboxes.update(this.id, params, this.scope);
+    this.state = next.data;
+    return this;
+  }
+
   // Pauses the sandbox (scales to zero replicas) and updates this handle.
   async pause(): Promise<this> {
     const next = await this.sandboxes.pause(this.id, this.scope);
@@ -232,6 +242,13 @@ export class Sandbox {
   // Reads the live metric series for this sandbox.
   async metrics(params: MetricsQuery = {}): Promise<SandboxMetricsResponse> {
     return this.sandboxes.metrics(this.id, { ...params, ...this.scope });
+  }
+
+  // Mints a short-lived connect token for this sandbox, with its lifetime in
+  // seconds. Use it as a bearer credential to call `connectUrl` directly instead of
+  // handing out the API key.
+  async createConnectToken(): Promise<ConnectTokenResponse> {
+    return this.sandboxes.createConnectToken(this.id, this.scope);
   }
 
   // Exposes a port for credential-free preview URLs and returns its public URL.

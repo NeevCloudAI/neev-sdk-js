@@ -77,10 +77,14 @@ To run the examples from a clone (including against dev), see [`examples/README.
 const page = await neev.sandboxes.list({ limit: 50 });
 const paused = await neev.sandboxes.list({ name: "web", status: "Paused" });
 const sandbox = await neev.sandboxes.get(id);
+// Resize cpu/memory in place (no restart); omitted fields are unchanged, disk is not resizable.
+await neev.sandboxes.update(id, { resources: { cpu: 4, memory_gb: 8 } });
 await neev.sandboxes.pause(id);
 await neev.sandboxes.resume(id);
 await neev.sandboxes.delete(id);
 const metrics = await neev.sandboxes.metrics(id, { step: "60s" });
+// Short-lived bearer credential for calling the sandbox directly, instead of the API key.
+const { token, expires_in } = await neev.sandboxes.createConnectToken(id);
 
 // Snapshots, restore, and fork (see "Snapshots, fork & restore" below).
 const snap = await neev.sandboxes.createSnapshot(id, { name: "checkpoint" });
@@ -142,6 +146,8 @@ await neev.sandboxes.create({
 const sandbox = await neev.sandboxes.get(id);
 await sandbox.refresh();          // re-fetch latest state
 await sandbox.waitUntilReady();   // poll until phase === "Ready"
+await sandbox.update({ resources: { cpu: 2, memory_gb: 4 } }); // resize cpu/memory in place
+await sandbox.createConnectToken(); // { token, expires_in } for calling connectUrl directly
 await sandbox.pause();
 const snap = await sandbox.snapshot({ waitUntilReady: true }); // capture and wait until Ready
 const fork = await sandbox.fork("my-fork"); // branch the current state into a new sandbox

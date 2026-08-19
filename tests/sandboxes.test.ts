@@ -118,6 +118,52 @@ describe("sandboxes resource", () => {
     expect(url).not.toContain("sandbox_id=");
   });
 
+  it("resizes a sandbox in place with a PATCH on the item path", async () => {
+    const { neev, calls } = client([
+      json(200, sandboxData({ resources: { cpu: 2, memory_gb: 4 } })),
+    ]);
+    const sb = await neev.sandboxes.update("sb-1", { resources: { cpu: 2, memory_gb: 4 } });
+    expect(sb.resources).toEqual({ cpu: 2, memory_gb: 4 });
+    expect(calls[0]?.method).toBe("PATCH");
+    expect(calls[0]?.url).toMatch(/\/sandboxes\/sb-1$/);
+    expect(calls[0]?.body).toEqual({ resources: { cpu: 2, memory_gb: 4 } });
+  });
+
+  it("applies a per-call scope override to update", async () => {
+    const { neev, calls } = client([json(200, sandboxData())]);
+    await neev.sandboxes.update(
+      "sb-1",
+      { resources: { cpu: 1 } },
+      { orgId: "other_org", projectId: "other_proj" },
+    );
+    expect(calls[0]?.url).toContain("/orgs/other_org/projects/other_proj/sandboxes/sb-1");
+  });
+
+  it("mints a connect token with its lifetime", async () => {
+    const { neev, calls } = client([json(200, { token: "ct-abc", expires_in: 900 })]);
+    const minted = await neev.sandboxes.createConnectToken("sb-1");
+    expect(minted).toEqual({ token: "ct-abc", expires_in: 900 });
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.url).toMatch(/\/sandboxes\/sb-1\/connect-token$/);
+  });
+
+  it("applies a per-call scope override to createConnectToken", async () => {
+    const { neev, calls } = client([json(200, { token: "ct-abc", expires_in: 900 })]);
+    await neev.sandboxes.createConnectToken("sb-1", {
+      orgId: "other_org",
+      projectId: "other_proj",
+    });
+    expect(calls[0]?.url).toContain(
+      "/orgs/other_org/projects/other_proj/sandboxes/sb-1/connect-token",
+    );
+  });
+
+  it("surfaces a typed error when a connect token cannot be minted", async () => {
+    const { neev } = client([json(404, { error: "not_found", details: "no such sandbox" })]);
+    const err = await neev.sandboxes.createConnectToken("sb-missing").catch((e) => e);
+    expect(err).toBeInstanceOf(NotFoundError);
+  });
+
   it("targets the pause and resume sub-paths", async () => {
     const { neev, calls } = client([
       json(200, sandboxData({ phase: "Paused", replicas: 0 })),

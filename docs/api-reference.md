@@ -73,6 +73,8 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `create(params, scope?)` | `Promise<Sandbox>` | Creates a sandbox in the resolved org/project. The handle may still be `Pending` — call `waitUntilReady`. |
 | `list(params?)` | `Promise<SandboxPage>` | Lists sandboxes with pagination; items are wrapped handles. |
 | `get(id, scope?)` | `Promise<Sandbox>` | Fetches the current record for a sandbox by id. |
+| `update(id, params, scope?)` | `Promise<Sandbox>` | Resizes `cpu` / `memory_gb` in place on the running sandbox. |
+| `createConnectToken(id, scope?)` | `Promise<ConnectTokenResponse>` | Mints a short-lived connect token for calling the sandbox directly. |
 | `pause(id, scope?)` | `Promise<Sandbox>` | Pauses a sandbox (scales to zero replicas). |
 | `resume(id, scope?)` | `Promise<Sandbox>` | Resumes a paused sandbox (scales to one replica). |
 | `delete(id, scope?)` | `Promise<void>` | Permanently deletes a sandbox. |
@@ -110,6 +112,18 @@ const sandbox = await neev.sandboxes.get(id);
 await neev.sandboxes.pause(id);
 await neev.sandboxes.resume(id);
 await neev.sandboxes.delete(id);
+```
+
+**`update(id, params, scope?)`** — `params` is `{ resources }`. `cpu` and `memory_gb` are resized in place on the running sandbox, so nothing restarts; only the fields you pass change. `disk_gb` is fixed at creation and is rejected if it differs from the current value.
+
+```ts
+await neev.sandboxes.update(id, { resources: { cpu: 4, memory_gb: 8 } });
+```
+
+**`createConnectToken(id, scope?)`** — returns `{ token, expires_in }`. Present `token` as a bearer credential against the sandbox's `connectUrl` to reach the runtime without handing out the API key; `expires_in` is its lifetime in seconds.
+
+```ts
+const { token, expires_in } = await neev.sandboxes.createConnectToken(id);
 ```
 
 **`metrics(id, params?)`** — `params` is `{ from?, to?, step?, orgId?, projectId? }`; `from`/`to` are RFC3339, `step` is a Go duration (e.g. `"60s"`). The platform defaults to the last hour.
@@ -208,6 +222,8 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | ------ | ------- | ------- |
 | `waitUntilReady(options?)` | `Promise<this>` | Polls until phase is `"Ready"`. Throws fast if `"Paused"`, or on timeout. |
 | `refresh()` | `Promise<this>` | Re-fetches the record and updates the handle in place. |
+| `update(params)` | `Promise<this>` | Resizes `cpu` / `memory_gb` in place and updates the handle; `params` is `{ resources }`. |
+| `createConnectToken()` | `Promise<ConnectTokenResponse>` | Mints a short-lived `{ token, expires_in }` for calling `connectUrl` directly. |
 | `pause()` | `Promise<this>` | Pauses (scales to zero) and updates the handle. |
 | `resume()` | `Promise<this>` | Resumes (scales to one) and updates the handle. |
 | `delete()` | `Promise<void>` | Permanently deletes the sandbox. |
@@ -441,6 +457,8 @@ Minimal one-liners for each public API.
 | `neev.sandboxes.create(...)` | `const sandbox = await neev.sandboxes.create({});` |
 | `neev.sandboxes.list(...)` | `const { items } = await neev.sandboxes.list({ name: "web", status: "Paused" });` |
 | `neev.sandboxes.get(id)` | `const sandbox = await neev.sandboxes.get(id);` |
+| `neev.sandboxes.update(id, ...)` | `await neev.sandboxes.update(id, { resources: { cpu: 4, memory_gb: 8 } });` |
+| `neev.sandboxes.createConnectToken(id)` | `const { token } = await neev.sandboxes.createConnectToken(id);` |
 | `neev.sandboxes.pause(id)` | `await neev.sandboxes.pause(id);` |
 | `neev.sandboxes.resume(id)` | `await neev.sandboxes.resume(id);` |
 | `neev.sandboxes.delete(id)` | `await neev.sandboxes.delete(id);` |
@@ -461,6 +479,8 @@ Minimal one-liners for each public API.
 | `sandbox.refresh()` | `await sandbox.refresh();` |
 | `sandbox.waitUntilReady(...)` | `await sandbox.waitUntilReady({ timeoutMs: 120_000 });` |
 | `sandbox.pause()` / `sandbox.resume()` | `await sandbox.pause();  await sandbox.resume();` |
+| `sandbox.update(...)` | `await sandbox.update({ resources: { cpu: 4, memory_gb: 8 } });` |
+| `sandbox.createConnectToken()` | `const { token } = await sandbox.createConnectToken();` |
 | `sandbox.snapshot(...)` | `const pending = await sandbox.snapshot({ name: "demo-snap" });` |
 | `sandbox.snapshots(...)` | `const { items } = await sandbox.snapshots({ page: 1, limit: 20 });` |
 | `sandbox.restore(snapshotId)` | `await sandbox.restore(snapshotId);` |

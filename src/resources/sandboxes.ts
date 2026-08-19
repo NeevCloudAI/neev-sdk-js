@@ -8,6 +8,7 @@ import type { FetchLike } from "../http.js";
 import type { SandboxConnection } from "../runtime.js";
 import { Sandbox } from "../sandbox.js";
 import type {
+  ConnectTokenResponse,
   CreateSandboxParams,
   CreateSnapshotParams,
   SandboxData,
@@ -17,6 +18,7 @@ import type {
   SandboxPort,
   SnapshotData,
   SnapshotListResponse,
+  UpdateSandboxParams,
 } from "../types.js";
 
 // Spec path templates for the aiagent sandbox endpoints. openapi-fetch type-checks
@@ -26,6 +28,8 @@ const ITEM = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbo
 const PAUSE = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/pause";
 const RESUME = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/resume";
 const METRICS = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/metrics";
+const CONNECT_TOKEN =
+  "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/connect-token";
 const SNAPSHOTS =
   "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/snapshots";
 const SNAPSHOT_ITEM = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/snapshots/{snapshot_id}";
@@ -171,6 +175,18 @@ export class Sandboxes {
     return new Sandbox(this, unwrap<SandboxData>(res), scope);
   }
 
+  // Resizes a sandbox in place (cpu/memory) and returns the updated handle. The
+  // sandbox keeps running; only the fields provided change. Disk is not resizable
+  // in place — the server rejects a disk_gb that differs from the current one.
+  async update(id: string, params: UpdateSandboxParams, scope?: Scope): Promise<Sandbox> {
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.PATCH(ITEM, {
+      params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
+      body: params,
+    });
+    return new Sandbox(this, unwrap<SandboxData>(res), scope);
+  }
+
   // Pauses a sandbox (scales it to zero replicas) and returns the updated handle.
   async pause(id: string, scope?: Scope): Promise<Sandbox> {
     const { orgId, projectId } = this.ctx.resolveScope(scope);
@@ -209,6 +225,17 @@ export class Sandboxes {
       },
     });
     return unwrap<SandboxMetricsResponse>(res);
+  }
+
+  // Mints a short-lived connect token for a sandbox, returned with its lifetime in
+  // seconds. Presented as a bearer credential when calling the sandbox's
+  // connect_url directly, so a caller can reach the runtime without the API key.
+  async createConnectToken(id: string, scope?: Scope): Promise<ConnectTokenResponse> {
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.POST(CONNECT_TOKEN, {
+      params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
+    });
+    return unwrap<ConnectTokenResponse>(res);
   }
 
   // Exposes a port for credential-free preview URLs and returns it with its URL.
