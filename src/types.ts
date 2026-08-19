@@ -51,9 +51,6 @@ export type MetricSeries = components["schemas"]["MetricSeries"];
 // A port exposed for credential-free preview URLs, with its public URL.
 export type SandboxPort = components["schemas"]["SandboxPort"];
 
-// Short-lived connect token for a sandbox, with its lifetime in seconds.
-export type ConnectTokenResponse = components["schemas"]["ConnectTokenResponse"];
-
 // A platform-managed sandbox runtime template, referenced as
 // `sandbox_template_id` at create time.
 export type SandboxTemplate = components["schemas"]["SandboxTemplate"];

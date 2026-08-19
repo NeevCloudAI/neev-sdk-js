@@ -14,7 +14,6 @@ import type { ExecOptions, ExecResult, ExecStreamEvent, SandboxConnection } from
 import { openSshTunnel } from "./ssh.js";
 import type { SshTunnel, SshTunnelOptions } from "./ssh.js";
 import type {
-  ConnectTokenResponse,
   CreateSnapshotParams,
   SandboxData,
   SandboxMetricsResponse,
@@ -242,13 +241,6 @@ export class Sandbox {
   // Reads the live metric series for this sandbox.
   async metrics(params: MetricsQuery = {}): Promise<SandboxMetricsResponse> {
     return this.sandboxes.metrics(this.id, { ...params, ...this.scope });
-  }
-
-  // Mints a short-lived connect token for this sandbox, with its lifetime in
-  // seconds. Use it as a bearer credential to call `connectUrl` directly instead of
-  // handing out the API key.
-  async createConnectToken(): Promise<ConnectTokenResponse> {
-    return this.sandboxes.createConnectToken(this.id, this.scope);
   }
 
   // Exposes a port for credential-free preview URLs and returns its public URL.

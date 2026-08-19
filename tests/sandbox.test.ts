@@ -69,18 +69,6 @@ describe("Sandbox handle", () => {
     expect(sb.resources).toEqual({ cpu: 4, memory_gb: 8 });
   });
 
-  it("createConnectToken returns the token and its lifetime", async () => {
-    const neev = client([
-      json(201, sandboxData()),
-      json(200, { token: "ct-abc", expires_in: 900 }),
-    ]);
-    const sb = await neev.sandboxes.create({
-      name: "demo",
-      sandbox_template_id: "sb-ubuntu-26-04-minimal",
-    });
-    expect(await sb.createConnectToken()).toEqual({ token: "ct-abc", expires_in: 900 });
-  });
-
   it("waitUntilReady resolves once the phase becomes Ready", async () => {
     const neev = client([
       json(201, sandboxData({ phase: "Pending" })),

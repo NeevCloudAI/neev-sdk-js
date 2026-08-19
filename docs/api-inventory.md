@@ -17,7 +17,7 @@ import { Neev } from "@neevcloud/sdk";
 
 **Resources** — client-level API
 
-- [Sandboxes resource](#sandboxes-resource) — create, list, get, update, connect token, pause, resume, delete, metrics, snapshots, restore, fork, connect
+- [Sandboxes resource](#sandboxes-resource) — create, list, get, update, pause, resume, delete, metrics, snapshots, restore, fork, connect
 - [Templates resource](#templates-resource)
 - [Agents resource](#agents-resource) — create, list, get, update, pause, resume, delete
 - [Agent templates resource](#agent-templates-resource)
@@ -115,7 +115,6 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `CreateSandboxParams` | type alias | `types.ts` |
 | `UpdateSandboxParams` | type alias | `types.ts` |
 | `CreateSnapshotParams` | type alias | `types.ts` |
-| `ConnectTokenResponse` | type alias | `types.ts` |
 | `EgressConvenience` | interface (type) | `types.ts` |
 | `EnvVar` | type alias | `types.ts` |
 | `MetricSeries` | type alias | `types.ts` |
@@ -287,31 +286,17 @@ update(id: string, params: UpdateSandboxParams, scope?: Scope): Promise<Sandbox>
 
 Updates a sandbox in place. `UpdateSandboxParams` = `{ resources: SandboxResources }`; `resources` is required. `cpu` and `memory_gb` are resized on the running sandbox with no restart, and only the fields you pass change. `disk_gb` is fixed at creation and is rejected if it differs from the current value — see [`SandboxResources`](#sandboxresources) for ranges.
 
+Two cases the platform refuses outright: a sandbox that backs an agent must be resized through [`agents.update`](#clientagentsupdateid-params-scope), and a resize is refused while a snapshot capture is in flight (retry once the snapshot is `Ready`).
+
 **Returns:** `Promise<Sandbox>` — the updated handle.
 
-**Raises:** `BadRequestError` (400) for a size outside the allowed range or a changed `disk_gb`, `NotFoundError`, plus scope/auth/transport errors.
+**Raises:** `NeevError` locally, before any request, when `resources` carries no fields (every field is optional, so `{ resources: {} }` type-checks). `BadRequestError` (400) for a size outside the allowed range, a changed `disk_gb`, or a capture in flight. `PermissionDeniedError` (403) for an agent-backed sandbox. `NotFoundError`, plus scope/auth/transport errors.
 
 ```ts
 const resized = await client.sandboxes.update(sandbox.id, {
   resources: { cpu: 4, memory_gb: 8 },
 });
 console.log(resized.resources); // { cpu: 4, memory_gb: 8, … }
-```
-
-### `client.sandboxes.createConnectToken(id, scope?)`
-
-```ts
-createConnectToken(id: string, scope?: Scope): Promise<ConnectTokenResponse>
-```
-
-Mints a short-lived connect token for a sandbox. `ConnectTokenResponse` = `{ token: string; expires_in: number }`, where `expires_in` is the lifetime in seconds. Present `token` as a bearer credential against the sandbox's `connectUrl` to reach the runtime without distributing the API key; mint a new one when it expires.
-
-**Returns:** `Promise<ConnectTokenResponse>`.
-
-**Raises:** `NotFoundError`, plus scope/auth/transport errors.
-
-```ts
-const { token, expires_in } = await client.sandboxes.createConnectToken(sandbox.id);
 ```
 
 ### `client.sandboxes.pause(id, scope?)`
@@ -820,23 +805,11 @@ Resizes this sandbox in place through `client.sandboxes.update` using the handle
 
 **Returns:** `Promise<this>`.
 
+**Raises:** the same errors as [`client.sandboxes.update`](#clientsandboxesupdateid-params-scope) — including a local `NeevError` for an empty `resources`, `403` for a sandbox that backs an agent (use `agents.update`), and `400` while a capture is in flight.
+
 ```ts
 await sandbox.update({ resources: { cpu: 4, memory_gb: 8 } });
 console.log(sandbox.resources); // { cpu: 4, memory_gb: 8, … }
-```
-
-### `sandbox.createConnectToken()`
-
-```ts
-createConnectToken(): Promise<ConnectTokenResponse>
-```
-
-Mints a short-lived connect token for this sandbox through `client.sandboxes.createConnectToken` using the handle's scope. Returns `{ token, expires_in }`; use `token` as a bearer credential against `connectUrl` instead of handing out the API key.
-
-**Returns:** `Promise<ConnectTokenResponse>`.
-
-```ts
-const { token, expires_in } = await sandbox.createConnectToken();
 ```
 
 ### `sandbox.pause()` / `sandbox.resume()` / `sandbox.delete()`
@@ -1385,15 +1358,6 @@ Alias for the generated `UpdateSandboxRequest` — the body for `sandboxes.updat
 
 Within `resources`, only the fields you pass change; `disk_gb` is not resizable in place.
 
-### `ConnectTokenResponse`
-
-Alias for the generated `ConnectTokenResponse` — returned by `sandboxes.createConnectToken` and `sandbox.createConnectToken`.
-
-| Field | Type | Required |
-| ----- | ---- | -------- |
-| `token` | `string` | yes |
-| `expires_in` | `number` (seconds) | yes |
-
 ### `SandboxData`
 
 Alias for the generated `Sandbox` schema — the full lifecycle sandbox record wrapped by the `Sandbox` handle.
@@ -1769,7 +1733,6 @@ Compact reviewer index.
 | `Sandboxes.list` | method | `Promise<SandboxPage>` |
 | `Sandboxes.get` | method | `Promise<Sandbox>` |
 | `Sandboxes.update` | method | `Promise<Sandbox>` (in-place cpu/memory resize) |
-| `Sandboxes.createConnectToken` | method | `Promise<ConnectTokenResponse>` |
 | `Sandboxes.pause` | method | `Promise<Sandbox>` |
 | `Sandboxes.resume` | method | `Promise<Sandbox>` |
 | `Sandboxes.delete` | method | `Promise<void>` |
@@ -1834,7 +1797,6 @@ Compact reviewer index.
 | `refresh` | method | `Promise<this>` |
 | `waitUntilReady` | method | `Promise<this>`; `WaitOptions`. |
 | `update` | method | `Promise<this>`; `UpdateSandboxParams`. |
-| `createConnectToken` | method | `Promise<ConnectTokenResponse>` |
 | `pause` / `resume` | methods | `Promise<this>` |
 | `delete` | method | `Promise<void>` |
 | `metrics` | method | `Promise<SandboxMetricsResponse>` |

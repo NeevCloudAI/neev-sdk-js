@@ -81,7 +81,6 @@ export type {
   AgentStatus,
   AgentTemplate,
   AgentTemplateListResponse,
-  ConnectTokenResponse,
   CreateAgentParams,
   CreateSandboxParams,
   CreateSnapshotParams,
