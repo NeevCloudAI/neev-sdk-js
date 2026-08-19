@@ -55,6 +55,20 @@ describe("Sandbox handle", () => {
     expect(sb.replicas).toBe(0);
   });
 
+  it("update refreshes the handle's state from the resize response", async () => {
+    const neev = client([
+      json(201, sandboxData({ resources: { cpu: 1, memory_gb: 2 } })),
+      json(200, sandboxData({ resources: { cpu: 4, memory_gb: 8 } })),
+    ]);
+    const sb = await neev.sandboxes.create({
+      name: "demo",
+      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+    });
+    const same = await sb.update({ resources: { cpu: 4, memory_gb: 8 } });
+    expect(same).toBe(sb);
+    expect(sb.resources).toEqual({ cpu: 4, memory_gb: 8 });
+  });
+
   it("waitUntilReady resolves once the phase becomes Ready", async () => {
     const neev = client([
       json(201, sandboxData({ phase: "Pending" })),

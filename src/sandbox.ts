@@ -21,6 +21,7 @@ import type {
   SandboxPort,
   SandboxResources,
   SnapshotData,
+  UpdateSandboxParams,
 } from "./types.js";
 
 // Options controlling how long `waitUntilReady` polls before giving up.
@@ -207,6 +208,14 @@ export class Sandbox {
   async refresh(): Promise<this> {
     const fresh = await this.sandboxes.get(this.id, this.scope);
     this.state = fresh.data;
+    return this;
+  }
+
+  // Resizes this sandbox in place (cpu/memory) and updates this handle. The sandbox
+  // keeps running; disk is not resizable in place.
+  async update(params: UpdateSandboxParams): Promise<this> {
+    const next = await this.sandboxes.update(this.id, params, this.scope);
+    this.state = next.data;
     return this;
   }
 

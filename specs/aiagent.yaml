@@ -94,6 +94,34 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+    patch:
+      tags: [Sandboxes]
+      summary: Update a sandbox in place
+      description: |
+        Updates mutable fields of a sandbox without restarting it. `resources`
+        (cpu/memory) are resized in place on the running sandbox. Disk is not
+        resizable in place. Fields omitted from the body are left unchanged.
+      operationId: updateSandbox
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/SandboxID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateSandboxRequest'}
+      responses:
+        "200":
+          description: Updated sandbox
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Sandbox'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
     delete:
       tags: [Sandboxes]
       summary: Delete a sandbox
@@ -119,11 +147,10 @@ paths:
       tags: [Sandboxes]
       summary: Pause a sandbox (stop billable runtime; preserve disks)
       description: |
-        When `preserve_memory` is true the sandbox's full state (process memory
-        + filesystem) is captured as an implicit snapshot before the sandbox is
+        The sandbox's full state (root filesystem, process memory, and
+        workspace) is captured as an implicit snapshot before the sandbox is
         stopped. The snapshot is retained for the duration of the paused
-        state and consumed automatically on the next `resume`. When false
-        (default) the existing volume-only behaviour applies.
+        state and consumed automatically on the next `resume`.
       operationId: pauseSandbox
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
@@ -170,9 +197,9 @@ paths:
       tags: [Sandboxes]
       summary: Resume a paused sandbox
       description: |
-        Restores a paused sandbox. When the sandbox was paused with
-        `preserve_memory=true` it resumes from the implicit memory snapshot;
-        otherwise it cold-starts from the original image.
+        Restores a paused sandbox from the implicit snapshot taken at pause, so
+        it comes back with its root filesystem, process memory, and workspace
+        intact.
       operationId: resumeSandbox
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
@@ -956,6 +983,19 @@ components:
               - required: [sandbox_template_id]
               - required: [image]
               - required: [from_snapshot]
+    UpdateSandboxRequest:
+      type: object
+      additionalProperties: false
+      required: [resources]
+      description: In-place update of a sandbox's mutable fields.
+      properties:
+        resources:
+          allOf:
+            - $ref: '#/components/schemas/SandboxResources'
+          description: |
+            New cpu/memory sizing, resized in place on the running sandbox. Only the
+            fields provided change. disk_gb is not resizable in place and is
+            rejected if supplied with a different value.
     ExposePortRequest:
       type: object
       required: [port]
@@ -976,14 +1016,9 @@ components:
           items: {$ref: '#/components/schemas/SandboxPort'}
     PauseSandboxRequest:
       type: object
-      description: Optional body for the pause endpoint.
-      properties:
-        preserve_memory:
-          type: boolean
-          default: true
-          description: |
-            When true, capture FS+process memory as an implicit snapshot before
-            stopping the sandbox. The snapshot is auto-consumed on the next resume.
+      description: |
+        Optional body for the pause endpoint. It carries no fields — a pause
+        always captures the full snapshot.
     # --- Snapshot schemas ---
     SnapshotStatus:
       type: string

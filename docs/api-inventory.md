@@ -17,7 +17,7 @@ import { Neev } from "@neevcloud/sdk";
 
 **Resources** — client-level API
 
-- [Sandboxes resource](#sandboxes-resource) — create, list, get, pause, resume, delete, metrics, snapshots, restore, fork, connect
+- [Sandboxes resource](#sandboxes-resource) — create, list, get, update, pause, resume, delete, metrics, snapshots, restore, fork, connect
 - [Templates resource](#templates-resource)
 - [Agents resource](#agents-resource) — create, list, get, update, pause, resume, delete
 - [Agent templates resource](#agent-templates-resource)
@@ -113,6 +113,7 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `AgentTemplate` | type alias | `types.ts` |
 | `AgentTemplateListResponse` | type alias | `types.ts` |
 | `CreateSandboxParams` | type alias | `types.ts` |
+| `UpdateSandboxParams` | type alias | `types.ts` |
 | `CreateSnapshotParams` | type alias | `types.ts` |
 | `EgressConvenience` | interface (type) | `types.ts` |
 | `EnvVar` | type alias | `types.ts` |
@@ -275,6 +276,27 @@ Fetches a single sandbox by id.
 ```ts
 const sandbox = await client.sandboxes.get("550e8400-e29b-41d4-a716-446655440000");
 console.log(sandbox.phase, sandbox.connectUrl);
+```
+
+### `client.sandboxes.update(id, params, scope?)`
+
+```ts
+update(id: string, params: UpdateSandboxParams, scope?: Scope): Promise<Sandbox>
+```
+
+Updates a sandbox in place. `UpdateSandboxParams` = `{ resources: SandboxResources }`; `resources` is required. `cpu` and `memory_gb` are resized on the running sandbox with no restart, and only the fields you pass change. `disk_gb` is fixed at creation and is rejected if it differs from the current value — see [`SandboxResources`](#sandboxresources) for ranges.
+
+Two cases the platform refuses outright: a sandbox that backs an agent must be resized through [`agents.update`](#clientagentsupdateid-params-scope), and a resize is refused while a snapshot capture is in flight (retry once the snapshot is `Ready`).
+
+**Returns:** `Promise<Sandbox>` — the updated handle.
+
+**Raises:** `NeevError` locally, before any request, when `resources` carries no fields (every field is optional, so `{ resources: {} }` type-checks). `BadRequestError` (400) for a size outside the allowed range, a changed `disk_gb`, or a capture in flight. `PermissionDeniedError` (403) for an agent-backed sandbox. `NotFoundError`, plus scope/auth/transport errors.
+
+```ts
+const resized = await client.sandboxes.update(sandbox.id, {
+  resources: { cpu: 4, memory_gb: 8 },
+});
+console.log(resized.resources); // { cpu: 4, memory_gb: 8, … }
 ```
 
 ### `client.sandboxes.pause(id, scope?)`
@@ -713,7 +735,7 @@ await box.exec("echo", { args: ["hi"] });
 
 ## Sandbox handle
 
-Returned by `create()`, `get()`, `list().items`, `pause()`, `resume()`, `restore()`, and `fork()`. Holds the latest known server state (`SandboxData`) and offers lifecycle actions on this sandbox in place. Construct via the `sandboxes` resource rather than directly.
+Returned by `create()`, `get()`, `list().items`, `update()`, `pause()`, `resume()`, `restore()`, and `fork()`. Holds the latest known server state (`SandboxData`) and offers lifecycle actions on this sandbox in place. Construct via the `sandboxes` resource rather than directly.
 
 ### Getters
 
@@ -771,6 +793,23 @@ Polls `refresh()` until `phase === "Ready"`, then resolves with this handle.
 
 ```ts
 await sandbox.waitUntilReady({ timeoutMs: 60_000, pollIntervalMs: 1_000 });
+```
+
+### `sandbox.update(params)`
+
+```ts
+update(params: UpdateSandboxParams): Promise<this>
+```
+
+Resizes this sandbox in place through `client.sandboxes.update` using the handle's scope, then updates the handle's state from the response. The sandbox keeps running; `disk_gb` is not resizable in place.
+
+**Returns:** `Promise<this>`.
+
+**Raises:** the same errors as [`client.sandboxes.update`](#clientsandboxesupdateid-params-scope) — including a local `NeevError` for an empty `resources`, `403` for a sandbox that backs an agent (use `agents.update`), and `400` while a capture is in flight.
+
+```ts
+await sandbox.update({ resources: { cpu: 4, memory_gb: 8 } });
+console.log(sandbox.resources); // { cpu: 4, memory_gb: 8, … }
 ```
 
 ### `sandbox.pause()` / `sandbox.resume()` / `sandbox.delete()`
@@ -1309,6 +1348,16 @@ The generated `CreateSandboxRequest` plus the SDK-only `EgressConvenience` field
 
 > Exact optionality/extra fields follow the generated OpenAPI schema; consult `src/generated/aiagent.ts` if the spec changes.
 
+### `UpdateSandboxParams`
+
+Alias for the generated `UpdateSandboxRequest` — the body for `sandboxes.update` and `sandbox.update`.
+
+| Field | Type | Required |
+| ----- | ---- | -------- |
+| `resources` | `SandboxResources` | yes |
+
+Within `resources`, only the fields you pass change; `disk_gb` is not resizable in place.
+
 ### `SandboxData`
 
 Alias for the generated `Sandbox` schema — the full lifecycle sandbox record wrapped by the `Sandbox` handle.
@@ -1348,7 +1397,7 @@ Compute size for a sandbox / agent (`cpu` / `memory_gb` / `disk_gb`, all optiona
 
 Per-field resolution order for a **sandbox**: caller value → platform default (above). `sandbox_template_id` selects only the image, not resources — there is no sandbox-template resource layer. **Agents** insert a middle layer (the agent template's `default_resources`) — see [Agent resources](#agent-resources).
 
-`cpu` and `memory_gb` are resizable in place via [`agents.update`](#clientagentsupdateid-params-scope) (resized on the running sandbox); `disk_gb` is fixed at creation and is rejected if `update` supplies a different value.
+`cpu` and `memory_gb` are resizable in place via [`sandboxes.update`](#clientsandboxesupdateid-params-scope) or [`agents.update`](#clientagentsupdateid-params-scope) (resized on the running sandbox); `disk_gb` is fixed at creation and is rejected if `update` supplies a different value.
 
 ### Agent resources
 
@@ -1683,6 +1732,7 @@ Compact reviewer index.
 | `Sandboxes.create` | method | `Promise<Sandbox>` |
 | `Sandboxes.list` | method | `Promise<SandboxPage>` |
 | `Sandboxes.get` | method | `Promise<Sandbox>` |
+| `Sandboxes.update` | method | `Promise<Sandbox>` (in-place cpu/memory resize) |
 | `Sandboxes.pause` | method | `Promise<Sandbox>` |
 | `Sandboxes.resume` | method | `Promise<Sandbox>` |
 | `Sandboxes.delete` | method | `Promise<void>` |
@@ -1746,6 +1796,7 @@ Compact reviewer index.
 | `processes` | getter | `SandboxProcesses` (lazy connection). |
 | `refresh` | method | `Promise<this>` |
 | `waitUntilReady` | method | `Promise<this>`; `WaitOptions`. |
+| `update` | method | `Promise<this>`; `UpdateSandboxParams`. |
 | `pause` / `resume` | methods | `Promise<this>` |
 | `delete` | method | `Promise<void>` |
 | `metrics` | method | `Promise<SandboxMetricsResponse>` |

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Neev, NeevError, NotFoundError, Sandbox } from "../src/index.js";
+import { BadRequestError, Neev, NeevError, NotFoundError, Sandbox } from "../src/index.js";
 import { json, mockFetch, sandboxData, snapshotData } from "./helpers.js";
 
 // Builds a client backed by the given queued responses.
@@ -116,6 +116,42 @@ describe("sandboxes resource", () => {
     expect(url).not.toContain("name=");
     expect(url).not.toContain("status=");
     expect(url).not.toContain("sandbox_id=");
+  });
+
+  it("resizes a sandbox in place with a PATCH on the item path", async () => {
+    const { neev, calls } = client([
+      json(200, sandboxData({ resources: { cpu: 2, memory_gb: 4 } })),
+    ]);
+    const sb = await neev.sandboxes.update("sb-1", { resources: { cpu: 2, memory_gb: 4 } });
+    expect(sb.resources).toEqual({ cpu: 2, memory_gb: 4 });
+    expect(calls[0]?.method).toBe("PATCH");
+    expect(calls[0]?.url).toMatch(/\/sandboxes\/sb-1$/);
+    expect(calls[0]?.body).toEqual({ resources: { cpu: 2, memory_gb: 4 } });
+  });
+
+  it("rejects an empty resources patch without calling the server", async () => {
+    const { neev, calls } = client([]);
+    const err = await neev.sandboxes.update("sb-1", { resources: {} }).catch((e) => e);
+    expect(err).toBeInstanceOf(NeevError);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("surfaces a typed error when the server refuses a resize", async () => {
+    const { neev } = client([
+      json(400, { error: "bad_request", details: "resize while a capture is in flight" }),
+    ]);
+    const err = await neev.sandboxes.update("sb-1", { resources: { cpu: 4 } }).catch((e) => e);
+    expect(err).toBeInstanceOf(BadRequestError);
+  });
+
+  it("applies a per-call scope override to update", async () => {
+    const { neev, calls } = client([json(200, sandboxData())]);
+    await neev.sandboxes.update(
+      "sb-1",
+      { resources: { cpu: 1 } },
+      { orgId: "other_org", projectId: "other_proj" },
+    );
+    expect(calls[0]?.url).toContain("/orgs/other_org/projects/other_proj/sandboxes/sb-1");
   });
 
   it("targets the pause and resume sub-paths", async () => {

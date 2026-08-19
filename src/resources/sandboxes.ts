@@ -17,6 +17,7 @@ import type {
   SandboxPort,
   SnapshotData,
   SnapshotListResponse,
+  UpdateSandboxParams,
 } from "../types.js";
 
 // Spec path templates for the aiagent sandbox endpoints. openapi-fetch type-checks
@@ -167,6 +168,26 @@ export class Sandboxes {
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.GET(ITEM, {
       params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
+    });
+    return new Sandbox(this, unwrap<SandboxData>(res), scope);
+  }
+
+  // Resizes a sandbox in place (cpu/memory) and returns the updated handle. The
+  // sandbox keeps running; only the fields provided change. Disk is not resizable
+  // in place — the server rejects a disk_gb that differs from the current one.
+  //
+  // Rejects an empty patch locally rather than letting the server 400 on it, since
+  // every SandboxResources field is optional and `{ resources: {} }` type-checks.
+  // A sandbox that backs an agent is resized through `agents.update` instead; this
+  // call is refused for one. A capture in flight also blocks a resize.
+  async update(id: string, params: UpdateSandboxParams, scope?: Scope): Promise<Sandbox> {
+    if (!Object.values(params.resources).some((value) => value !== undefined)) {
+      throw new NeevError("sandboxes.update requires at least one field in resources.");
+    }
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.PATCH(ITEM, {
+      params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
+      body: params,
     });
     return new Sandbox(this, unwrap<SandboxData>(res), scope);
   }

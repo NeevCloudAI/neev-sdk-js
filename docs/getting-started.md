@@ -150,8 +150,11 @@ This section walks the full path from a clean project to a running sandbox.
    > **Resources.** When you omit `resources` (or any field), the platform assigns
    > 1 vCPU / 2 GB memory / 10 GB disk. Valid ranges are cpu 0.5–8 (step 0.5),
    > memory 1–16 GB, disk 10–100 GB (step 10). See
-   > [`SandboxResources`](./api-inventory.md#sandboxresources). Agents created from a
-   > template inherit that template's sizing instead — see
+   > [`SandboxResources`](./api-inventory.md#sandboxresources). `cpu` and
+   > `memory_gb` can be resized later with no restart via
+   > `sandbox.update({ resources })`, which leaves the fields you omit unchanged;
+   > `disk_gb` is fixed at creation and is not resizable in place. Agents created
+   > from a template inherit that template's sizing instead — see
    > [Agent resources](./api-inventory.md#agent-resources).
 
 5. **Wait until it is Ready**, then work inside it:

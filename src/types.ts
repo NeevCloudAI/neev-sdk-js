@@ -23,6 +23,9 @@ export interface EgressConvenience {
 // the server resolves the image and default command from the chosen template.
 export type CreateSandboxParams = components["schemas"]["CreateSandboxRequest"] & EgressConvenience;
 
+// In-place update accepted by `sandboxes.update` (cpu/memory resize).
+export type UpdateSandboxParams = components["schemas"]["UpdateSandboxRequest"];
+
 // Compute size (cpu / memory_gb / disk_gb) for a sandbox. Omitted fields use the
 // platform default.
 export type SandboxResources = components["schemas"]["SandboxResources"];

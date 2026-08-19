@@ -28,6 +28,10 @@ async function main(): Promise<void> {
   const metrics = await sandbox.metrics();
   console.log(`metric series: ${metrics.series.map((s) => s.metric).join(", ")}`);
 
+  // Resize cpu/memory in place (no restart); disk is not resizable this way.
+  await sandbox.update({ resources: { cpu: 2, memory_gb: 4 } });
+  console.log(`resized to ${sandbox.resources?.cpu} vCPU / ${sandbox.resources?.memory_gb} GB`);
+
   // Pause to release compute, then delete to clean up.
   await sandbox.pause();
   console.log(`paused (replicas: ${sandbox.replicas})`);
