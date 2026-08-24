@@ -9,7 +9,7 @@ One package, one auth model, one client — adopt new capabilities as they ship.
 
 **Available today**
 
-- **`neev.sandboxes`** — full agent-sandbox lifecycle: create, list, get, pause, resume, delete, live metrics, plus snapshots, restore, and fork. Inside a running sandbox: `files`, `exec`, a `processes` supervisor for long-running, detached processes, and `pty` for interactive terminal sessions. Sandboxes are strongly isolated compute environments for AI agents.
+- **`neev.sandboxes`** — full agent-sandbox lifecycle: create, list, get, pause, resume, delete, live metrics, plus snapshots, rollback, and fork. Inside a running sandbox: `files`, `exec`, a `processes` supervisor for long-running, detached processes, and `pty` for interactive terminal sessions. Sandboxes are strongly isolated compute environments for AI agents.
 - **`neev.templates`** — the platform sandbox-template catalogue (list, get). A template id (e.g. `sb-ubuntu-26-04-minimal`) is optional when creating a sandbox; omit it to use the platform's default template.
 - **`neev.agents`** — agent lifecycle: create from a catalogue template, list, get, update (in-place egress / cpu / memory), pause, resume, delete. Each agent runs on its own backing sandbox, reachable from the handle via `agent.sandbox()`.
 - **`neev.agentTemplates`** — the platform agent-template catalogue (list, get). A template name (e.g. `claude-code`) is passed as `agent_template` when creating an agent.
@@ -82,12 +82,12 @@ await neev.sandboxes.resume(id);
 await neev.sandboxes.delete(id);
 const metrics = await neev.sandboxes.metrics(id, { step: "60s" });
 
-// Snapshots, restore, and fork (see "Snapshots, fork & restore" below).
+// Snapshots, rollback, and fork (see "Snapshots, fork & rollback" below).
 const snap = await neev.sandboxes.createSnapshot(id, { name: "checkpoint" });
 const { items } = await neev.sandboxes.listSnapshots(id); // paginated
-// `snap` starts Pending — wait until it reaches Ready before restoring from it.
+// `snap` starts Pending — wait until it reaches Ready before rolling back to it.
 await neev.sandboxes.waitForSnapshot(snap.id);         // resolves once Ready (throws on failure)
-await neev.sandboxes.restore(id, snap.id);             // restore in place from the Ready snapshot
+await neev.sandboxes.rollback(id, snap.id);            // roll back in place to the Ready snapshot
 const fork = await neev.sandboxes.fork(id, "my-fork"); // fork the current live state (no snapshot needed)
 ```
 
@@ -145,7 +145,7 @@ await sandbox.waitUntilReady();   // poll until phase === "Ready"
 await sandbox.pause();
 const snap = await sandbox.snapshot({ waitUntilReady: true }); // capture and wait until Ready
 const fork = await sandbox.fork("my-fork"); // branch the current state into a new sandbox
-await sandbox.restore(snap.id);             // restore this sandbox in place from the Ready snapshot
+await sandbox.rollback(snap.id);            // roll this sandbox back in place to the Ready snapshot
 sandbox.data;                     // full raw API record
 ```
 
@@ -336,9 +336,9 @@ const ports = await sandbox.listPorts(); // → SandboxPort[] ({ port, preview_u
 await sandbox.revokePort(3000); // stop serving the port
 ```
 
-### Snapshots, fork & restore
+### Snapshots, fork & rollback
 
-Capture a sandbox's state as a **snapshot**, then **restore** the same sandbox back to that snapshot. A snapshot is created `Pending` and must reach `Ready` before it can be restored. Pass `{ waitUntilReady: true }` to block until it is `Ready` (or use `neev.sandboxes.waitForSnapshot(id)`); otherwise read `snapshot.status` yourself. **Fork** is separate: it atomically snapshots a sandbox's *current* live state into a brand-new sandbox (it does not reuse an existing snapshot), and the source keeps running:
+Capture a sandbox's state as a **snapshot**, then **roll back** the same sandbox to that snapshot. A snapshot is created `Pending` and must reach `Ready` before it can be rolled back to. Pass `{ waitUntilReady: true }` to block until it is `Ready` (or use `neev.sandboxes.waitForSnapshot(id)`); otherwise read `snapshot.status` yourself. **Fork** is separate: it atomically snapshots a sandbox's *current* live state into a brand-new sandbox (it does not reuse an existing snapshot), and the source keeps running:
 
 ```ts
 const sandbox = await neev.sandboxes.get(id);
@@ -346,9 +346,9 @@ const sandbox = await neev.sandboxes.get(id);
 // Capture the sandbox's filesystem state and block until it is Ready.
 const snap = await sandbox.snapshot({ name: "checkpoint", waitUntilReady: true });
 
-// Restore the original in place from the snapshot; fork branches the current
+// Roll the original back in place to the snapshot; fork branches the current
 // live state into a brand-new sandbox (it does not consume `snap`).
-await sandbox.restore(snap.id);             // → this sandbox, restored
+await sandbox.rollback(snap.id);            // → this sandbox, rolled back
 const fork = await sandbox.fork("my-fork"); // → a new Sandbox handle
 
 const { items } = await neev.sandboxes.listSnapshots(id); // paginated; pass { page, limit }
@@ -362,7 +362,7 @@ const pending = await sandbox.snapshot({ name: "checkpoint" }); // status: "Pend
 const ready = await neev.sandboxes.waitForSnapshot(pending.id); // resolves once Ready
 ```
 
-The full snapshot example is [`examples/snapshot-fork-restore.ts`](./examples/snapshot-fork-restore.ts).
+The full snapshot example is [`examples/snapshot-fork-rollback.ts`](./examples/snapshot-fork-rollback.ts).
 
 ### Agents
 

@@ -29,7 +29,7 @@ const METRICS = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{san
 const SNAPSHOTS =
   "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/snapshots";
 const SNAPSHOT_ITEM = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/snapshots/{snapshot_id}";
-const RESTORE = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/restore";
+const ROLLBACK = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/rollback";
 const FORK = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/fork";
 const PORTS = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports";
 const PORT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports/{port}";
@@ -383,11 +383,11 @@ export class Sandboxes {
     ensureOk(res);
   }
 
-  // Restores a sandbox in place from one of its snapshots, returning the updated
+  // Rolls a sandbox back in place to one of its snapshots, returning the updated
   // handle. The snapshot must belong to a sandbox in the same project.
-  async restore(id: string, snapshotId: string, scope?: Scope): Promise<Sandbox> {
+  async rollback(id: string, snapshotId: string, scope?: Scope): Promise<Sandbox> {
     const { orgId, projectId } = this.ctx.resolveScope(scope);
-    const res = await this.api.POST(RESTORE, {
+    const res = await this.api.POST(ROLLBACK, {
       params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
       body: { snapshot_id: snapshotId },
     });
@@ -397,7 +397,7 @@ export class Sandboxes {
   // Forks a sandbox into a new named sandbox. The server atomically snapshots the
   // source's *current* live state and seeds the new sandbox from it; the source
   // keeps running. This always forks the current state — it does not reuse a
-  // previously created snapshot (use restore for a chosen snapshot). Returns a
+  // previously created snapshot (use rollback for a chosen snapshot). Returns a
   // handle to the new sandbox.
   async fork(id: string, name: string, scope?: Scope): Promise<Sandbox> {
     const { orgId, projectId } = this.ctx.resolveScope(scope);
