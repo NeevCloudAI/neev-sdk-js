@@ -4,8 +4,8 @@ info:
   description: |
     Manages sandboxes for the AI Supercloud platform. v1beta1 scope covers
     sandbox lifecycle (create, list, get, delete, pause/resume), live-health
-    metrics, and memory snapshots (create, list, get, delete,
-    restore, fork, from_snapshot create).
+    metrics, and memory snapshots (create, list, get, delete, rollback, fork,
+    restore create).
   version: 0.2.0
 servers:
   - url: https://api.{env}.ai.neevcloud.com/agent
@@ -28,6 +28,24 @@ paths:
       summary: List sandboxes in a project
       description: Return the list of sandboxes in a project.
       operationId: listSandboxes
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const page = await neev.sandboxes.list();
+            for (const s of page.items) console.log(s.id, s.phase);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            page = neev.sandboxes.list()
+            for s in page.items:
+                print(s.id, s.phase)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -56,6 +74,23 @@ paths:
       summary: Create a sandbox
       description: Create from a catalogue template or BYOI image; set exactly one of `sandbox_template_id` or `image`.
       operationId: createSandbox
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            console.log(sandbox.id, sandbox.phase);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            print(sandbox.id, sandbox.phase)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -75,11 +110,31 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}:
     get:
       tags: [Sandboxes]
       summary: Get a sandbox by ID
       operationId: getSandbox
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const created = await neev.sandboxes.create({});
+            const sandbox = await neev.sandboxes.get(created.id);
+            console.log(sandbox.phase, sandbox.connectUrl);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            created = neev.sandboxes.create({})
+            sandbox = neev.sandboxes.get(created.id)
+            print(sandbox.phase, sandbox.connect_url)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -103,6 +158,23 @@ paths:
         deleted as part of the same operation; their stored data is reclaimed
         automatically.
       operationId: deleteSandbox
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            await neev.sandboxes.delete(sandbox.id);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            neev.sandboxes.delete(sandbox.id)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -114,17 +186,80 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+    patch:
+      tags: [Sandboxes]
+      summary: Update a sandbox in place
+      description: |
+        Updates mutable fields of a sandbox without restarting it. `resources` (cpu/memory) are resized
+        in place on the running sandbox. Disk is not resizable in place.
+        Fields omitted from the body are left unchanged.
+      operationId: updateSandbox
+      x-codeSamples:
+        - lang: cURL
+          label: Update resources
+          source: |
+            curl -X PATCH "$BASE_URL/api/v1beta1/orgs/$NEEV_ORG_ID/projects/$NEEV_PROJECT_ID/sandboxes/$SANDBOX_ID" \
+              -H "Authorization: Bearer $NEEV_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"resources": {"cpu": 2, "memory_gb": 4}}'
+        - lang: cURL
+          label: Update egress rules (live, no restart)
+          source: |
+            curl -X PATCH "$BASE_URL/api/v1beta1/orgs/$NEEV_ORG_ID/projects/$NEEV_PROJECT_ID/sandboxes/$SANDBOX_ID" \
+              -H "Authorization: Bearer $NEEV_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d '{"egress": {"mode": "allow_list", "allow": [{"host": "api.github.com"}]}}'
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/SandboxID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateSandboxRequest'}
+      responses:
+        "200":
+          description: Updated sandbox
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Sandbox'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/pause:
     post:
       tags: [Sandboxes]
       summary: Pause a sandbox (stop billable runtime; preserve disks)
       description: |
-        When `preserve_memory` is true the sandbox's full state (process memory
-        + filesystem) is captured as an implicit snapshot before the sandbox is
-        stopped. The snapshot is retained for the duration of the paused
-        state and consumed automatically on the next `resume`. When false
-        (default) the existing volume-only behaviour applies.
+        When a sandbox is paused, its full state (process memory and filesystem)
+        is always snapshotted before the sandbox shuts down, so that when it is
+        resumed it can instantly restore exactly where it left off.
       operationId: pauseSandbox
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            await sandbox.waitUntilReady();
+            await sandbox.pause();
+            console.log(sandbox.phase, sandbox.replicas);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            sandbox.wait_until_ready()
+            sandbox.pause()
+            print(sandbox.phase, sandbox.replicas)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -146,6 +281,57 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/keepalive:
+    post:
+      tags: [Sandboxes]
+      summary: Reset a sandbox's idle timer
+      description: |
+        Extends the idle window so a busy sandbox stays running without an open
+        connection. Call it periodically while work is in progress, for example
+        once per agent turn.
+      operationId: keepaliveSandbox
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/SandboxID'}
+      responses:
+        "200":
+          description: Idle timer reset
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Sandbox'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/timeout:
+    put:
+      tags: [Sandboxes]
+      summary: Change a sandbox's idle/lifetime windows
+      operationId: updateSandboxTimeout
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/SandboxID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateSandboxTimeoutRequest'}
+      responses:
+        "200":
+          description: Windows updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Sandbox'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/connect-token:
     post:
       tags: [Sandboxes]
@@ -165,15 +351,36 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/resume:
     post:
       tags: [Sandboxes]
       summary: Resume a paused sandbox
       description: |
-        Restores a paused sandbox. When the sandbox was paused with
-        `preserve_memory=true` it resumes from the implicit memory snapshot;
-        otherwise it cold-starts from the original image.
+        Restores a paused sandbox from its implicit memory snapshot, resuming
+        the process from exactly where it left off.
       operationId: resumeSandbox
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            await sandbox.waitUntilReady();
+            await sandbox.pause();
+            await sandbox.resume();
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            sandbox.wait_until_ready()
+            sandbox.pause()
+            sandbox.resume()
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -190,6 +397,7 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports:
     get:
       tags: [Sandboxes]
@@ -199,6 +407,27 @@ paths:
         each with its public preview URL. Ports are private by default — a port
         is only reachable through a preview URL after you expose it.
       operationId: listSandboxPorts
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            await sandbox.waitUntilReady();
+            const ports = await sandbox.listPorts();
+            console.log(ports.map((p) => p.port));
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            sandbox.wait_until_ready()
+            ports = sandbox.list_ports()
+            print([p.port for p in ports])
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -224,6 +453,27 @@ paths:
         The port must be between 1 and 65535. Some ports are reserved by the
         platform and cannot be exposed; requests for those are rejected.
       operationId: exposeSandboxPort
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            await sandbox.waitUntilReady();
+            const port = await sandbox.exposePort(3000);
+            console.log(port.preview_url);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            sandbox.wait_until_ready()
+            port = sandbox.expose_port(3000)
+            print(port.preview_url)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -245,6 +495,7 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports/{port}:
     delete:
       tags: [Sandboxes]
@@ -253,6 +504,27 @@ paths:
         Stops serving a port through its preview URL. Revoking a port that is
         not currently exposed succeeds and changes nothing.
       operationId: revokeSandboxPort
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            await sandbox.waitUntilReady();
+            await sandbox.exposePort(3000);
+            await sandbox.revokePort(3000);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            sandbox.wait_until_ready()
+            sandbox.expose_port(3000)
+            sandbox.revoke_port(3000)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -269,6 +541,7 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   # --- Sandbox Memory Snapshots ---
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/snapshots:
     get:
@@ -276,6 +549,25 @@ paths:
       summary: List snapshots taken from a sandbox
       description: Returns a paginated list of snapshots taken from this sandbox.
       operationId: listSandboxSnapshots
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            const page = await neev.sandboxes.listSnapshots(sandbox.id);
+            console.log(page.items.map((s) => s.id));
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            snapshots = neev.sandboxes.list_snapshots(sandbox.id)
+            print([s.id for s in snapshots])
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -296,10 +588,31 @@ paths:
       tags: [Snapshots]
       summary: Create a snapshot of a sandbox
       description: |
-        Captures the full sandbox state (FS + process memory by default).
+        Captures the full sandbox state (process memory + filesystem).
         Returns immediately with `status: Pending`; poll `GET /snapshots/{snapshot_id}`
         until `status: Ready`.
       operationId: createSandboxSnapshot
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            await sandbox.waitUntilReady();
+            const snapshot = await sandbox.snapshot({ name: "my-snap", waitUntilReady: true });
+            console.log(snapshot.id, snapshot.status);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            sandbox.wait_until_ready()
+            snapshot = sandbox.snapshot({"name": "my-snap"})
+            print(snapshot.id, snapshot.status)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -321,12 +634,36 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/snapshots/{snapshot_id}:
     get:
       tags: [Snapshots]
       summary: Get snapshot metadata
       description: Returns snapshot metadata including current status and storage URI once ready.
       operationId: getSnapshot
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            await sandbox.waitUntilReady();
+            const snapshot = await sandbox.snapshot({ name: "my-snap" });
+            const detail = await neev.sandboxes.getSnapshot(snapshot.id);
+            console.log(detail.status);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            sandbox.wait_until_ready()
+            snapshot = sandbox.snapshot({"name": "my-snap"})
+            detail = neev.sandboxes.get_snapshot(snapshot.id)
+            print(detail.status)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -349,6 +686,27 @@ paths:
         progress. Its stored data is reclaimed automatically. This operation
         cannot be undone.
       operationId: deleteSnapshot
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            await sandbox.waitUntilReady();
+            const snapshot = await sandbox.snapshot({ name: "my-snap" });
+            await neev.sandboxes.deleteSnapshot(snapshot.id);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            sandbox.wait_until_ready()
+            snapshot = sandbox.snapshot({"name": "my-snap"})
+            neev.sandboxes.delete_snapshot(snapshot.id)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -359,15 +717,16 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/restore:
     post:
+      deprecated: true
       tags: [Snapshots]
-      summary: Restore a sandbox from a snapshot
+      summary: Restore a sandbox from a snapshot (Deprecated)
       description: |
+        Deprecated alias for POST .../sandboxes/{sandbox_id}/rollback.
         Same-sandbox rollback. Stops the sandbox's processes, replaces FS+memory
-        with the snapshot's state, and restarts. The sandbox keeps its UUID,
-        name, and network identity. Destructive — current state is overwritten
-        and not auto-archived.
+        with the snapshot's state, and restarts.
       operationId: restoreSandbox
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
@@ -390,6 +749,68 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/rollback:
+    post:
+      tags: [Snapshots]
+      summary: Rollback a sandbox from a snapshot
+      description: |
+        Same-sandbox rollback. Stops the sandbox's processes, replaces FS+memory
+        with the snapshot's state, and restarts. The sandbox keeps its UUID,
+        name, and network identity. Destructive — current state is overwritten
+        and not auto-archived.
+      operationId: rollbackSandbox
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            await sandbox.waitUntilReady();
+            // A snapshot must be Ready before it can be restored.
+            const snapshot = await sandbox.snapshot({ name: "my-snap", waitUntilReady: true });
+            await sandbox.rollback(snapshot.id);
+            await sandbox.waitUntilReady();
+        - lang: Python
+          source: |
+            import time
+
+            from neevai import NeevAI, SnapshotStatus
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            sandbox.wait_until_ready()
+            snapshot = sandbox.snapshot({"name": "my-snap"})
+            # Snapshots start Pending; wait until Ready before restoring.
+            while neev.sandboxes.get_snapshot(snapshot.id).status != SnapshotStatus.Ready:
+                time.sleep(2)
+            sandbox.rollback(snapshot.id)
+            sandbox.wait_until_ready()
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/SandboxID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RollbackSandboxRequest'}
+      responses:
+        "200":
+          description: Sandbox rollback accepted; check `phase` for progress.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Sandbox'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/fork:
     post:
       tags: [Snapshots]
@@ -399,6 +820,27 @@ paths:
         from that snapshot. The original sandbox keeps running. Returns the new
         sandbox object.
       operationId: forkSandbox
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            await sandbox.waitUntilReady();
+            const fork = await neev.sandboxes.fork(sandbox.id, "my-fork");
+            console.log(fork.id);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            sandbox.wait_until_ready()
+            fork = neev.sandboxes.fork(sandbox.id, "my-fork")
+            print(fork.id)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -420,16 +862,38 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/metrics:
     get:
       tags: [Sandboxes]
       summary: Read live health metrics for a sandbox
       description: |
-        Returns the bounded metric set for one sandbox (CPU / memory / disk
-        plus lifecycle and rate series). `from` / `to` / `step` are optional
-        and default to the last hour; the full v1 metric set is always
-        returned (no metric selector).
+        Returns the bounded metric set for one sandbox (CPU / memory / disk plus
+        lifecycle and rate series). `from` / `to` / `step` are optional and
+        default to the last hour; the full v1 metric set is always returned (no
+        metric selector).
       operationId: getSandboxMetrics
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.create({});
+            await sandbox.waitUntilReady();
+            const metrics = await sandbox.metrics();
+            console.log(metrics.series.map((s) => s.metric));
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.create({})
+            sandbox.wait_until_ready()
+            metrics = sandbox.metrics()
+            print([s.metric for s in metrics.series])
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -460,15 +924,33 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/sandbox-templates:
     get:
       tags: [Sandbox Templates]
       summary: List sandbox templates
       description: |
-        Returns platform-managed sandbox runtime templates available for
-        sandbox create. Only templates with status `active` or `deprecated`
-        are returned. Internal template details are not exposed.
+        Returns platform-managed sandbox runtime templates available for sandbox
+        create. Only templates with status `active` or `deprecated` are
+        returned. Internal template details are not exposed.
       operationId: listSandboxTemplates
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const page = await neev.templates.list();
+            console.log(page.items.map((t) => t.id));
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            page = neev.templates.list()
+            print([t.id for t in page.items])
       parameters:
         - {$ref: '#/components/parameters/Page'}
         - {$ref: '#/components/parameters/Limit'}
@@ -481,6 +963,7 @@ paths:
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/sandbox-templates/{template_id}:
     get:
       tags: [Sandbox Templates]
@@ -489,6 +972,23 @@ paths:
         Returns one platform-managed sandbox template by id (e.g.
         `sb-ubuntu-26-04-minimal`). Use the template `name` at sandbox create.
       operationId: getSandboxTemplate
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const template = await neev.templates.get("sb-ubuntu-26-04-minimal");
+            console.log(template.name);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            template = neev.templates.get("sb-ubuntu-26-04-minimal")
+            print(template.name)
       parameters:
         - {$ref: '#/components/parameters/SandboxTemplateID'}
       responses:
@@ -501,12 +1001,31 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   # --- Agents ---
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents:
     get:
       tags: [Agents]
       summary: List agents in a project
       operationId: listAgents
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const page = await neev.agents.list();
+            for (const a of page.items) console.log(a.id, a.status);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            page = neev.agents.list()
+            for a in page.items:
+                print(a.id, a.status)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -529,6 +1048,23 @@ paths:
         backing sandbox (1:1) running the template's agent image and reports the
         agent as `Provisioning` until the sandbox becomes ready.
       operationId: createAgent
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const agent = await neev.agents.create({ name: "my-agent", agent_template: "claude-code" });
+            console.log(agent.id, agent.status, agent.sandboxId);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            agent = neev.agents.create({"name": "my-agent", "agent_template": "claude-code"})
+            print(agent.id, agent.status, agent.sandbox_id)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -548,11 +1084,31 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}:
     get:
       tags: [Agents]
       summary: Get an agent by ID
       operationId: getAgent
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const created = await neev.agents.create({ name: "my-agent", agent_template: "claude-code" });
+            const agent = await neev.agents.get(created.id);
+            console.log(agent.status);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            created = neev.agents.create({"name": "my-agent", "agent_template": "claude-code"})
+            agent = neev.agents.get(created.id)
+            print(agent.status)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -571,11 +1127,27 @@ paths:
       tags: [Agents]
       summary: Update an agent in place
       description: |
-        Updates mutable fields of an agent without recreating it. `egress` is
-        re-applied live without disruption. `resources` (cpu/memory) are resized
+        Updates mutable fields of an agent without recreating it. `resources` (cpu/memory) are resized
         in place on the running sandbox and persist across a restart. Disk is
         not resizable in place. Fields omitted from the body are left unchanged.
       operationId: updateAgent
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const agent = await neev.agents.create({ name: "my-agent", agent_template: "claude-code" });
+            await agent.update({ resources: { cpu: 2, memory_gb: 4 } });
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            agent = neev.agents.create({"name": "my-agent", "agent_template": "claude-code"})
+            agent.update({"resources": {"cpu": 2, "memory_gb": 4}})
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -601,6 +1173,23 @@ paths:
       summary: Delete an agent
       description: Deletes the agent and its backing sandbox.
       operationId: deleteAgent
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const agent = await neev.agents.create({ name: "my-agent", agent_template: "claude-code" });
+            await neev.agents.delete(agent.id);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            agent = neev.agents.create({"name": "my-agent", "agent_template": "claude-code"})
+            neev.agents.delete(agent.id)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -611,11 +1200,33 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/pause:
     post:
       tags: [Agents]
       summary: Pause an agent (suspend its backing sandbox)
       operationId: pauseAgent
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const agent = await neev.agents.create({ name: "my-agent", agent_template: "claude-code" });
+            await agent.waitUntilReady();
+            await agent.pause();
+            console.log(agent.status);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            agent = neev.agents.create({"name": "my-agent", "agent_template": "claude-code"})
+            agent.wait_until_ready()
+            agent.pause()
+            print(agent.status)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -626,15 +1237,38 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Agent'}
+        "400": {$ref: '#/components/responses/BadRequest'}
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/resume:
     post:
       tags: [Agents]
       summary: Resume a paused agent
       operationId: resumeAgent
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const agent = await neev.agents.create({ name: "my-agent", agent_template: "claude-code" });
+            await agent.waitUntilReady();
+            await agent.pause();
+            await agent.resume();
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            agent = neev.agents.create({"name": "my-agent", "agent_template": "claude-code"})
+            agent.wait_until_ready()
+            agent.pause()
+            agent.resume()
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -650,6 +1284,7 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/connect:
     post:
       tags: [Agents]
@@ -663,6 +1298,11 @@ paths:
         port, or an `exec`/`pty` channel) is the agent's `drive_mode` field. The
         token is bound to this project and agent and validated on each request.
       operationId: connectAgent
+      x-codeSamples:
+        - lang: cURL
+          source: |
+            curl -X POST "$BASE_URL/api/v1beta1/orgs/$NEEV_ORG_ID/projects/$NEEV_PROJECT_ID/agents/$AGENT_ID/connect" \
+              -H "Authorization: Bearer $NEEV_API_KEY"
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -679,6 +1319,137 @@ paths:
         "409": {$ref: '#/components/responses/Conflict'}
         "425": {$ref: '#/components/responses/TooEarly'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/snapshots:
+    post:
+      tags: [Agents]
+      summary: Create an agent snapshot
+      description: |
+        Snapshots the sandbox backing this agent. Behaves the same as creating a
+        sandbox snapshot directly, scoped through the agent's ID instead.
+      operationId: createAgentSnapshot
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/AgentID'}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                retain_for:
+                  type: string
+                  description: "Duration string, e.g. 720h. Omit or '0' for no expiry."
+      responses:
+        "202":
+          description: Snapshot accepted.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Snapshot'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+    get:
+      tags: [Agents]
+      summary: List agent snapshots
+      description: Lists snapshots taken of the sandbox backing this agent.
+      operationId: listAgentSnapshots
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/AgentID'}
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Limit'}
+      responses:
+        "200":
+          description: Paginated snapshot list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/Snapshot'}
+                  total: {type: integer}
+                  page: {type: integer}
+                  limit: {type: integer}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/fork:
+    post:
+      tags: [Snapshots]
+      summary: Fork an agent's sandbox into a new sandbox
+      description: |
+        Atomically snapshots the sandbox backing this agent and creates a new
+        sandbox from that snapshot. The agent's sandbox keeps running. Returns
+        the new sandbox object.
+      operationId: forkAgent
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/AgentID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ForkSandboxRequest'}
+      responses:
+        "201":
+          description: New forked sandbox
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Sandbox'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "409": {$ref: '#/components/responses/Conflict'}
+        "425": {$ref: '#/components/responses/TooEarly'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/restore:
+    post:
+      tags: [Agents]
+      summary: Restore an agent from a snapshot
+      description: |
+        Restarts the agent's backing sandbox from a previously taken snapshot.
+      operationId: restoreAgent
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/AgentID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [snapshot_id]
+              properties:
+                snapshot_id:
+                  type: string
+                  format: uuid
+      responses:
+        "200":
+          description: Agent restarting from snapshot.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Agent'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+
   # --- Agent Templates ---
   /api/v1beta1/agent-templates:
     get:
@@ -689,6 +1460,23 @@ paths:
         Only templates with status `active` are returned. Internal template
         details are not exposed.
       operationId: listAgentTemplates
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const page = await neev.agentTemplates.list();
+            console.log(page.items.map((t) => t.name));
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            page = neev.agent_templates.list()
+            print([t.name for t in page.items])
       parameters:
         - {$ref: '#/components/parameters/Page'}
         - {$ref: '#/components/parameters/Limit'}
@@ -701,6 +1489,7 @@ paths:
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
   /api/v1beta1/agent-templates/{template_id}:
     get:
       tags: [Agent Templates]
@@ -709,6 +1498,23 @@ paths:
         Returns one platform-managed agent template by id (e.g. `ag-claude-code`).
         Use the template `name` at agent create.
       operationId: getAgentTemplate
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const template = await neev.agentTemplates.get("ag-claude-code");
+            console.log(template.name);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            template = neev.agent_templates.get("ag-claude-code")
+            print(template.name)
       parameters:
         - {$ref: '#/components/parameters/AgentTemplateID'}
       responses:
@@ -721,6 +1527,7 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+
 components:
   securitySchemes:
     BearerAuth:
@@ -871,6 +1678,16 @@ components:
           multipleOf: 10
           example: 10
           description: Ephemeral disk in GB. Multiples of 10, from 10 to 100.
+        rootfs_disk_gb:
+          type: integer
+          minimum: 1
+          maximum: 99
+          example: 4
+          description: |
+            Portion of disk_gb reserved for the container filesystem; the rest
+            is available to /workspace. Raise it when installs write outside
+            /workspace. Must be less than disk_gb. Defaults to 20% of disk_gb,
+            minimum 4. Can only be set when the sandbox is created.
     Sandbox:
       type: object
       required: [id, org_id, project_id, name, region, image, phase, replicas, created_at, updated_at]
@@ -882,7 +1699,6 @@ components:
         region: {type: string, description: "Region where the sandbox runs.", example: "dev"}
         image: {type: string}
         command: {type: array, items: {type: string}}
-        env: {type: array, items: {$ref: '#/components/schemas/EnvVar'}}
         resources: {$ref: '#/components/schemas/SandboxResources'}
         phase: {$ref: '#/components/schemas/SandboxPhase'}
         connect_url: {type: string, nullable: true, description: "Public URL the SDK calls (API key + X-Sandbox-Id). null when not configured."}
@@ -900,8 +1716,74 @@ components:
           type: string
           nullable: true
           description: Identity that created the sandbox (user id, or API key id for key-authenticated calls); null for sandboxes created before this was recorded.
+        last_crash:
+          allOf:
+            - $ref: '#/components/schemas/SandboxLastCrash'
+          nullable: true
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+        idle_timeout_seconds: {type: integer, nullable: true, description: "Idle window in seconds; 0 when the sandbox has no idle limit, null when using the account default."}
+        max_lifetime_seconds: {type: integer, nullable: true, description: "Maximum lifetime in seconds; 0 when the sandbox has no lifetime limit, null when using the account default."}
+        paused_retention_seconds: {type: integer, nullable: true, description: "Seconds a paused sandbox is kept before deletion; 0 to keep it paused indefinitely, null when using the account default."}
+        on_idle: {$ref: '#/components/schemas/OnIdleAction'}
+        idle_expires_at: {type: string, format: date-time, nullable: true, description: "When the sandbox will be stopped if it stays idle until then; null when no idle limit applies to it."}
+        hard_expires_at: {type: string, format: date-time, nullable: true, description: "When the sandbox will be stopped regardless of activity; null when no lifetime limit applies to it."}
+    OnIdleAction:
+      type: string
+      enum: [pause, delete]
+      default: pause
+      description: |
+        What happens when a sandbox becomes idle or reaches its maximum
+        lifetime. pause stops it but keeps its state so it can be resumed;
+        delete removes the sandbox and its data.
+    SandboxLifecycle:
+      type: object
+      description: Optional idle and lifetime controls set at create time.
+      properties:
+        idle_timeout_seconds:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Automatically act on the sandbox after this many seconds without activity. Omit to use the account default, or send 0 for no idle limit.
+        max_lifetime_seconds:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Automatically act on the sandbox this many seconds after it is created, regardless of activity. Omit to use the account default, or send 0 for no lifetime limit.
+        paused_retention_seconds:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Delete the sandbox once it has stayed paused for this many seconds. Omit to use the account default, or send 0 to keep it paused indefinitely.
+        on_idle: {$ref: '#/components/schemas/OnIdleAction'}
+    UpdateSandboxTimeoutRequest:
+      type: object
+      description: >-
+        Change the idle and lifetime windows on a running sandbox. Omitted
+        fields are left unchanged. Send 0 to turn a window off, so the sandbox
+        is not subject to that limit at all.
+      properties:
+        idle_timeout_seconds: {type: integer, minimum: 0, nullable: true}
+        max_lifetime_seconds: {type: integer, minimum: 0, nullable: true}
+        paused_retention_seconds: {type: integer, minimum: 0, nullable: true}
+        on_idle: {$ref: '#/components/schemas/OnIdleAction'}
+    SandboxLastCrash:
+      type: object
+      description: |
+        The most recent unexpected stop of the sandbox, or null if it has never
+        had one. It records a past event and is not cleared when the sandbox
+        recovers or is restored, so read `at` before acting on it; storage_reset
+        says whether the sandbox's files survived that stop.
+      required: [reason, at, storage_reset]
+      properties:
+        reason: {type: string, description: "Why the sandbox stopped.", example: "OOMKilled"}
+        at: {type: string, format: date-time, description: "When the stop was detected."}
+        storage_reset:
+          type: boolean
+          description: |
+            True when the sandbox restarted with an empty filesystem: files
+            under /workspace, and anything installed since create, are gone.
+            False when it restarted with its files intact.
     CreateSandboxRequest:
       type: object
       properties:
@@ -910,6 +1792,7 @@ components:
           minLength: 1
           maxLength: 63
           pattern: '^[a-z]([-a-z0-9]*[a-z0-9])?$'
+          x-go-type-skip-optional-pointer: true
           description: |
             Sandbox name. Optional — when omitted, the server generates one (a
             "sandbox-" prefix plus a short random suffix). When provided, must be
@@ -930,31 +1813,41 @@ components:
           minLength: 1
           maxLength: 512
           pattern: '^[^/@\s]+(/[^/@\s]+)+(:[^/@\s]+|@sha256:[a-fA-F0-9]+)$'
-          description: Public OCI image reference with an explicit tag or digest. Mutually exclusive with `sandbox_template_id`.
-          example: docker.io/library/python:3.12
+          description: Public OCI image reference with an explicit tag or digest. Mutually exclusive with `sandbox_template_id`. Subject to a 3 GB maximum image size.
+          example: harbor.neev.work/neevcloudai-staging/ubuntu-26.04-minimal:v2026.03.1
         command:
           type: array
           items: {type: string}
           description: Optional container command for BYOI creates; defaults to sleep infinity when omitted.
           example: ["sleep", "infinity"]
-        from_snapshot:
+        restore:
           type: string
           format: uuid
           nullable: true
           description: |
             When set, the new sandbox is restored from this snapshot instead of
             cold-starting from the image. Snapshot must belong to the same
-            project. Sizing and region must match the snapshot's origin. Must not
-            be combined with `image`.
+            project. Sizing and region must match the snapshot's origin. Must
+            not be combined with `image`.
+        from_snapshot:
+          type: string
+          format: uuid
+          nullable: true
+          deprecated: true
+          description: |
+            Deprecated alias for `restore`. Snapshot ID to restore from.
+        lifecycle: {$ref: '#/components/schemas/SandboxLifecycle'}
       oneOf:
         - required: [sandbox_template_id]
         - required: [image]
+        - required: [restore]
         - required: [from_snapshot]
-        # Omit all three to use the platform default catalogue template (when configured).
+        # Omit all four to use the platform default catalogue template (when configured).
         - not:
             anyOf:
               - required: [sandbox_template_id]
               - required: [image]
+              - required: [restore]
               - required: [from_snapshot]
     ExposePortRequest:
       type: object
@@ -974,25 +1867,50 @@ components:
         ports:
           type: array
           items: {$ref: '#/components/schemas/SandboxPort'}
+    UpdateSandboxRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Request to update a running sandbox's CPU/memory and/or egress rules.
+        At least one of `resources` or `egress` must be provided.
+      properties:
+        resources:
+          allOf:
+            - $ref: '#/components/schemas/SandboxResources'
+          description: |
+            New cpu/memory sizing, resized in place on the running sandbox. Only
+            the fields provided change. disk_gb is not resizable in place and is
+            rejected if supplied with a different value.
+        egress:
+          allOf:
+            - $ref: '#/components/schemas/SandboxEgressConfig'
+          description: |
+            New egress policy for the sandbox. Replaces the existing policy in
+            full and takes effect immediately for new connections — no sandbox
+            restart is required.
     PauseSandboxRequest:
       type: object
       description: Optional body for the pause endpoint.
-      properties:
-        preserve_memory:
-          type: boolean
-          default: true
-          description: |
-            When true, capture FS+process memory as an implicit snapshot before
-            stopping the sandbox. The snapshot is auto-consumed on the next resume.
     # --- Snapshot schemas ---
     SnapshotStatus:
       type: string
       description: Lifecycle phase of a snapshot.
       enum: [Pending, Running, Ready, Failed]
+    SnapshotType:
+      type: string
+      description: Type of the snapshot.
+      enum: [full]
+    SnapshotRestorability:
+      type: string
+      description: |
+        Whether this snapshot can be restored. `restorable`: fully supported.
+        `deprecating`: still restorable but on the way out (re-snapshot to stay
+        current). `unsupported`: a restore will be refused.
+      enum: [restorable, deprecating, unsupported]
     Snapshot:
       type: object
-      required: [id, sandbox_id, org_id, project_id, status, include_memory, source_region, created_at, updated_at]
-      description: Metadata for a sandbox memory/filesystem snapshot.
+      required: [id, sandbox_id, org_id, project_id, status, snapshot_type, source_region, created_at, updated_at, sandbox_format_version, restorability]
+      description: Metadata for a sandbox memory+filesystem snapshot.
       properties:
         id: {type: string, format: uuid, description: Snapshot UUID.}
         sandbox_id: {type: string, format: uuid, description: UUID of the source sandbox.}
@@ -1000,9 +1918,7 @@ components:
         project_id: {type: string}
         name: {type: string, description: Optional customer-supplied name.}
         status: {$ref: '#/components/schemas/SnapshotStatus'}
-        include_memory:
-          type: boolean
-          description: True = FS+memory captured; false = FS only.
+        snapshot_type: {$ref: '#/components/schemas/SnapshotType'}
         source_region: {type: string, description: Region where the snapshot is stored.}
         size_bytes:
           type: integer
@@ -1012,7 +1928,7 @@ components:
         error_message:
           type: string
           nullable: true
-          description: Failure detail. Null unless status=Failed.
+          description: Human-readable reason the snapshot failed, safe to show to end users. Null unless status=Failed.
         expires_at:
           type: string
           format: date-time
@@ -1022,6 +1938,18 @@ components:
           type: string
           nullable: true
           description: Identity that created the snapshot (user email, or "system" for system-initiated snapshots like pause/fork).
+        sandbox_format_version:
+          type: integer
+          description: Version of the format used to record this snapshot's captured configuration. 0 for snapshots taken before it was recorded.
+        restorability: {$ref: '#/components/schemas/SnapshotRestorability'}
+        build_descriptor:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: |
+            The configuration this snapshot was captured with, recorded so the
+            snapshot can be restored consistently. Null for snapshots taken
+            before it was recorded.
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
     SnapshotListResponse:
@@ -1043,27 +1971,31 @@ components:
           description: |
             Optional name for this snapshot. Must be a valid DNS name (lowercase
             alphanumeric or '-', starting with a letter, max 63 characters) so it
-            can name sandboxes created on fork and restore. Omit to leave unnamed.
-        include_memory:
-          type: boolean
-          default: false
-          description: Capture process memory in addition to filesystem. Currently forced to false (RootFS only); memory capture is not yet supported.
-        retain_for:
-          type: string
-          description: |
-            Duration string (e.g. "720h" = 30 days) controlling snapshot TTL.
-            "0" or omitted means no expiry.
-    RestoreSandboxRequest:
+            can name sandboxes created on fork and restore. Omit to leave
+            unnamed.
+    RollbackSandboxRequest:
       type: object
       required: [snapshot_id]
-      description: Body for POST .../sandboxes/{id}/restore.
+      description: Body for POST .../sandboxes/{id}/rollback.
       properties:
         snapshot_id:
           type: string
           format: uuid
           description: |
-            UUID of the snapshot to restore from. Must belong to this sandbox
-            or another sandbox in the same project.
+            UUID of the snapshot to restore from. Must belong to this sandbox or
+            another sandbox in the same project.
+    RestoreSandboxRequest:
+      type: object
+      required: [snapshot_id]
+      deprecated: true
+      description: Deprecated body for POST .../sandboxes/{id}/restore (use RollbackSandboxRequest).
+      properties:
+        snapshot_id:
+          type: string
+          format: uuid
+          description: |
+            UUID of the snapshot to restore from. Must belong to this sandbox or
+            another sandbox in the same project.
     ForkSandboxRequest:
       type: object
       required: [name]
@@ -1077,7 +2009,8 @@ components:
           description: |
             Name for the new forked sandbox. Must be unique within the project,
             and a valid DNS name: lowercase alphanumeric characters or '-',
-            starting with a letter, ending with an alphanumeric, max 63 characters.
+            starting with a letter, ending with an alphanumeric, max 63
+            characters.
     SandboxEgressConfig:
       type: object
       description: Network egress configuration rules for the sandbox.
@@ -1185,7 +2118,7 @@ components:
     AgentStatus:
       type: string
       description: Lifecycle state of an agent, derived from its backing sandbox.
-      enum: [Provisioning, Ready, Paused, Failed, Deleting]
+      enum: [Provisioning, Ready, Pausing, Paused, Failed, Deleting]
     Agent:
       type: object
       required: [id, org_id, project_id, name, agent_template_id, sandbox_id, status, drive_mode, metrics_url, created_at, updated_at]
@@ -1217,16 +2150,38 @@ components:
         metrics_url:
           type: string
           description: |
-            API path for the sandbox's live health metrics (the getSandboxMetrics
-            endpoint), relative to this API's base URL.
+            API path for the sandbox's live health metrics (the
+            getSandboxMetrics endpoint), relative to this API's base URL.
         gateway_token:
           type: string
           nullable: true
           description: |
             Token the agent's web UI uses to authenticate. Present only for web
             agents that gate the UI on a token; null otherwise.
+        last_crash:
+          allOf:
+            - $ref: '#/components/schemas/AgentLastCrash'
+          nullable: true
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
+        egress: {$ref: '#/components/schemas/SandboxEgressConfig'}
+    AgentLastCrash:
+      type: object
+      description: |
+        The most recent unexpected stop of the agent, or null if it has never
+        had one. It records a past event and is not cleared when the agent
+        recovers or is restored, so read `at` before acting on it; storage_reset
+        says whether the agent's files survived that stop.
+      required: [reason, at, storage_reset]
+      properties:
+        reason: {type: string, description: "Why the agent stopped.", example: "OOMKilled"}
+        at: {type: string, format: date-time, description: "When the stop was detected."}
+        storage_reset:
+          type: boolean
+          description: |
+            True when the agent restarted with an empty filesystem: files under
+            /workspace, and anything installed since create, are gone. False
+            when it restarted with its files intact.
     DriveMode:
       type: string
       description: |
@@ -1245,8 +2200,8 @@ components:
         token:
           type: string
           description: |
-            Short-lived connect token, bound to this project and agent, presented
-            as a bearer credential when calling the agent directly.
+            Short-lived connect token, bound to this project and agent,
+            presented as a bearer credential when calling the agent directly.
         expires_at:
           type: string
           format: date-time
@@ -1281,7 +2236,8 @@ components:
           additionalProperties: true
           description: |
             Agent configuration overrides, shallow-merged over the template's
-            default_config. Shape is template-specific (see template config_schema).
+            default_config. Shape is template-specific (see template
+            config_schema).
         env:
           type: array
           items: {$ref: '#/components/schemas/EnvVar'}
@@ -1296,21 +2252,23 @@ components:
             specific destinations (e.g. the model provider, git, registries).
     UpdateAgentRequest:
       type: object
+      additionalProperties: false
       description: |
-        Partial in-place update. Provide at least one field. Omitted fields are
-        unchanged.
+        Request to update a running agent's CPU/memory sizing and/or network
+        egress rules. At least one of `resources` or `egress` must be provided.
       properties:
-        egress:
-          allOf:
-            - $ref: '#/components/schemas/SandboxEgressConfig'
-          description: Replace the agent's egress policy (re-applied live, no restart).
         resources:
           allOf:
             - $ref: '#/components/schemas/SandboxResources'
           description: |
-            New cpu/memory sizing, resized in place on the running sandbox. Only the
-            fields provided change. disk_gb is not resizable in place and is
+            New cpu/memory sizing, resized in place on the running sandbox. Only
+            the fields provided change. disk_gb is not resizable in place and is
             rejected if supplied with a different value.
+        egress:
+          allOf:
+            - $ref: '#/components/schemas/SandboxEgressConfig'
+          description: |
+            Network egress policy update for the agent's backing sandbox.
     AgentListResponse:
       type: object
       required: [items, total, page, limit]
@@ -1349,9 +2307,9 @@ components:
           nullable: true
           description: |
             Recommended default sizing for agents of this template. An agent
-            inherits these when the create request omits the corresponding field;
-            caller-supplied resources take precedence. Null/omitted fields fall
-            back to the platform default.
+            inherits these when the create request omits the corresponding
+            field; caller-supplied resources take precedence. Null/omitted fields
+            fall back to the platform default.
         default_egress:
           allOf:
             - $ref: '#/components/schemas/SandboxEgressConfig'
