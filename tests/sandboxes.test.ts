@@ -197,7 +197,7 @@ describe("sandbox snapshots, restore, and fork", () => {
     expect(calls[0]?.method).toBe("POST");
     expect(calls[0]?.url).toContain("/sandboxes/sb-1/snapshots");
     // The caller passes only user-facing fields; the SDK fills the rest.
-    expect(calls[0]?.body).toEqual({ name: "snap-1", include_memory: false });
+    expect(calls[0]?.body).toEqual({ name: "snap-1" });
   });
 
   it("lists the snapshots of a sandbox", async () => {
@@ -344,7 +344,7 @@ describe("sandbox snapshots, restore, and fork", () => {
     const snap = await sb.snapshot({ name: "snap-a", waitUntilReady: true, pollIntervalMs: 1 });
     expect(snap.status).toBe("Ready");
     // The create body carries only the request fields, not the wait controls.
-    expect(calls[1]?.body).toEqual({ name: "snap-a", include_memory: false });
+    expect(calls[1]?.body).toEqual({ name: "snap-a" });
     expect(calls[2]?.url).toContain("/snapshots/");
   });
 

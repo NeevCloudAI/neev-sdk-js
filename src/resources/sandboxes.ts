@@ -297,7 +297,7 @@ export class Sandboxes {
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.POST(SNAPSHOTS, {
       params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
-      body: { ...params, include_memory: false },
+      body: { ...params },
     });
     return unwrap<SnapshotData>(res);
   }
