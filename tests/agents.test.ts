@@ -99,6 +99,36 @@ describe("agents resource", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("maps the egress convenience on update the same way create does", async () => {
+    const { neev, calls } = client([json(200, agentData({ status: "Ready" }))]);
+    await neev.agents.update("ag-1", { allowEgress: ["github.com"] });
+    expect(calls[0]?.method).toBe("PATCH");
+    expect(calls[0]?.body).toEqual({
+      egress: {
+        mode: "allow_list",
+        allow_internet: false,
+        allow: [{ host: "github.com" }],
+      },
+    });
+  });
+
+  it("sends resources and egress together in one PATCH", async () => {
+    const { neev, calls } = client([json(200, agentData({ status: "Ready" }))]);
+    await neev.agents.update("ag-1", {
+      resources: { cpu: 2, memory_gb: 4 },
+      allowInternet: true,
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.body).toEqual({
+      resources: { cpu: 2, memory_gb: 4 },
+      egress: {
+        mode: "allow_list",
+        allow_internet: true,
+        allow: [{ host: "0.0.0.0/0" }, { host: "::/0" }],
+      },
+    });
+  });
+
   it("targets the pause and resume sub-paths", async () => {
     const { neev, calls } = client([
       json(200, agentData({ status: "Paused" })),

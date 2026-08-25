@@ -92,17 +92,21 @@ export class Agents {
     return new Agent(this, unwrap<AgentData>(res), scope);
   }
 
-  // Updates an agent in place (egress and/or cpu/memory) and returns the updated
-  // handle. Omitted fields are left unchanged; disk is not resizable in place.
-  // Rejects an empty patch locally rather than letting the server 400 on it.
+  // Updates an agent in place (cpu/memory and/or egress) and returns the updated
+  // handle. `resources` are resized in place; `egress` replaces the policy in
+  // full with no restart; disk is not resizable in place. The `allowInternet` /
+  // `allowEgress` convenience maps to `egress` exactly as it does on create.
+  // Rejects a patch carrying neither `resources` nor `egress` locally rather than
+  // letting the server 400 on it.
   async update(id: string, params: UpdateAgentParams, scope?: Scope): Promise<Agent> {
-    if (!Object.values(params).some((value) => value !== undefined)) {
-      throw new NeevError("agents.update requires at least one field (egress or resources).");
+    const body = withEgressConvenience(params);
+    if (body.resources === undefined && body.egress === undefined) {
+      throw new NeevError("agents.update requires at least one of `resources` or `egress`.");
     }
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.PATCH(ITEM, {
       params: { path: { org_id: orgId, project_id: projectId, agent_id: id } },
-      body: params,
+      body,
     });
     return new Agent(this, unwrap<AgentData>(res), scope);
   }
