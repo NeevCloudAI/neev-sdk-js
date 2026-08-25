@@ -30,7 +30,7 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 | [`create-sandbox.ts`](./create-sandbox.ts) | Lifecycle: create → wait for Ready → metrics → pause → delete | `npx tsx examples/create-sandbox.ts` |
 | [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
 | [`snapshot-fork-restore.ts`](./snapshot-fork-restore.ts) | Snapshot a sandbox → fork a new one from it → restore the original in place | `npx tsx examples/snapshot-fork-restore.ts` |
-| [`update-resize-egress.ts`](./update-resize-egress.ts) | Update a running sandbox in place: resize cpu/memory → re-scope egress | `npx tsx examples/update-resize-egress.ts` |
+| [`update-resize-egress.ts`](./update-resize-egress.ts) | Update a running sandbox in place: resize cpu/memory + re-scope egress in one `update()` call (single PATCH) | `npx tsx examples/update-resize-egress.ts` |
 | [`streaming-exec.ts`](./streaming-exec.ts) | `sandbox.exec(cmd, { stream: true })` — output streamed line-by-line as it is produced | `npx tsx examples/streaming-exec.ts` |
 | [`files.ts`](./files.ts) | `sandbox.files` — write, read, stat/exists, mkdir, move, list, remove, and a live `watch` of changes | `npx tsx examples/files.ts` |
 | [`parallel-fanout.ts`](./parallel-fanout.ts) | Several isolated sandboxes run a map/reduce concurrently; reads `metrics()` | `npx tsx examples/parallel-fanout.ts` |
@@ -88,7 +88,7 @@ npx tsx examples/snapshot-fork-restore.ts
 ```sh
 npx tsx examples/update-resize-egress.ts
 ```
-→ `ready … resources: {…}` → `resized …` → `egress re-scoped …` → `confirmed resources: {…}` → `cleaned up`.
+→ `ready … resources: {…}` → `updated … in one PATCH …` → `confirmed resources: {…}, egress: {…}` → `cleaned up`.
 
 **2. Streaming exec**
 ```sh
