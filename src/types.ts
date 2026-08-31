@@ -19,9 +19,23 @@ export interface EgressConvenience {
   allowEgress?: string[];
 }
 
-// Request body accepted by `sandboxes.create`. Requires `sandbox_template_id`;
-// the server resolves the image and default command from the chosen template.
+// Request body accepted by `sandboxes.create`. Set exactly one of
+// `sandbox_template_id` (catalogue) or `image` (BYOI — a public OCI image, with an
+// optional `command`); `lifecycle` sets idle/lifetime windows at create time.
 export type CreateSandboxParams = components["schemas"]["CreateSandboxRequest"] & EgressConvenience;
+
+// What the platform does when a sandbox goes idle or hits its max lifetime.
+export type OnIdleAction = components["schemas"]["OnIdleAction"];
+
+// Idle/lifetime windows set at create time (`create({ lifecycle })`). Durations are
+// in seconds; an explicit null clears a window, an omitted field uses the account
+// default.
+export type SandboxLifecycle = components["schemas"]["SandboxLifecycle"];
+
+// Windows accepted by `sandboxes.updateTimeout` / `sandbox.setTimeout`. Durations
+// are in seconds; an explicit null clears a window, an omitted field leaves it
+// unchanged.
+export type UpdateTimeoutParams = components["schemas"]["UpdateSandboxTimeoutRequest"];
 
 // Compute size (cpu / memory_gb / disk_gb) for a sandbox. Omitted fields use the
 // platform default.

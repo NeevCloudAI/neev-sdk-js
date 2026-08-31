@@ -87,9 +87,11 @@ export type {
   EgressConvenience,
   EnvVar,
   MetricSeries,
+  OnIdleAction,
   SandboxData,
   SandboxEgressConfig,
   SandboxEgressRule,
+  SandboxLifecycle,
   SandboxListResponse,
   SandboxMetricsResponse,
   SandboxPhase,
@@ -103,6 +105,7 @@ export type {
   SnapshotListResponse,
   SnapshotStatus,
   UpdateAgentParams,
+  UpdateTimeoutParams,
 } from "./types.js";
 
 export {
