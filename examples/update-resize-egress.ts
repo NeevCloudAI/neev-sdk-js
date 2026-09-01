@@ -16,34 +16,38 @@ async function main(): Promise<void> {
   // Create with egress locked to GitHub only (deny-all otherwise). `allowEgress`
   // is the same convenience `update()` accepts — identical wire JSON.
   const sandbox = await neev.sandboxes.create({ allowEgress: ["github.com"] });
-  await sandbox.waitUntilReady();
-  console.log(
-    `ready ${sandbox.id} — resources: ${JSON.stringify(sandbox.resources)}, egress: ${JSON.stringify(sandbox.data.egress)}`,
-  );
 
-  // Resize cpu/memory AND replace the egress policy (GitHub → Google) in a single
-  // update — the SDK sends one PATCH carrying both `resources` and `egress`, and
-  // both take effect together. The sandbox keeps its id, name, and preview URLs;
-  // disk_gb is not resizable in place. Egress replaces the policy in full and
-  // needs no restart.
-  await sandbox.update({
-    resources: { cpu: 2, memory_gb: 4 },
-    allowEgress: ["google.com"],
-  });
-  console.log(
-    `updated ${sandbox.id} in one PATCH — resources: ${JSON.stringify(sandbox.resources)}, ` +
-      "egress: github.com → google.com",
-  );
+  try {
+    await sandbox.waitUntilReady();
+    console.log(
+      `ready ${sandbox.id} — resources: ${JSON.stringify(sandbox.resources)}, egress: ${JSON.stringify(sandbox.data.egress)}`,
+    );
 
-  // A fresh get confirms the resize landed and the new egress policy is intact —
-  // the exact combined-PATCH path AIPLATFORM-1896 concerns (egress must not revert).
-  const fresh = await neev.sandboxes.get(sandbox.id);
-  console.log(
-    `confirmed resources: ${JSON.stringify(fresh.resources)}, egress: ${JSON.stringify(fresh.data.egress)}`,
-  );
+    // Resize cpu/memory AND replace the egress policy (GitHub → Google) in a single
+    // update — the SDK sends one PATCH carrying both `resources` and `egress`, and
+    // both take effect together. The sandbox keeps its id, name, and preview URLs;
+    // disk_gb is not resizable in place. Egress replaces the policy in full and
+    // needs no restart.
+    await sandbox.update({
+      resources: { cpu: 2, memory_gb: 4 },
+      allowEgress: ["google.com"],
+    });
+    console.log(
+      `updated ${sandbox.id} in one PATCH — resources: ${JSON.stringify(sandbox.resources)}, ` +
+        "egress: github.com → google.com",
+    );
 
-  await sandbox.delete();
-  console.log("cleaned up");
+    // A fresh get confirms the resize landed and the new egress policy is intact —
+    // the exact combined-PATCH path AIPLATFORM-1896 concerns (egress must not revert).
+    const fresh = await neev.sandboxes.get(sandbox.id);
+    console.log(
+      `confirmed resources: ${JSON.stringify(fresh.resources)}, egress: ${JSON.stringify(fresh.data.egress)}`,
+    );
+  } finally {
+    // Always clean up the remote sandbox, even if a step above failed.
+    await sandbox.delete();
+    console.log("cleaned up");
+  }
 }
 
 main().catch((err) => {
