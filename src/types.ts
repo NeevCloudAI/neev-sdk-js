@@ -28,13 +28,13 @@ export type CreateSandboxParams = components["schemas"]["CreateSandboxRequest"] 
 export type OnIdleAction = components["schemas"]["OnIdleAction"];
 
 // Idle/lifetime windows set at create time (`create({ lifecycle })`). Durations are
-// in seconds; an explicit null clears a window, an omitted field uses the account
-// default.
+// in seconds; send 0 to turn a window off (no limit), or omit a field to use the
+// account default.
 export type SandboxLifecycle = components["schemas"]["SandboxLifecycle"];
 
-// Windows accepted by `sandboxes.updateTimeout` / `sandbox.setTimeout`. Durations
-// are in seconds; an explicit null clears a window, an omitted field leaves it
-// unchanged.
+// Windows accepted by `sandboxes.updateTimeout` / `sandbox.updateTimeout`. Durations
+// are in seconds; send 0 to turn a window off (no limit), or omit a field to leave
+// it unchanged.
 export type UpdateTimeoutParams = components["schemas"]["UpdateSandboxTimeoutRequest"];
 
 // Compute size (cpu / memory_gb / disk_gb) for a sandbox. Omitted fields use the

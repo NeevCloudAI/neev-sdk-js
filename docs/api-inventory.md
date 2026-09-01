@@ -362,7 +362,7 @@ await client.sandboxes.keepalive(sandbox.id);
 updateTimeout(id: string, windows: UpdateTimeoutParams, scope?: Scope): Promise<Sandbox>
 ```
 
-Changes the sandbox's idle/lifetime windows in place (PUT `.../timeout`). `UpdateTimeoutParams` = `{ idle_timeout_seconds?, max_lifetime_seconds?, paused_retention_seconds?: number | null; on_idle?: OnIdleAction }`. Durations are in **seconds**. Only the fields passed change: an explicit `null` clears a window, an omitted field is left unchanged. An out-of-enum `on_idle` throws `NeevError` **before** the request is sent.
+Changes the sandbox's idle/lifetime windows in place (PUT `.../timeout`). `UpdateTimeoutParams` = `{ idle_timeout_seconds?, max_lifetime_seconds?, paused_retention_seconds?: number | null; on_idle?: OnIdleAction }`. Durations are in **seconds**. Only the fields passed change: send `0` to turn a window off (no limit), an omitted field is left unchanged. An out-of-enum `on_idle` throws `NeevError` **before** the request is sent.
 
 **Returns:** `Promise<Sandbox>` — the updated handle.
 
@@ -370,7 +370,7 @@ Changes the sandbox's idle/lifetime windows in place (PUT `.../timeout`). `Updat
 
 ```ts
 await client.sandboxes.updateTimeout(sandbox.id, { idle_timeout_seconds: 600, on_idle: "pause" });
-await client.sandboxes.updateTimeout(sandbox.id, { max_lifetime_seconds: null }); // clear the window
+await client.sandboxes.updateTimeout(sandbox.id, { max_lifetime_seconds: 0 }); // turn the window off
 ```
 
 ### `client.sandboxes.delete(id, scope?)`
@@ -863,18 +863,18 @@ await sandbox.waitUntilReady();
 await sandbox.delete();
 ```
 
-### `sandbox.keepalive()` / `sandbox.setTimeout(windows)`
+### `sandbox.keepalive()` / `sandbox.updateTimeout(windows)`
 
 ```ts
 keepalive(): Promise<this>
-setTimeout(windows: UpdateTimeoutParams): Promise<this>
+updateTimeout(windows: UpdateTimeoutParams): Promise<this>
 ```
 
-Delegate to `client.sandboxes.keepalive` / `updateTimeout` using the handle's scope and update handle state in place. `keepalive` resets the idle timer; `setTimeout` changes the idle/lifetime windows (seconds — `null` clears a window, omitted leaves it unchanged). An out-of-enum `on_idle` throws `NeevError` before the request.
+Delegate to `client.sandboxes.keepalive` / `updateTimeout` using the handle's scope and update handle state in place. `keepalive` resets the idle timer; `updateTimeout` changes the idle/lifetime windows (seconds — send `0` to turn a window off, omit to leave it unchanged). An out-of-enum `on_idle` throws `NeevError` before the request.
 
 ```ts
 await sandbox.keepalive();
-await sandbox.setTimeout({ idle_timeout_seconds: 600, on_idle: "pause" });
+await sandbox.updateTimeout({ idle_timeout_seconds: 600, on_idle: "pause" });
 ```
 
 ### `sandbox.metrics(params?)`
@@ -1403,7 +1403,7 @@ Alias for the generated `OnIdleAction` enum: `"pause" | "delete"` — what the p
 
 ### `SandboxLifecycle`
 
-Alias for the generated `SandboxLifecycle` — the `lifecycle` block accepted by `sandboxes.create`. Durations in seconds; an explicit `null` clears a window, an omitted field uses the account default.
+Alias for the generated `SandboxLifecycle` — the `lifecycle` block accepted by `sandboxes.create`. Durations in seconds; send `0` to turn a window off (no limit), or omit a field to use the account default.
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
@@ -1414,7 +1414,7 @@ Alias for the generated `SandboxLifecycle` — the `lifecycle` block accepted by
 
 ### `UpdateTimeoutParams`
 
-Alias for the generated `UpdateSandboxTimeoutRequest` — the body for `sandboxes.updateTimeout` / `sandbox.setTimeout`. Same shape as `SandboxLifecycle` (idle/lifetime windows in seconds; `null` clears, omitted leaves unchanged).
+Alias for the generated `UpdateSandboxTimeoutRequest` — the body for `sandboxes.updateTimeout` / `sandbox.updateTimeout`. Same shape as `SandboxLifecycle` (idle/lifetime windows in seconds; send `0` to turn one off, omit to leave unchanged).
 
 > Exact optionality/extra fields follow the generated OpenAPI schema; consult `src/generated/aiagent.ts` if the spec changes.
 
@@ -1874,7 +1874,7 @@ Compact reviewer index.
 | `waitUntilReady` | method | `Promise<this>`; `WaitOptions`. |
 | `pause` / `resume` | methods | `Promise<this>` |
 | `keepalive` | method | `Promise<this>` |
-| `setTimeout` | method | `Promise<this>`; `UpdateTimeoutParams`. |
+| `updateTimeout` | method | `Promise<this>`; `UpdateTimeoutParams`. |
 | `delete` | method | `Promise<void>` |
 | `metrics` | method | `Promise<SandboxMetricsResponse>` |
 | `snapshot` | method | `Promise<SnapshotData>` |

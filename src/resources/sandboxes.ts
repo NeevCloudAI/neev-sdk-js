@@ -207,9 +207,9 @@ export class Sandboxes {
   }
 
   // Changes a running sandbox's idle/lifetime windows and returns the updated
-  // handle. Durations are in seconds; only the fields passed change (an explicit
-  // `null` clears a window, an omitted field is left unchanged). Rejects an
-  // out-of-enum `on_idle` locally before the request is sent.
+  // handle. Durations are in seconds; only the fields passed change (send 0 to turn
+  // a window off, omit a field to leave it unchanged). Rejects an out-of-enum
+  // `on_idle` locally before the request is sent.
   async updateTimeout(id: string, windows: UpdateTimeoutParams, scope?: Scope): Promise<Sandbox> {
     assertOnIdle(windows.on_idle);
     const { orgId, projectId } = this.ctx.resolveScope(scope);

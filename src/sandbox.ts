@@ -234,9 +234,9 @@ export class Sandbox {
     return this;
   }
 
-  // Changes this sandbox's idle/lifetime windows (seconds; null clears a window,
-  // omitted leaves it unchanged) and updates this handle.
-  async setTimeout(windows: UpdateTimeoutParams): Promise<this> {
+  // Changes this sandbox's idle/lifetime windows (seconds; send 0 to turn a window
+  // off, omit a field to leave it unchanged) and updates this handle.
+  async updateTimeout(windows: UpdateTimeoutParams): Promise<this> {
     const next = await this.sandboxes.updateTimeout(this.id, windows, this.scope);
     this.state = next.data;
     return this;

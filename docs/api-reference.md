@@ -131,15 +131,15 @@ await neev.sandboxes.resume(id);
 await neev.sandboxes.delete(id);
 ```
 
-**`keepalive(id, scope?)` / `updateTimeout(id, windows, scope?)`** — lifecycle windows are in **seconds**. `keepalive` resets the idle timer (no body). `updateTimeout` changes only the windows passed: an explicit `null` clears a window, an omitted field is left unchanged. `on_idle` is `"pause" | "delete"`; any other value throws before the request is sent. Windows: `idle_timeout_seconds`, `max_lifetime_seconds`, `paused_retention_seconds`, `on_idle`.
+**`keepalive(id, scope?)` / `updateTimeout(id, windows, scope?)`** — lifecycle windows are in **seconds**. `keepalive` resets the idle timer (no body). `updateTimeout` changes only the windows passed: send `0` to turn a window off (no limit), an omitted field is left unchanged. `on_idle` is `"pause" | "delete"`; any other value throws before the request is sent. Windows: `idle_timeout_seconds`, `max_lifetime_seconds`, `paused_retention_seconds`, `on_idle`.
 
 ```ts
 // Reset the idle timer (e.g. once per agent turn while work is in progress).
 await neev.sandboxes.keepalive(id);
 
-// Change only what you pass; null clears a window.
+// Change only what you pass; send 0 to turn a window off, omit to leave unchanged.
 await neev.sandboxes.updateTimeout(id, { idle_timeout_seconds: 600, on_idle: "pause" });
-await neev.sandboxes.updateTimeout(id, { max_lifetime_seconds: null });
+await neev.sandboxes.updateTimeout(id, { max_lifetime_seconds: 0 });
 ```
 
 **`metrics(id, params?)`** — `params` is `{ from?, to?, step?, orgId?, projectId? }`; `from`/`to` are RFC3339, `step` is a Go duration (e.g. `"60s"`). The platform defaults to the last hour.
@@ -242,7 +242,7 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | `pause()` | `Promise<this>` | Pauses (scales to zero) and updates the handle. |
 | `resume()` | `Promise<this>` | Resumes (scales to one) and updates the handle. |
 | `keepalive()` | `Promise<this>` | Resets the idle timer and updates the handle. |
-| `setTimeout(windows)` | `Promise<this>` | Changes the idle/lifetime windows (seconds) and updates the handle. |
+| `updateTimeout(windows)` | `Promise<this>` | Changes the idle/lifetime windows (seconds) and updates the handle. |
 | `delete()` | `Promise<void>` | Permanently deletes the sandbox. |
 | `metrics(params?)` | `Promise<SandboxMetricsResponse>` | Reads the live metric series; `params` is `{ from?, to?, step? }`. |
 | `snapshot(options?)` | `Promise<SnapshotData>` | Captures this sandbox's state (starts `Pending`). Pass `{ waitUntilReady: true }` to resolve only once the snapshot is `Ready`. |

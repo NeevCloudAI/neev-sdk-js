@@ -1,7 +1,7 @@
 /**
  * Create a sandbox with a capped lifetime and a short idle window, then hold it
  * alive past that idle deadline with a keepalive loop. Also shows changing the
- * windows in place with setTimeout().
+ * windows in place with updateTimeout().
  *
  * Run with (targets the Neev production API by default):
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
@@ -34,8 +34,8 @@ async function main(): Promise<void> {
   }
 
   // Widen the idle window in place (seconds). Only the fields passed change; send
-  // null to clear a window, or omit it to leave it unchanged.
-  await sandbox.setTimeout({ idle_timeout_seconds: 300 });
+  // 0 to turn a window off, or omit it to leave it unchanged.
+  await sandbox.updateTimeout({ idle_timeout_seconds: 300 });
   console.log(`idle window widened — idle_timeout_seconds: ${sandbox.data.idle_timeout_seconds}`);
 
   await sandbox.delete();

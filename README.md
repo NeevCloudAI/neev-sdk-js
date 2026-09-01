@@ -88,7 +88,7 @@ await neev.sandboxes.update(id, { resources: { cpu: 2, memory_gb: 4 } });
 await neev.sandboxes.update(id, { allowEgress: ["api.github.com"] });
 
 // Lifecycle windows (all in seconds). keepalive resets the idle timer; updateTimeout
-// changes only the windows passed (null clears one, omitted leaves it unchanged).
+// changes only the windows passed (send 0 to turn one off, omit to leave unchanged).
 await neev.sandboxes.keepalive(id);
 await neev.sandboxes.updateTimeout(id, { idle_timeout_seconds: 600, on_idle: "pause" });
 
@@ -144,8 +144,8 @@ const sandbox = await neev.sandboxes.create({
 // Reset the idle timer while work is in progress (e.g. once per agent turn).
 await sandbox.keepalive();
 
-// Change only the windows passed; null clears one, omitted leaves it unchanged.
-await sandbox.setTimeout({ idle_timeout_seconds: null, max_lifetime_seconds: 3600 });
+// Change only the windows passed; send 0 to turn one off, omit to leave unchanged.
+await sandbox.updateTimeout({ idle_timeout_seconds: 0, max_lifetime_seconds: 3600 });
 ```
 
 `on_idle` is `"pause"` or `"delete"`. Omit `lifecycle` entirely to use the account

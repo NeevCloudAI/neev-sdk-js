@@ -208,15 +208,15 @@ describe("sandbox create options (lifecycle + BYOI)", () => {
     expect((calls[0]?.body as Record<string, unknown>).lifecycle).toBeUndefined();
   });
 
-  it("clears a window with an explicit null in lifecycle", async () => {
+  it("turns a window off with 0 in lifecycle", async () => {
     const { neev, calls } = client([json(201, sandboxData())]);
     await neev.sandboxes.create({
       sandbox_template_id: "sb-x",
-      lifecycle: { idle_timeout_seconds: null },
+      lifecycle: { idle_timeout_seconds: 0 },
     });
     expect(calls[0]?.body).toEqual({
       sandbox_template_id: "sb-x",
-      lifecycle: { idle_timeout_seconds: null },
+      lifecycle: { idle_timeout_seconds: 0 },
     });
   });
 
@@ -263,10 +263,10 @@ describe("sandbox lifecycle windows (keepalive + timeout)", () => {
     expect(calls[0]?.body).toEqual({ idle_timeout_seconds: 900 });
   });
 
-  it("updateTimeout can clear a window with an explicit null", async () => {
+  it("updateTimeout turns a window off with 0", async () => {
     const { neev, calls } = client([json(200, sandboxData())]);
-    await neev.sandboxes.updateTimeout("sb-1", { max_lifetime_seconds: null });
-    expect(calls[0]?.body).toEqual({ max_lifetime_seconds: null });
+    await neev.sandboxes.updateTimeout("sb-1", { max_lifetime_seconds: 0 });
+    expect(calls[0]?.body).toEqual({ max_lifetime_seconds: 0 });
   });
 
   it("updateTimeout rejects an out-of-enum on_idle before sending", async () => {
@@ -278,15 +278,15 @@ describe("sandbox lifecycle windows (keepalive + timeout)", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("exposes keepalive and setTimeout on the Sandbox handle", async () => {
+  it("exposes keepalive and updateTimeout on the Sandbox handle", async () => {
     const { neev, calls } = client([
       json(200, sandboxData()), // get
       json(200, sandboxData()), // keepalive
-      json(200, sandboxData({ idle_timeout_seconds: 1200 })), // setTimeout
+      json(200, sandboxData({ idle_timeout_seconds: 1200 })), // updateTimeout
     ]);
     const sb = await neev.sandboxes.get(SB);
     await sb.keepalive();
-    await sb.setTimeout({ idle_timeout_seconds: 1200, on_idle: "delete" });
+    await sb.updateTimeout({ idle_timeout_seconds: 1200, on_idle: "delete" });
     expect(calls[1]?.method).toBe("POST");
     expect(calls[1]?.url).toMatch(/\/keepalive$/);
     expect(calls[2]?.method).toBe("PUT");
