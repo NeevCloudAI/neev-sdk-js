@@ -31,7 +31,7 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 | [`lifecycle-keepalive.ts`](./lifecycle-keepalive.ts) | Capped-lifetime sandbox (`lifecycle` windows) held past its idle deadline with a `keepalive()` loop, then `setTimeout()` | `npx tsx examples/lifecycle-keepalive.ts` |
 | [`byoi-create.ts`](./byoi-create.ts) | Bring Your Own Image: `create({ image, command })` from a public OCI image → wait for Ready → exec | `npx tsx examples/byoi-create.ts` |
 | [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
-| [`snapshot-fork-restore.ts`](./snapshot-fork-restore.ts) | Snapshot a sandbox → fork a new one from it → restore the original in place | `npx tsx examples/snapshot-fork-restore.ts` |
+| [`snapshot-fork-rollback.ts`](./snapshot-fork-rollback.ts) | Snapshot a sandbox → fork a new one from it → roll the original back in place | `npx tsx examples/snapshot-fork-rollback.ts` |
 | [`update-resize-egress.ts`](./update-resize-egress.ts) | Update a running sandbox in place: resize cpu/memory + re-scope egress in one `update()` call (single PATCH) | `npx tsx examples/update-resize-egress.ts` |
 | [`streaming-exec.ts`](./streaming-exec.ts) | `sandbox.exec(cmd, { stream: true })` — output streamed line-by-line as it is produced | `npx tsx examples/streaming-exec.ts` |
 | [`files.ts`](./files.ts) | `sandbox.files` — write, read, stat/exists, mkdir, move, list, remove, and a live `watch` of changes | `npx tsx examples/files.ts` |
@@ -80,11 +80,11 @@ npx tsx examples/create-sandbox.ts
 ```
 → `created … (phase: Pending)` → `ready at https://….sandboxes.<region>…` → `metric series: …` → `paused …` → `deleted`.
 
-**1b. Snapshot, fork & restore**
+**1b. Snapshot, fork & rollback**
 ```sh
-npx tsx examples/snapshot-fork-restore.ts
+npx tsx examples/snapshot-fork-rollback.ts
 ```
-→ `source … ready` → `snapshot … ready` → `forked … carries: captured-at-snapshot` → `restored …` → `cleaned up`.
+→ `source … ready` → `snapshot … ready` → `forked … carries: captured-at-snapshot` → `rolled back …` → `cleaned up`.
 
 **1c. Update: resize & re-scope egress**
 ```sh

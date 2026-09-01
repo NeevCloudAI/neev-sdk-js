@@ -279,8 +279,8 @@ try {
 }
 ```
 
-For snapshot capture, restore, and fork workflows, see
-[`examples/snapshot-fork-restore.ts`](../examples/snapshot-fork-restore.ts) and
+For snapshot capture, rollback, and fork workflows, see
+[`examples/snapshot-fork-rollback.ts`](../examples/snapshot-fork-rollback.ts) and
 the snapshots section of [`api-reference.md`](./api-reference.md).
 
 ## Documentation map
