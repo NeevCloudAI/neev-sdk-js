@@ -119,8 +119,8 @@ const template = await neev.templates.get("sb-ubuntu-26-04-minimal"); // inspect
 ### Custom images (BYOI)
 
 Instead of a catalogue template, create from any public OCI image with an explicit
-tag or digest, and optionally override the start command. Set exactly one of
-`sandbox_template_id` or `image`:
+tag or digest, and optionally override the start command. Set at most one of
+`sandbox_template_id` or `image` (omit both to use the platform default template):
 
 ```ts
 const sandbox = await neev.sandboxes.create({

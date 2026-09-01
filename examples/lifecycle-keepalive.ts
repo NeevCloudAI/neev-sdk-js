@@ -21,25 +21,29 @@ async function main(): Promise<void> {
   const sandbox = await neev.sandboxes.create({
     lifecycle: { idle_timeout_seconds: 30, max_lifetime_seconds: 3600, on_idle: "pause" },
   });
-  await sandbox.waitUntilReady();
-  console.log(`ready ${sandbox.id} — idle_expires_at: ${sandbox.data.idle_expires_at}`);
 
-  // Keepalive loop: reset the idle timer every 10s, five times (~50s > the 30s
-  // idle window), so the sandbox stays running instead of pausing. In a real
-  // agent you'd call this once per turn while work is in progress.
-  for (let i = 1; i <= 5; i++) {
-    await sleep(10_000);
-    await sandbox.keepalive();
-    console.log(`keepalive ${i}/5 — phase: ${sandbox.phase}, idle_expires_at: ${sandbox.data.idle_expires_at}`);
+  try {
+    await sandbox.waitUntilReady();
+    console.log(`ready ${sandbox.id} — idle_expires_at: ${sandbox.data.idle_expires_at}`);
+
+    // Keepalive loop: reset the idle timer every 10s, five times (~50s > the 30s
+    // idle window), so the sandbox stays running instead of pausing. In a real
+    // agent you'd call this once per turn while work is in progress.
+    for (let i = 1; i <= 5; i++) {
+      await sleep(10_000);
+      await sandbox.keepalive();
+      console.log(`keepalive ${i}/5 — phase: ${sandbox.phase}, idle_expires_at: ${sandbox.data.idle_expires_at}`);
+    }
+
+    // Widen the idle window in place (seconds). Only the fields passed change; send
+    // 0 to turn a window off, or omit it to leave it unchanged.
+    await sandbox.updateTimeout({ idle_timeout_seconds: 300 });
+    console.log(`idle window widened — idle_timeout_seconds: ${sandbox.data.idle_timeout_seconds}`);
+  } finally {
+    // Always clean up the remote sandbox, even if a step above failed.
+    await sandbox.delete();
+    console.log("cleaned up");
   }
-
-  // Widen the idle window in place (seconds). Only the fields passed change; send
-  // 0 to turn a window off, or omit it to leave it unchanged.
-  await sandbox.updateTimeout({ idle_timeout_seconds: 300 });
-  console.log(`idle window widened — idle_timeout_seconds: ${sandbox.data.idle_timeout_seconds}`);
-
-  await sandbox.delete();
-  console.log("cleaned up");
 }
 
 main().catch((err) => {

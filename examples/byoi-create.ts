@@ -24,14 +24,17 @@ async function main(): Promise<void> {
   });
   console.log(`created ${sandbox.id} from ${sandbox.data.image} (phase: ${sandbox.phase})`);
 
-  await sandbox.waitUntilReady();
+  try {
+    await sandbox.waitUntilReady();
 
-  // Run a command inside the BYOI container to prove the image is live.
-  const result = await sandbox.exec(["python", "--version"]);
-  console.log(`python in the sandbox: ${result.stdout.trim() || result.stderr.trim()}`);
-
-  await sandbox.delete();
-  console.log("cleaned up");
+    // Run a command inside the BYOI container to prove the image is live.
+    const result = await sandbox.exec(["python", "--version"]);
+    console.log(`python in the sandbox: ${result.stdout.trim() || result.stderr.trim()}`);
+  } finally {
+    // Always clean up the remote sandbox, even if readiness or exec failed.
+    await sandbox.delete();
+    console.log("cleaned up");
+  }
 }
 
 main().catch((err) => {
