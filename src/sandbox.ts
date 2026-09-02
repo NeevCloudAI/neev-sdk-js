@@ -284,16 +284,16 @@ export class Sandbox {
     return this.sandboxes.listSnapshots(this.id, { ...params, ...this.scope });
   }
 
-  // Restores this sandbox in place from one of its snapshots and updates the handle.
-  async restore(snapshotId: string): Promise<this> {
-    const next = await this.sandboxes.restore(this.id, snapshotId, this.scope);
+  // Rolls this sandbox back in place to one of its snapshots and updates the handle.
+  async rollback(snapshotId: string): Promise<this> {
+    const next = await this.sandboxes.rollback(this.id, snapshotId, this.scope);
     this.state = next.data;
     return this;
   }
 
   // Forks this sandbox into a new named sandbox seeded from its *current* live
   // state (the server snapshots the current state atomically); this sandbox keeps
-  // running. It does not reuse an existing snapshot — use restore for that.
+  // running. It does not reuse an existing snapshot — use rollback for that.
   // Returns a handle to the new sandbox.
   async fork(name: string): Promise<Sandbox> {
     return this.sandboxes.fork(this.id, name, this.scope);

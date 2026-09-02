@@ -17,7 +17,7 @@ import { Neev } from "@neevcloud/sdk";
 
 **Resources** — client-level API
 
-- [Sandboxes resource](#sandboxes-resource) — create, list, get, pause, resume, delete, metrics, snapshots, restore, fork, connect
+- [Sandboxes resource](#sandboxes-resource) — create, list, get, pause, resume, delete, metrics, snapshots, rollback, fork, connect
 - [Templates resource](#templates-resource)
 - [Agents resource](#agents-resource) — create, list, get, update, pause, resume, delete
 - [Agent templates resource](#agent-templates-resource)
@@ -433,7 +433,7 @@ Fetches a snapshot's metadata by id (project-scoped, not tied to its source sand
 ```ts
 const snap = await client.sandboxes.getSnapshot(pending.id);
 if (snap.status === "Ready") {
-  // safe to restore or fork-from this snapshot
+  // safe to roll back to or fork-from this snapshot
 }
 // To poll until Ready without hand-writing a loop, use waitForSnapshot below.
 ```
@@ -444,7 +444,7 @@ if (snap.status === "Ready") {
 waitForSnapshot(snapshotId: string, params?: WaitForSnapshotParams): Promise<SnapshotData>
 ```
 
-Polls `getSnapshot` until the snapshot reaches `Ready`, then resolves with it. Throws a `NeevError` if the snapshot enters `Failed` (surfacing its `error_message`) or if the wait budget elapses first. Use it after `createSnapshot` before `restore` / `fork`, both of which require a `Ready` snapshot.
+Polls `getSnapshot` until the snapshot reaches `Ready`, then resolves with it. Throws a `NeevError` if the snapshot enters `Failed` (surfacing its `error_message`) or if the wait budget elapses first. Use it after `createSnapshot` before `rollback` / `fork`, both of which require a `Ready` snapshot.
 
 **Parameters (`WaitForSnapshotParams`, extends `Scope`):**
 
@@ -482,22 +482,22 @@ Deletes a snapshot and its stored blob.
 await client.sandboxes.deleteSnapshot(snap.id);
 ```
 
-### `client.sandboxes.restore(id, snapshotId, scope?)`
+### `client.sandboxes.rollback(id, snapshotId, scope?)`
 
 ```ts
-restore(id: string, snapshotId: string, scope?: Scope): Promise<Sandbox>
+rollback(id: string, snapshotId: string, scope?: Scope): Promise<Sandbox>
 ```
 
-Restores a sandbox **in place** from one of its snapshots, overwriting its filesystem with the snapshot contents. The snapshot must belong to a sandbox in the same project, and must be `Ready`.
+Rolls a sandbox back **in place** to one of its snapshots, overwriting its filesystem with the snapshot contents. The snapshot must belong to a sandbox in the same project, and must be `Ready`.
 
 **Returns:** `Promise<Sandbox>` — the updated handle.
 
 **Raises:** `NotFoundError`, `PreconditionFailedError` (e.g. snapshot not yet `Ready`), `ConflictError`, plus scope/auth/transport errors.
 
 ```ts
-const restored = await client.sandboxes.restore(sandbox.id, snap.id);
+const rolledBack = await client.sandboxes.rollback(sandbox.id, snap.id);
 // or via handle (updates state in place):
-await sandbox.restore(snap.id);
+await sandbox.rollback(snap.id);
 ```
 
 ### `client.sandboxes.fork(id, name, scope?)`
@@ -506,7 +506,7 @@ await sandbox.restore(snap.id);
 fork(id: string, name: string, scope?: Scope): Promise<Sandbox>
 ```
 
-Forks a sandbox into a **new** named sandbox. The server atomically snapshots the source's **current live state** and seeds the new sandbox from it; the source keeps running. This always forks the current state — it does **not** reuse a previously created snapshot (use `restore` for a chosen snapshot).
+Forks a sandbox into a **new** named sandbox. The server atomically snapshots the source's **current live state** and seeds the new sandbox from it; the source keeps running. This always forks the current state — it does **not** reuse a previously created snapshot (use `rollback` for a chosen snapshot).
 
 **Parameters:**
 
@@ -713,7 +713,7 @@ await box.exec("echo", { args: ["hi"] });
 
 ## Sandbox handle
 
-Returned by `create()`, `get()`, `list().items`, `pause()`, `resume()`, `restore()`, and `fork()`. Holds the latest known server state (`SandboxData`) and offers lifecycle actions on this sandbox in place. Construct via the `sandboxes` resource rather than directly.
+Returned by `create()`, `get()`, `list().items`, `pause()`, `resume()`, `rollback()`, and `fork()`. Holds the latest known server state (`SandboxData`) and offers lifecycle actions on this sandbox in place. Construct via the `sandboxes` resource rather than directly.
 
 ### Getters
 
@@ -817,18 +817,18 @@ const ready = await sandbox.snapshot({ name: "demo-snap", waitUntilReady: true }
 const page = await sandbox.snapshots({ page: 1, limit: 50 });
 ```
 
-### `sandbox.restore(snapshotId)` / `sandbox.fork(name)`
+### `sandbox.rollback(snapshotId)` / `sandbox.fork(name)`
 
 ```ts
-restore(snapshotId: string): Promise<this>
+rollback(snapshotId: string): Promise<this>
 fork(name: string): Promise<Sandbox>
 ```
 
-`restore` delegates to `client.sandboxes.restore`, restoring this sandbox **in place** from the chosen snapshot and updating handle state in place; returns `this`. `fork` delegates to `client.sandboxes.fork`, forking this sandbox into a **new** sandbox seeded from its **current live state** (does not reuse an existing snapshot); returns a new `Sandbox` handle.
+`rollback` delegates to `client.sandboxes.rollback`, rolling this sandbox back **in place** to the chosen snapshot and updating handle state in place; returns `this`. `fork` delegates to `client.sandboxes.fork`, forking this sandbox into a **new** sandbox seeded from its **current live state** (does not reuse an existing snapshot); returns a new `Sandbox` handle.
 
 ```ts
-// In-place restore from a chosen (Ready) snapshot — mutates this sandbox:
-await sandbox.restore(snap.id);
+// In-place rollback to a chosen (Ready) snapshot — mutates this sandbox:
+await sandbox.rollback(snap.id);
 
 // Fork the current live state into a new sandbox:
 const fork = await sandbox.fork("fork-name");
@@ -1468,7 +1468,7 @@ Alias for the generated `Snapshot` schema — a snapshot captured from a sandbox
 
 ### `SnapshotStatus`
 
-Lifecycle status of a snapshot: `"Pending" | "Running" | "Ready" | "Failed"`. A new snapshot starts `Pending` and must reach `Ready` before it can be used for `restore` or fork-from. Poll via `getSnapshot`.
+Lifecycle status of a snapshot: `"Pending" | "Running" | "Ready" | "Failed"`. A new snapshot starts `Pending` and must reach `Ready` before it can be used for `rollback` or fork-from. Poll via `getSnapshot`.
 
 ### `CreateSnapshotParams`
 
@@ -1691,7 +1691,7 @@ Compact reviewer index.
 | `Sandboxes.listSnapshots` | method | `Promise<SnapshotPage>` (paginated) |
 | `Sandboxes.getSnapshot` | method | `Promise<SnapshotData>` |
 | `Sandboxes.deleteSnapshot` | method | `Promise<void>` |
-| `Sandboxes.restore` | method | `Promise<Sandbox>` (in place) |
+| `Sandboxes.rollback` | method | `Promise<Sandbox>` (in place) |
 | `Sandboxes.fork` | method | `Promise<Sandbox>` (new sandbox from current live state) |
 | `Sandboxes.connect` | method | `SandboxConnection` (sync) |
 | `ListSandboxesParams`, `SandboxPage`, `ListSnapshotsParams`, `SnapshotPage`, `MetricsQuery`, `MetricsParams` | types | Params/return shapes. |
@@ -1751,7 +1751,7 @@ Compact reviewer index.
 | `metrics` | method | `Promise<SandboxMetricsResponse>` |
 | `snapshot` | method | `Promise<SnapshotData>` |
 | `snapshots` | method | `Promise<SnapshotPage>` (paginated) |
-| `restore` | method | `Promise<this>` (in place) |
+| `rollback` | method | `Promise<this>` (in place) |
 | `fork` | method | `Promise<Sandbox>` |
 | `exec` | method | `Promise<ExecResult>` or `AsyncGenerator<ExecStreamEvent>` (overloaded). |
 | `execStream` | method | `AsyncGenerator<ExecStreamEvent>` — **deprecated** alias. |
@@ -1821,10 +1821,9 @@ Compact reviewer index.
 - `create` takes all-optional fields; the platform generates a name when omitted and defaults the template.
 - `pause()` and `resume()` return the updated `Sandbox` handle (not `void`).
 - `connectUrl` is a getter returning `string | null`, not a method.
-- `createSnapshot` always sends `include_memory: false`; memory capture is unsupported and `CreateSnapshotParams` omits the field.
-- Snapshots start `Pending` and must reach `Ready` (poll `getSnapshot`) before `restore` or fork-from.
-- `restore(id, snapshotId)` restores **in place** from a chosen, `Ready` snapshot, overwriting the sandbox filesystem.
-- `fork(id, name)` snapshots the **current live state** and seeds a **new** sandbox — it does **not** reuse an existing snapshot. Use `restore` when you want a specific prior snapshot.
+- Snapshots start `Pending` and must reach `Ready` (poll `getSnapshot`) before `rollback` or fork-from.
+- `rollback(id, snapshotId)` rolls a sandbox back **in place** to a chosen, `Ready` snapshot, overwriting the sandbox filesystem.
+- `fork(id, name)` snapshots the **current live state** and seeds a **new** sandbox — it does **not** reuse an existing snapshot. Use `rollback` when you want a specific prior snapshot.
 - `listSnapshots` / `Sandbox.snapshots` are **paginated**: they return `SnapshotPage` (`{ items, total, page, limit }`) and accept `{ page, limit }`. `SnapshotPage`/`ListSnapshotsParams` are not re-exported at the package root.
 - `exec` is buffered by default; pass `{ stream: true }` for a live async-iterable. `execStream` is a **deprecated** alias for the streaming form.
 - A non-zero exit code is reported (in `ExecResult.exitCode` or the `exit` event), never thrown. Runtime failure frames throw typed `APIError` subclasses.
@@ -1849,7 +1848,7 @@ I read all the source files and `/tmp/py-api-inventory.md`, then produced the co
 
 - Documented all exports from `src/index.ts` (values vs `export type`), including the package-root types and the fact that `ListSnapshotsParams`/`SnapshotPage` are exported from `resources/sandboxes.ts` but not re-exported at root.
 - `Neev` constructor (`NeevOptions`) with real defaults (`baseURL` default `https://api.ai.neevcloud.com/agent`, `timeoutMs` 60000, `maxRetries` 2) and both throw paths (missing apiKey, missing fetch). No `close()`.
-- Every `Sandboxes` method with exact TS signatures and `scope?`/params interfaces; `create` requires only `name`; `createSnapshot` forces `include_memory: false`; `listSnapshots`/`snapshots` are paginated (`SnapshotPage`); `restore` = in-place from chosen snapshot; `fork` = new sandbox from current live state (not a stored snapshot); included `connect`.
+- Every `Sandboxes` method with exact TS signatures and `scope?`/params interfaces; `create` requires only `name`; `listSnapshots`/`snapshots` are paginated (`SnapshotPage`); `rollback` = in-place to chosen snapshot; `fork` = new sandbox from current live state (not a stored snapshot); included `connect`.
 - `Sandbox` handle getters (`connectUrl` is `string | null`, plus `region`/`templateId`/`resources`), `waitUntilReady` (`Paused` fail-fast, timeout), overloaded `exec` (buffered vs `{ stream: true }`), deprecated `execStream`, `toJSON`.
 - Runtime `SandboxConnection`/`SandboxFiles` with camelCase results (`bytesWritten`, `modifiedTime`, `symlinkTarget`), `ExecOptions`/`ExecResult`/`ExecStreamEvent`/`FileEntry`.
 - Full error hierarchy with status mapping (incl. reason-code → status table) and `APIError` properties (`status`, `code`, `details`, `requestId`).

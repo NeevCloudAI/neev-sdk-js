@@ -82,7 +82,7 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `getSnapshot(snapshotId, scope?)` | `Promise<SnapshotData>` | Fetches snapshot metadata by project-scoped id. |
 | `waitForSnapshot(snapshotId, params?)` | `Promise<SnapshotData>` | Polls until the snapshot is `Ready`; throws on `Failed` (with its error message) or timeout. |
 | `deleteSnapshot(snapshotId, scope?)` | `Promise<void>` | Deletes a snapshot and its stored blob. |
-| `restore(id, snapshotId, scope?)` | `Promise<Sandbox>` | Restores a sandbox **in place** from one of its snapshots. |
+| `rollback(id, snapshotId, scope?)` | `Promise<Sandbox>` | Rolls a sandbox back **in place** to one of its snapshots. |
 | `fork(id, name, scope?)` | `Promise<Sandbox>` | Forks a sandbox into a new named sandbox from its **current live state**. |
 
 **`create(params, scope?)`** — every field is optional; the platform generates a name and defaults the template when omitted. Compute size is set with `resources` (`cpu` / `memory_gb` / `disk_gb`); omit it (or any field) to take the platform default — see [`SandboxResources`](./api-inventory.md#sandboxresources) for defaults and ranges. Egress is deny-all by default; open it with the `allowInternet` / `allowEgress` convenience fields (same on `agents.create`), or a full `egress` object for finer control (which takes precedence).
@@ -155,7 +155,7 @@ Snapshots capture a sandbox's filesystem state. They are **asynchronous**: `crea
 
 Two distinct paths:
 
-- **`restore(id, snapshotId)`** — rolls the **same** sandbox in place back to a **chosen** snapshot.
+- **`rollback(id, snapshotId)`** — rolls the **same** sandbox in place back to a **chosen** snapshot.
 - **`fork(id, name)`** — atomically snapshots the source's **current live state** into a **brand-new** sandbox; it does **not** reuse an existing snapshot, and the source keeps running.
 
 ```ts
@@ -164,7 +164,7 @@ const sandbox = await neev.sandboxes.get(id);
 // Capture filesystem state and block until it is Ready.
 const snap = await sandbox.snapshot({ name: "checkpoint", waitUntilReady: true });
 
-await sandbox.restore(snap.id);             // restore this sandbox in place
+await sandbox.rollback(snap.id);            // roll this sandbox back in place
 const fork = await sandbox.fork("my-fork"); // branch current live state into a new sandbox
 
 const { items } = await neev.sandboxes.listSnapshots(id); // paginated: { page, limit }
@@ -214,7 +214,7 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | `metrics(params?)` | `Promise<SandboxMetricsResponse>` | Reads the live metric series; `params` is `{ from?, to?, step? }`. |
 | `snapshot(options?)` | `Promise<SnapshotData>` | Captures this sandbox's state (starts `Pending`). Pass `{ waitUntilReady: true }` to resolve only once the snapshot is `Ready`. |
 | `snapshots(params?)` | `Promise<SnapshotPage>` | Lists this sandbox's snapshots (paginated: `{ page, limit }`). |
-| `restore(snapshotId)` | `Promise<this>` | Restores this sandbox in place from a chosen snapshot. |
+| `rollback(snapshotId)` | `Promise<this>` | Rolls this sandbox back in place to a chosen snapshot. |
 | `fork(name)` | `Promise<Sandbox>` | Forks the current live state into a new sandbox handle. |
 | `getUrl(options)` | `Promise<string>` | Exposes `options.port` and returns its public preview URL, waiting until the URL is routable. `options` = `{ port, waitUntilReady?, timeoutMs?, pollIntervalMs? }`. |
 | `exposePort(port)` | `Promise<SandboxPort>` | Exposes a port for preview URLs (no readiness wait). |
@@ -450,7 +450,7 @@ Minimal one-liners for each public API.
 | `neev.sandboxes.getSnapshot(snapshotId)` | `const snap = await neev.sandboxes.getSnapshot(snapshotId);` |
 | `neev.sandboxes.waitForSnapshot(snapshotId)` | `const snap = await neev.sandboxes.waitForSnapshot(snapshotId);` |
 | `neev.sandboxes.deleteSnapshot(snapshotId)` | `await neev.sandboxes.deleteSnapshot(snapshotId);` |
-| `neev.sandboxes.restore(id, snapshotId)` | `await neev.sandboxes.restore(id, snapshotId);` |
+| `neev.sandboxes.rollback(id, snapshotId)` | `await neev.sandboxes.rollback(id, snapshotId);` |
 | `neev.sandboxes.fork(id, name)` | `const fork = await neev.sandboxes.fork(id, "my-fork");` |
 | `neev.templates.list(...)` | `const { items } = await neev.templates.list({ limit: 10 });` |
 | `neev.templates.get(id)` | `const tpl = await neev.templates.get("sb-ubuntu-26-04-minimal");` |
@@ -463,7 +463,7 @@ Minimal one-liners for each public API.
 | `sandbox.pause()` / `sandbox.resume()` | `await sandbox.pause();  await sandbox.resume();` |
 | `sandbox.snapshot(...)` | `const pending = await sandbox.snapshot({ name: "demo-snap" });` |
 | `sandbox.snapshots(...)` | `const { items } = await sandbox.snapshots({ page: 1, limit: 20 });` |
-| `sandbox.restore(snapshotId)` | `await sandbox.restore(snapshotId);` |
+| `sandbox.rollback(snapshotId)` | `await sandbox.rollback(snapshotId);` |
 | `sandbox.fork(name)` | `const fork = await sandbox.fork("my-fork");` |
 | `sandbox.delete()` | `await sandbox.delete();` |
 | `sandbox.metrics(...)` | `const m = await sandbox.metrics({ step: "60s" });` |

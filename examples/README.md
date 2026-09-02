@@ -29,7 +29,7 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 |------|---------------|-----|
 | [`create-sandbox.ts`](./create-sandbox.ts) | Lifecycle: create → wait for Ready → metrics → pause → delete | `npx tsx examples/create-sandbox.ts` |
 | [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
-| [`snapshot-fork-restore.ts`](./snapshot-fork-restore.ts) | Snapshot a sandbox → fork a new one from it → restore the original in place | `npx tsx examples/snapshot-fork-restore.ts` |
+| [`snapshot-fork-rollback.ts`](./snapshot-fork-rollback.ts) | Snapshot a sandbox → fork a new one from it → roll the original back in place | `npx tsx examples/snapshot-fork-rollback.ts` |
 | [`streaming-exec.ts`](./streaming-exec.ts) | `sandbox.exec(cmd, { stream: true })` — output streamed line-by-line as it is produced | `npx tsx examples/streaming-exec.ts` |
 | [`files.ts`](./files.ts) | `sandbox.files` — write, read, stat/exists, mkdir, move, list, remove, and a live `watch` of changes | `npx tsx examples/files.ts` |
 | [`parallel-fanout.ts`](./parallel-fanout.ts) | Several isolated sandboxes run a map/reduce concurrently; reads `metrics()` | `npx tsx examples/parallel-fanout.ts` |
@@ -77,11 +77,11 @@ npx tsx examples/create-sandbox.ts
 ```
 → `created … (phase: Pending)` → `ready at https://….sandboxes.<region>…` → `metric series: …` → `paused …` → `deleted`.
 
-**1b. Snapshot, fork & restore**
+**1b. Snapshot, fork & rollback**
 ```sh
-npx tsx examples/snapshot-fork-restore.ts
+npx tsx examples/snapshot-fork-rollback.ts
 ```
-→ `source … ready` → `snapshot … ready` → `forked … carries: captured-at-snapshot` → `restored …` → `cleaned up`.
+→ `source … ready` → `snapshot … ready` → `forked … carries: captured-at-snapshot` → `rolled back …` → `cleaned up`.
 
 **2. Streaming exec**
 ```sh
