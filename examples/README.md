@@ -28,6 +28,8 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 | File | What it shows | Run |
 |------|---------------|-----|
 | [`create-sandbox.ts`](./create-sandbox.ts) | Lifecycle: create → wait for Ready → metrics → pause → delete | `npx tsx examples/create-sandbox.ts` |
+| [`lifecycle-keepalive.ts`](./lifecycle-keepalive.ts) | Capped-lifetime sandbox (`lifecycle` windows) held past its idle deadline with a `keepalive()` loop, then `updateTimeout()` | `npx tsx examples/lifecycle-keepalive.ts` |
+| [`byoi-create.ts`](./byoi-create.ts) | Bring Your Own Image: `create({ image, command })` from a public OCI image → wait for Ready → exec | `npx tsx examples/byoi-create.ts` |
 | [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
 | [`snapshot-fork-rollback.ts`](./snapshot-fork-rollback.ts) | Snapshot a sandbox → fork a new one from it → roll the original back in place | `npx tsx examples/snapshot-fork-rollback.ts` |
 | [`streaming-exec.ts`](./streaming-exec.ts) | `sandbox.exec(cmd, { stream: true })` — output streamed line-by-line as it is produced | `npx tsx examples/streaming-exec.ts` |

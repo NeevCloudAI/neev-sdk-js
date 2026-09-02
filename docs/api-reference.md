@@ -75,6 +75,8 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `get(id, scope?)` | `Promise<Sandbox>` | Fetches the current record for a sandbox by id. |
 | `pause(id, scope?)` | `Promise<Sandbox>` | Pauses a sandbox (scales to zero replicas). |
 | `resume(id, scope?)` | `Promise<Sandbox>` | Resumes a paused sandbox (scales to one replica). |
+| `keepalive(id, scope?)` | `Promise<Sandbox>` | Resets the idle timer, holding a busy sandbox alive without an open connection. |
+| `updateTimeout(id, windows, scope?)` | `Promise<Sandbox>` | Changes the idle/lifetime windows (seconds); only the fields passed change. |
 | `delete(id, scope?)` | `Promise<void>` | Permanently deletes a sandbox. |
 | `metrics(id, params?)` | `Promise<SandboxMetricsResponse>` | Reads the live, tenant-scoped metric series over an optional time window. |
 | `createSnapshot(id, params?, scope?)` | `Promise<SnapshotData>` | Captures a filesystem snapshot; returns immediately with `status: "Pending"`. |
@@ -85,7 +87,7 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `rollback(id, snapshotId, scope?)` | `Promise<Sandbox>` | Rolls a sandbox back **in place** to one of its snapshots. |
 | `fork(id, name, scope?)` | `Promise<Sandbox>` | Forks a sandbox into a new named sandbox from its **current live state**. |
 
-**`create(params, scope?)`** — every field is optional; the platform generates a name and defaults the template when omitted. Compute size is set with `resources` (`cpu` / `memory_gb` / `disk_gb`); omit it (or any field) to take the platform default — see [`SandboxResources`](./api-inventory.md#sandboxresources) for defaults and ranges. Egress is deny-all by default; open it with the `allowInternet` / `allowEgress` convenience fields (same on `agents.create`), or a full `egress` object for finer control (which takes precedence).
+**`create(params, scope?)`** — every field is optional; the platform generates a name and defaults the template when omitted. Compute size is set with `resources` (`cpu` / `memory_gb` / `disk_gb`); omit it (or any field) to take the platform default — see [`SandboxResources`](./api-inventory.md#sandboxresources) for defaults and ranges. Egress is deny-all by default; open it with the `allowInternet` / `allowEgress` convenience fields (same on `agents.create`), or a full `egress` object for finer control (which takes precedence). Set at most one of `sandbox_template_id` (catalogue) or `image` (BYOI — a public OCI image with a tag/digest, plus an optional `command`); omit both to use the platform default template. Pass `lifecycle` to set idle/lifetime windows at create time; omit it and account defaults apply (no `lifecycle` key is sent), and an out-of-enum `on_idle` throws before the request.
 
 ```ts
 const sandbox = await neev.sandboxes.create({});
@@ -95,6 +97,11 @@ await sandbox.waitUntilReady();
 await neev.sandboxes.create({ name: "web", allowInternet: true });
 // allow specific hosts (FQDN or CIDR, wildcards supported)
 await neev.sandboxes.create({ name: "ci", allowEgress: ["github.com", "*.npmjs.org"] });
+
+// BYOI: create from a public image with an explicit start command
+await neev.sandboxes.create({ image: "docker.io/library/python:3.12-slim", command: ["sleep", "infinity"] });
+// lifecycle windows (seconds): pause after 10 min idle, hard-stop after 2 h
+await neev.sandboxes.create({ lifecycle: { idle_timeout_seconds: 600, max_lifetime_seconds: 7200, on_idle: "pause" } });
 ```
 
 **`list(params?)`** — `params` is `{ page?, limit?, orgId?, projectId? }`; returns `SandboxPage` = `{ items: Sandbox[]; total; page; limit }`.
@@ -110,6 +117,17 @@ const sandbox = await neev.sandboxes.get(id);
 await neev.sandboxes.pause(id);
 await neev.sandboxes.resume(id);
 await neev.sandboxes.delete(id);
+```
+
+**`keepalive(id, scope?)` / `updateTimeout(id, windows, scope?)`** — lifecycle windows are in **seconds**. `keepalive` resets the idle timer (no body). `updateTimeout` changes only the windows passed: send `0` to turn a window off (no limit), an omitted field is left unchanged. `on_idle` is `"pause" | "delete"`; any other value throws before the request is sent. Windows: `idle_timeout_seconds`, `max_lifetime_seconds`, `paused_retention_seconds`, `on_idle`.
+
+```ts
+// Reset the idle timer (e.g. once per agent turn while work is in progress).
+await neev.sandboxes.keepalive(id);
+
+// Change only what you pass; send 0 to turn a window off, omit to leave unchanged.
+await neev.sandboxes.updateTimeout(id, { idle_timeout_seconds: 600, on_idle: "pause" });
+await neev.sandboxes.updateTimeout(id, { max_lifetime_seconds: 0 });
 ```
 
 **`metrics(id, params?)`** — `params` is `{ from?, to?, step?, orgId?, projectId? }`; `from`/`to` are RFC3339, `step` is a Go duration (e.g. `"60s"`). The platform defaults to the last hour.
@@ -210,6 +228,8 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | `refresh()` | `Promise<this>` | Re-fetches the record and updates the handle in place. |
 | `pause()` | `Promise<this>` | Pauses (scales to zero) and updates the handle. |
 | `resume()` | `Promise<this>` | Resumes (scales to one) and updates the handle. |
+| `keepalive()` | `Promise<this>` | Resets the idle timer and updates the handle. |
+| `updateTimeout(windows)` | `Promise<this>` | Changes the idle/lifetime windows (seconds) and updates the handle. |
 | `delete()` | `Promise<void>` | Permanently deletes the sandbox. |
 | `metrics(params?)` | `Promise<SandboxMetricsResponse>` | Reads the live metric series; `params` is `{ from?, to?, step? }`. |
 | `snapshot(options?)` | `Promise<SnapshotData>` | Captures this sandbox's state (starts `Pending`). Pass `{ waitUntilReady: true }` to resolve only once the snapshot is `Ready`. |

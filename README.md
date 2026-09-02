@@ -9,7 +9,7 @@ One package, one auth model, one client — adopt new capabilities as they ship.
 
 **Available today**
 
-- **`neev.sandboxes`** — full agent-sandbox lifecycle: create, list, get, pause, resume, delete, live metrics, plus snapshots, rollback, and fork. Inside a running sandbox: `files`, `exec`, a `processes` supervisor for long-running, detached processes, and `pty` for interactive terminal sessions. Sandboxes are strongly isolated compute environments for AI agents.
+- **`neev.sandboxes`** — full agent-sandbox lifecycle: create (catalogue template or BYOI image), list, get, pause, resume, keepalive, timeout windows, delete, live metrics, plus snapshots, rollback, and fork. Inside a running sandbox: `files`, `exec`, a `processes` supervisor for long-running, detached processes, and `pty` for interactive terminal sessions. Sandboxes are strongly isolated compute environments for AI agents.
 - **`neev.templates`** — the platform sandbox-template catalogue (list, get). A template id (e.g. `sb-ubuntu-26-04-minimal`) is optional when creating a sandbox; omit it to use the platform's default template.
 - **`neev.agents`** — agent lifecycle: create from a catalogue template, list, get, update (in-place egress / cpu / memory), pause, resume, delete. Each agent runs on its own backing sandbox, reachable from the handle via `agent.sandbox()`.
 - **`neev.agentTemplates`** — the platform agent-template catalogue (list, get). A template name (e.g. `claude-code`) is passed as `agent_template` when creating an agent.
@@ -82,6 +82,11 @@ await neev.sandboxes.resume(id);
 await neev.sandboxes.delete(id);
 const metrics = await neev.sandboxes.metrics(id, { step: "60s" });
 
+// Lifecycle windows (all in seconds). keepalive resets the idle timer; updateTimeout
+// changes only the windows passed (send 0 to turn one off, omit to leave unchanged).
+await neev.sandboxes.keepalive(id);
+await neev.sandboxes.updateTimeout(id, { idle_timeout_seconds: 600, on_idle: "pause" });
+
 // Snapshots, rollback, and fork (see "Snapshots, fork & rollback" below).
 const snap = await neev.sandboxes.createSnapshot(id, { name: "checkpoint" });
 const { items } = await neev.sandboxes.listSnapshots(id); // paginated
@@ -105,6 +110,41 @@ const sandbox = await neev.sandboxes.create({
 const { items } = await neev.templates.list();
 const template = await neev.templates.get("sb-ubuntu-26-04-minimal"); // inspect one
 ```
+
+### Custom images (BYOI)
+
+Instead of a catalogue template, create from any public OCI image with an explicit
+tag or digest, and optionally override the start command. Set at most one of
+`sandbox_template_id` or `image` (omit both to use the platform default template):
+
+```ts
+const sandbox = await neev.sandboxes.create({
+  image: "docker.io/library/python:3.12-slim",
+  command: ["sleep", "infinity"], // keep it alive to exec into
+});
+```
+
+### Lifecycle windows
+
+Cap how long a sandbox lives and what happens when it goes idle. Durations are in
+seconds. Set windows at create time, change them in place with `updateTimeout`, and
+reset the idle timer with `keepalive`:
+
+```ts
+// At create time: pause after 10 min idle, hard-stop after 2 h total.
+const sandbox = await neev.sandboxes.create({
+  lifecycle: { idle_timeout_seconds: 600, max_lifetime_seconds: 7200, on_idle: "pause" },
+});
+
+// Reset the idle timer while work is in progress (e.g. once per agent turn).
+await sandbox.keepalive();
+
+// Change only the windows passed; send 0 to turn one off, omit to leave unchanged.
+await sandbox.updateTimeout({ idle_timeout_seconds: 0, max_lifetime_seconds: 3600 });
+```
+
+`on_idle` is `"pause"` or `"delete"`. Omit `lifecycle` entirely to use the account
+defaults (no lifecycle key is sent).
 
 ### Network egress
 

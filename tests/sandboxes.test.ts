@@ -188,6 +188,125 @@ describe("sandboxes resource", () => {
   });
 });
 
+describe("sandbox create options (lifecycle + BYOI)", () => {
+  it("passes a lifecycle block through the create body", async () => {
+    const { neev, calls } = client([json(201, sandboxData())]);
+    await neev.sandboxes.create({
+      sandbox_template_id: "sb-x",
+      lifecycle: { max_lifetime_seconds: 3600, idle_timeout_seconds: 600, on_idle: "pause" },
+    });
+    expect(calls[0]?.body).toEqual({
+      sandbox_template_id: "sb-x",
+      lifecycle: { max_lifetime_seconds: 3600, idle_timeout_seconds: 600, on_idle: "pause" },
+    });
+  });
+
+  it("sends no lifecycle key when lifecycle is omitted (account defaults apply)", async () => {
+    const { neev, calls } = client([json(201, sandboxData())]);
+    await neev.sandboxes.create({ sandbox_template_id: "sb-x" });
+    expect(calls[0]?.body).toEqual({ sandbox_template_id: "sb-x" });
+    expect((calls[0]?.body as Record<string, unknown>).lifecycle).toBeUndefined();
+  });
+
+  it("turns a window off with 0 in lifecycle", async () => {
+    const { neev, calls } = client([json(201, sandboxData())]);
+    await neev.sandboxes.create({
+      sandbox_template_id: "sb-x",
+      lifecycle: { idle_timeout_seconds: 0 },
+    });
+    expect(calls[0]?.body).toEqual({
+      sandbox_template_id: "sb-x",
+      lifecycle: { idle_timeout_seconds: 0 },
+    });
+  });
+
+  it("rejects an out-of-enum on_idle in create before sending", async () => {
+    const { neev, calls } = client([]);
+    const params = {
+      sandbox_template_id: "sb-x",
+      lifecycle: { on_idle: "stop" },
+    } as unknown as Parameters<typeof neev.sandboxes.create>[0];
+    await expect(neev.sandboxes.create(params)).rejects.toBeInstanceOf(NeevError);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("creates from a BYOI image with a command (pass-through)", async () => {
+    const { neev, calls } = client([json(201, sandboxData())]);
+    await neev.sandboxes.create({
+      image: "ghcr.io/acme/app:1.2.3",
+      command: ["sleep", "infinity"],
+    });
+    expect(calls[0]?.body).toEqual({
+      image: "ghcr.io/acme/app:1.2.3",
+      command: ["sleep", "infinity"],
+    });
+  });
+});
+
+describe("sandbox lifecycle windows (keepalive + timeout)", () => {
+  const SB = "11111111-1111-1111-1111-111111111111";
+
+  it("keepalive POSTs to the keepalive sub-path with no body and returns a handle", async () => {
+    const { neev, calls } = client([json(200, sandboxData())]);
+    const sb = await neev.sandboxes.keepalive(SB);
+    expect(sb).toBeInstanceOf(Sandbox);
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.url).toMatch(new RegExp(`/sandboxes/${SB}/keepalive$`));
+    expect(calls[0]?.body).toBeUndefined();
+  });
+
+  it("updateTimeout PUTs only the windows passed", async () => {
+    const { neev, calls } = client([json(200, sandboxData())]);
+    await neev.sandboxes.updateTimeout("sb-1", { idle_timeout_seconds: 900 });
+    expect(calls[0]?.method).toBe("PUT");
+    expect(calls[0]?.url).toMatch(/\/sandboxes\/sb-1\/timeout$/);
+    expect(calls[0]?.body).toEqual({ idle_timeout_seconds: 900 });
+  });
+
+  it("updateTimeout turns a window off with 0", async () => {
+    const { neev, calls } = client([json(200, sandboxData())]);
+    await neev.sandboxes.updateTimeout("sb-1", { max_lifetime_seconds: 0 });
+    expect(calls[0]?.body).toEqual({ max_lifetime_seconds: 0 });
+  });
+
+  it("updateTimeout rejects an out-of-enum on_idle before sending", async () => {
+    const { neev, calls } = client([]);
+    const windows = { on_idle: "hibernate" } as unknown as Parameters<
+      typeof neev.sandboxes.updateTimeout
+    >[1];
+    await expect(neev.sandboxes.updateTimeout("sb-1", windows)).rejects.toBeInstanceOf(NeevError);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("exposes keepalive and updateTimeout on the Sandbox handle", async () => {
+    const { neev, calls } = client([
+      json(200, sandboxData()), // get
+      json(200, sandboxData()), // keepalive
+      json(200, sandboxData({ idle_timeout_seconds: 1200 })), // updateTimeout
+    ]);
+    const sb = await neev.sandboxes.get(SB);
+    await sb.keepalive();
+    await sb.updateTimeout({ idle_timeout_seconds: 1200, on_idle: "delete" });
+    expect(calls[1]?.method).toBe("POST");
+    expect(calls[1]?.url).toMatch(/\/keepalive$/);
+    expect(calls[2]?.method).toBe("PUT");
+    expect(calls[2]?.url).toMatch(/\/timeout$/);
+    expect(calls[2]?.body).toEqual({ idle_timeout_seconds: 1200, on_idle: "delete" });
+  });
+
+  it("a keepalive loop issues one POST per call", async () => {
+    const { neev, calls } = client([
+      json(200, sandboxData()), // get
+      json(200, sandboxData()),
+      json(200, sandboxData()),
+      json(200, sandboxData()),
+    ]);
+    const sb = await neev.sandboxes.get("sb-1");
+    for (let i = 0; i < 3; i++) await sb.keepalive();
+    expect(calls.filter((c) => c.url.endsWith("/keepalive"))).toHaveLength(3);
+  });
+});
+
 describe("sandbox snapshots, rollback, and fork", () => {
   it("creates a snapshot and posts the request body", async () => {
     const { neev, calls } = client([json(202, snapshotData({ name: "snap-1" }))]);

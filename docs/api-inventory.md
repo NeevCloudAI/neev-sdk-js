@@ -17,7 +17,7 @@ import { Neev } from "@neevcloud/sdk";
 
 **Resources** — client-level API
 
-- [Sandboxes resource](#sandboxes-resource) — create, list, get, pause, resume, delete, metrics, snapshots, rollback, fork, connect
+- [Sandboxes resource](#sandboxes-resource) — create, list, get, pause, resume, keepalive, updateTimeout, delete, metrics, snapshots, rollback, fork, connect
 - [Templates resource](#templates-resource)
 - [Agents resource](#agents-resource) — create, list, get, update, pause, resume, delete
 - [Agent templates resource](#agent-templates-resource)
@@ -113,6 +113,9 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `AgentTemplate` | type alias | `types.ts` |
 | `AgentTemplateListResponse` | type alias | `types.ts` |
 | `CreateSandboxParams` | type alias | `types.ts` |
+| `OnIdleAction` | type alias | `types.ts` |
+| `SandboxLifecycle` | type alias | `types.ts` |
+| `UpdateTimeoutParams` | type alias | `types.ts` |
 | `CreateSnapshotParams` | type alias | `types.ts` |
 | `EgressConvenience` | interface (type) | `types.ts` |
 | `EnvVar` | type alias | `types.ts` |
@@ -311,6 +314,39 @@ Resumes a paused sandbox by scaling it back to one replica, moving it toward `Re
 ```ts
 const resumed = await client.sandboxes.resume(sandbox.id);
 await resumed.waitUntilReady();
+```
+
+### `client.sandboxes.keepalive(id, scope?)`
+
+```ts
+keepalive(id: string, scope?: Scope): Promise<Sandbox>
+```
+
+Resets the sandbox's idle timer (POST `.../keepalive`, no body), keeping a busy sandbox alive without an open connection. Call it periodically while work is in progress — e.g. once per agent turn. A loop of calls holds the sandbox past its original idle deadline.
+
+**Returns:** `Promise<Sandbox>` — the updated handle (its `idle_expires_at` moves forward).
+
+**Raises:** `NotFoundError`, plus scope/auth/transport errors.
+
+```ts
+await client.sandboxes.keepalive(sandbox.id);
+```
+
+### `client.sandboxes.updateTimeout(id, windows, scope?)`
+
+```ts
+updateTimeout(id: string, windows: UpdateTimeoutParams, scope?: Scope): Promise<Sandbox>
+```
+
+Changes the sandbox's idle/lifetime windows in place (PUT `.../timeout`). `UpdateTimeoutParams` = `{ idle_timeout_seconds?, max_lifetime_seconds?, paused_retention_seconds?: number | null; on_idle?: OnIdleAction }`. Durations are in **seconds**. Only the fields passed change: send `0` to turn a window off (no limit), an omitted field is left unchanged. An out-of-enum `on_idle` throws `NeevError` **before** the request is sent.
+
+**Returns:** `Promise<Sandbox>` — the updated handle.
+
+**Raises:** `NeevError` (bad `on_idle`, locally), `NotFoundError`, plus scope/auth/transport errors.
+
+```ts
+await client.sandboxes.updateTimeout(sandbox.id, { idle_timeout_seconds: 600, on_idle: "pause" });
+await client.sandboxes.updateTimeout(sandbox.id, { max_lifetime_seconds: 0 }); // turn the window off
 ```
 
 ### `client.sandboxes.delete(id, scope?)`
@@ -788,6 +824,20 @@ await sandbox.pause();   // replicas → 0
 await sandbox.resume();  // replicas → 1, then:
 await sandbox.waitUntilReady();
 await sandbox.delete();
+```
+
+### `sandbox.keepalive()` / `sandbox.updateTimeout(windows)`
+
+```ts
+keepalive(): Promise<this>
+updateTimeout(windows: UpdateTimeoutParams): Promise<this>
+```
+
+Delegate to `client.sandboxes.keepalive` / `updateTimeout` using the handle's scope and update handle state in place. `keepalive` resets the idle timer; `updateTimeout` changes the idle/lifetime windows (seconds — send `0` to turn a window off, omit to leave it unchanged). An out-of-enum `on_idle` throws `NeevError` before the request.
+
+```ts
+await sandbox.keepalive();
+await sandbox.updateTimeout({ idle_timeout_seconds: 600, on_idle: "pause" });
 ```
 
 ### `sandbox.metrics(params?)`
@@ -1300,12 +1350,34 @@ The generated `CreateSandboxRequest` plus the SDK-only `EgressConvenience` field
 | Field | Type | Required |
 | ----- | ---- | -------- |
 | `name` | `string` (DNS-1123 label) | no (server-generated) |
-| `sandbox_template_id` | `string` | no (platform default) |
+| `sandbox_template_id` | `string` | no (platform default) — set this **or** `image` |
+| `image` | `string` (OCI ref, tag/digest) | no — BYOI; set this **or** `sandbox_template_id` |
+| `command` | `string[]` | no (BYOI start command override) |
+| `lifecycle` | `SandboxLifecycle` | no (idle/lifetime windows; omitted → account defaults) |
 | `env` | `EnvVar[]` | no |
 | `resources` | `SandboxResources` | no |
 | `egress` | `SandboxEgressConfig` | no |
 | `allowInternet` | `boolean` | no (SDK convenience — opens all egress) |
 | `allowEgress` | `string[]` | no (SDK convenience — allow specific hosts) |
+
+### `OnIdleAction`
+
+Alias for the generated `OnIdleAction` enum: `"pause" | "delete"` — what the platform does when a sandbox hits its idle window or max lifetime. The SDK rejects any other value locally (in `create` and `updateTimeout`) before sending.
+
+### `SandboxLifecycle`
+
+Alias for the generated `SandboxLifecycle` — the `lifecycle` block accepted by `sandboxes.create`. Durations in seconds; send `0` to turn a window off (no limit), or omit a field to use the account default.
+
+| Field | Type | Required |
+| ----- | ---- | -------- |
+| `idle_timeout_seconds` | `number \| null` | no |
+| `max_lifetime_seconds` | `number \| null` | no |
+| `paused_retention_seconds` | `number \| null` | no |
+| `on_idle` | `OnIdleAction` | no |
+
+### `UpdateTimeoutParams`
+
+Alias for the generated `UpdateSandboxTimeoutRequest` — the body for `sandboxes.updateTimeout` / `sandbox.updateTimeout`. Same shape as `SandboxLifecycle` (idle/lifetime windows in seconds; send `0` to turn one off, omit to leave unchanged).
 
 > Exact optionality/extra fields follow the generated OpenAPI schema; consult `src/generated/aiagent.ts` if the spec changes.
 
@@ -1685,6 +1757,8 @@ Compact reviewer index.
 | `Sandboxes.get` | method | `Promise<Sandbox>` |
 | `Sandboxes.pause` | method | `Promise<Sandbox>` |
 | `Sandboxes.resume` | method | `Promise<Sandbox>` |
+| `Sandboxes.keepalive` | method | `Promise<Sandbox>` |
+| `Sandboxes.updateTimeout` | method | `Promise<Sandbox>` |
 | `Sandboxes.delete` | method | `Promise<void>` |
 | `Sandboxes.metrics` | method | `Promise<SandboxMetricsResponse>` |
 | `Sandboxes.createSnapshot` | method | `Promise<SnapshotData>` (forces `include_memory: false`) |
@@ -1747,6 +1821,8 @@ Compact reviewer index.
 | `refresh` | method | `Promise<this>` |
 | `waitUntilReady` | method | `Promise<this>`; `WaitOptions`. |
 | `pause` / `resume` | methods | `Promise<this>` |
+| `keepalive` | method | `Promise<this>` |
+| `updateTimeout` | method | `Promise<this>`; `UpdateTimeoutParams`. |
 | `delete` | method | `Promise<void>` |
 | `metrics` | method | `Promise<SandboxMetricsResponse>` |
 | `snapshot` | method | `Promise<SnapshotData>` |

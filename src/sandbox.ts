@@ -21,6 +21,7 @@ import type {
   SandboxPort,
   SandboxResources,
   SnapshotData,
+  UpdateTimeoutParams,
 } from "./types.js";
 
 // Options controlling how long `waitUntilReady` polls before giving up.
@@ -220,6 +221,22 @@ export class Sandbox {
   // Resumes the sandbox (scales to one replica) and updates this handle.
   async resume(): Promise<this> {
     const next = await this.sandboxes.resume(this.id, this.scope);
+    this.state = next.data;
+    return this;
+  }
+
+  // Resets this sandbox's idle timer and updates this handle. Call it periodically
+  // while work is in progress to hold the sandbox past its idle deadline.
+  async keepalive(): Promise<this> {
+    const next = await this.sandboxes.keepalive(this.id, this.scope);
+    this.state = next.data;
+    return this;
+  }
+
+  // Changes this sandbox's idle/lifetime windows (seconds; send 0 to turn a window
+  // off, omit a field to leave it unchanged) and updates this handle.
+  async updateTimeout(windows: UpdateTimeoutParams): Promise<this> {
+    const next = await this.sandboxes.updateTimeout(this.id, windows, this.scope);
     this.state = next.data;
     return this;
   }
