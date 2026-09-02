@@ -18,6 +18,7 @@ import type {
   SandboxPort,
   SnapshotData,
   SnapshotListResponse,
+  UpdateSandboxParams,
   UpdateTimeoutParams,
 } from "../types.js";
 
@@ -215,6 +216,27 @@ export class Sandboxes {
     const res = await this.api.PUT(TIMEOUT, {
       params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
       body: windows,
+    });
+    return new Sandbox(this, unwrap<SandboxData>(res), scope);
+  }
+
+  // Updates a running sandbox in place (cpu/memory and/or egress) and returns the
+  // updated handle — same id, name, and preview URLs. `resources` are resized in
+  // place; `egress` replaces the policy in full and takes effect for new
+  // connections with no restart. `disk_gb` is not resizable in place and is
+  // rejected by the server if changed. The `allowInternet` / `allowEgress`
+  // convenience maps to `egress` exactly as it does on create. Rejects a patch
+  // carrying neither `resources` nor `egress` locally rather than letting the
+  // server 400 on it.
+  async update(id: string, params: UpdateSandboxParams, scope?: Scope): Promise<Sandbox> {
+    const body = withEgressConvenience(params);
+    if (body.resources === undefined && body.egress === undefined) {
+      throw new NeevError("sandboxes.update requires at least one of `resources` or `egress`.");
+    }
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.PATCH(ITEM, {
+      params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
+      body,
     });
     return new Sandbox(this, unwrap<SandboxData>(res), scope);
   }

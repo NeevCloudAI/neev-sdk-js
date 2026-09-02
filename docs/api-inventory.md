@@ -17,7 +17,7 @@ import { Neev } from "@neevcloud/sdk";
 
 **Resources** — client-level API
 
-- [Sandboxes resource](#sandboxes-resource) — create, list, get, pause, resume, keepalive, updateTimeout, delete, metrics, snapshots, rollback, fork, connect
+- [Sandboxes resource](#sandboxes-resource) — create, list, get, update, pause, resume, keepalive, updateTimeout, delete, metrics, snapshots, rollback, fork, connect
 - [Templates resource](#templates-resource)
 - [Agents resource](#agents-resource) — create, list, get, update, pause, resume, delete
 - [Agent templates resource](#agent-templates-resource)
@@ -113,6 +113,7 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `AgentTemplate` | type alias | `types.ts` |
 | `AgentTemplateListResponse` | type alias | `types.ts` |
 | `CreateSandboxParams` | type alias | `types.ts` |
+| `UpdateSandboxParams` | type alias | `types.ts` |
 | `OnIdleAction` | type alias | `types.ts` |
 | `SandboxLifecycle` | type alias | `types.ts` |
 | `UpdateTimeoutParams` | type alias | `types.ts` |
@@ -278,6 +279,29 @@ Fetches a single sandbox by id.
 ```ts
 const sandbox = await client.sandboxes.get("550e8400-e29b-41d4-a716-446655440000");
 console.log(sandbox.phase, sandbox.connectUrl);
+```
+
+### `client.sandboxes.update(id, params, scope?)`
+
+```ts
+update(id: string, params: UpdateSandboxParams, scope?: Scope): Promise<Sandbox>
+```
+
+Updates a **running** sandbox in place and returns the updated handle; the id, name, and preview URLs are unchanged. `UpdateSandboxParams` = the generated `UpdateSandboxRequest` (`{ resources?: SandboxResources; egress?: SandboxEgressConfig }`) plus the SDK-only `EgressConvenience` fields (`allowInternet` / `allowEgress`). **At least one of `resources` or `egress` is required.**
+
+- `resources` resizes `cpu` / `memory_gb` in place. `disk_gb` is **not** resizable in place — if changed, the server rejects the patch (surfaced as a typed error, not silently dropped).
+- `egress` replaces the policy in full and takes effect for new connections with **no restart**. The `allowInternet` / `allowEgress` convenience maps to `egress` exactly as it does on `create` (byte-identical JSON); an explicit `egress` wins.
+- Passing both `resources` and `egress` sends a single `PATCH` and both take effect.
+
+**Returns:** `Promise<Sandbox>` — the updated handle.
+
+**Raises:** `NeevError` locally when neither `resources` nor `egress` is provided (before any request is sent); `NotFoundError` (404), `BadRequestError` (400, e.g. changing `disk_gb`), plus scope/auth/transport errors.
+
+```ts
+await client.sandboxes.update(id, { resources: { cpu: 2, memory_gb: 4 } });
+await client.sandboxes.update(id, { allowEgress: ["api.github.com"] });
+// or via handle (updates state in place):
+await sandbox.update({ resources: { cpu: 4 }, allowInternet: true });
 ```
 
 ### `client.sandboxes.pause(id, scope?)`
@@ -674,7 +698,7 @@ Fetches a single agent by id (a UUID, from `agents.list`).
 update(id: string, params: UpdateAgentParams, scope?: Scope): Promise<Agent>
 ```
 
-Updates an agent in place. `UpdateAgentParams` = `{ egress?: SandboxEgressConfig; resources?: SandboxResources }`; at least one field is required. `resources` resizes `cpu` / `memory_gb` in place (`disk_gb` is fixed at creation) — see [Agent resources](#agent-resources) for defaults and bounds.
+Updates an agent in place. `UpdateAgentParams` = the generated `UpdateAgentRequest` (`{ egress?: SandboxEgressConfig; resources?: SandboxResources }`) plus the SDK-only `allowInternet` / `allowEgress` convenience (same as `create`, mapped to `egress`); at least one of `resources` or `egress` is required. `resources` resizes `cpu` / `memory_gb` in place (`disk_gb` is fixed at creation) — see [Agent resources](#agent-resources) for defaults and bounds. `egress` replaces the policy in full with no restart.
 
 ### `client.agents.pause(id, scope?)` / `resume(id, scope?)` / `delete(id, scope?)`
 
@@ -781,6 +805,19 @@ Re-fetches the sandbox from the lifecycle and updates this handle's state in pla
 ```ts
 await sandbox.refresh();
 console.log(sandbox.phase, sandbox.replicas);
+```
+
+### `sandbox.update(params)`
+
+```ts
+update(params: UpdateSandboxParams): Promise<this>
+```
+
+Delegates to `client.sandboxes.update`, updating this sandbox **in place** (`resources` and/or `egress`) and refreshing handle state; returns `this`. Same semantics and validation as the resource method — at least one of `resources` or `egress` is required, `disk_gb` is not resizable in place, and `egress` needs no restart.
+
+```ts
+await sandbox.update({ resources: { cpu: 2, memory_gb: 4 } });
+await sandbox.update({ allowEgress: ["api.github.com"] });
 ```
 
 ### `sandbox.waitUntilReady(options?)`
@@ -1454,12 +1491,25 @@ The generated `CreateAgentRequest` plus the SDK-only `EgressConvenience` fields.
 
 ### `UpdateAgentParams`
 
-Alias for the generated `UpdateAgentRequest` — the body for `agents.update`. At least one field must be provided.
+The generated `UpdateAgentRequest` plus the SDK-only `EgressConvenience` fields — the body for `agents.update`. At least one of `resources` or `egress` must be provided (the `allowInternet` / `allowEgress` convenience counts, since it produces `egress`).
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
 | `egress` | `SandboxEgressConfig` | no |
 | `resources` | `SandboxResources` | no |
+| `allowInternet` | `boolean` (convenience) | no |
+| `allowEgress` | `string[]` (convenience) | no |
+
+### `UpdateSandboxParams`
+
+The generated `UpdateSandboxRequest` plus the SDK-only `EgressConvenience` fields — the body for `sandboxes.update`. At least one of `resources` or `egress` must be provided. `disk_gb` inside `resources` is not resizable in place and is rejected by the server if changed. The `allowInternet` / `allowEgress` convenience maps to `egress` byte-identically to `create`.
+
+| Field | Type | Required |
+| ----- | ---- | -------- |
+| `resources` | `SandboxResources` | no |
+| `egress` | `SandboxEgressConfig` | no |
+| `allowInternet` | `boolean` (convenience) | no |
+| `allowEgress` | `string[]` (convenience) | no |
 
 ### `AgentData`
 
@@ -1755,6 +1805,7 @@ Compact reviewer index.
 | `Sandboxes.create` | method | `Promise<Sandbox>` |
 | `Sandboxes.list` | method | `Promise<SandboxPage>` |
 | `Sandboxes.get` | method | `Promise<Sandbox>` |
+| `Sandboxes.update` | method | `Promise<Sandbox>` (in place) |
 | `Sandboxes.pause` | method | `Promise<Sandbox>` |
 | `Sandboxes.resume` | method | `Promise<Sandbox>` |
 | `Sandboxes.keepalive` | method | `Promise<Sandbox>` |
@@ -1819,6 +1870,7 @@ Compact reviewer index.
 | `files` | getter | `SandboxFiles` (lazy connection). |
 | `processes` | getter | `SandboxProcesses` (lazy connection). |
 | `refresh` | method | `Promise<this>` |
+| `update` | method | `Promise<this>` (in place) |
 | `waitUntilReady` | method | `Promise<this>`; `WaitOptions`. |
 | `pause` / `resume` | methods | `Promise<this>` |
 | `keepalive` | method | `Promise<this>` |
