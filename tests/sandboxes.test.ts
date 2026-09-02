@@ -307,6 +307,106 @@ describe("sandbox lifecycle windows (keepalive + timeout)", () => {
   });
 });
 
+describe("sandbox update (in-place resize + egress)", () => {
+  it("resizes a running sandbox in place, keeping id/name/preview URLs", async () => {
+    const updated = sandboxData({
+      resources: { cpu: 2, memory_gb: 4 },
+      preview_url_template: "https://{port}--sb-1.preview.example",
+    });
+    const { neev, calls } = client([json(200, updated)]);
+    const sb = await neev.sandboxes.update("11111111-1111-1111-1111-111111111111", {
+      resources: { cpu: 2, memory_gb: 4 },
+    });
+    expect(sb).toBeInstanceOf(Sandbox);
+    expect(sb.id).toBe("11111111-1111-1111-1111-111111111111");
+    expect(sb.name).toBe("test-sandbox");
+    expect(sb.resources).toEqual({ cpu: 2, memory_gb: 4 });
+    expect(calls[0]?.method).toBe("PATCH");
+    // PATCH targets the item path itself — no /update sub-path.
+    expect(calls[0]?.url).toMatch(/\/sandboxes\/11111111-1111-1111-1111-111111111111$/);
+    expect(calls[0]?.body).toEqual({ resources: { cpu: 2, memory_gb: 4 } });
+  });
+
+  it("replaces the egress policy in full via a PATCH", async () => {
+    const { neev, calls } = client([json(200, sandboxData())]);
+    await neev.sandboxes.update("sb-1", {
+      egress: { mode: "allow_list", allow_internet: false, allow: [{ host: "api.github.com" }] },
+    });
+    expect(calls[0]?.method).toBe("PATCH");
+    expect(calls[0]?.body).toEqual({
+      egress: { mode: "allow_list", allow_internet: false, allow: [{ host: "api.github.com" }] },
+    });
+  });
+
+  it("maps the egress convenience the same way create does", async () => {
+    const { neev, calls } = client([json(200, sandboxData())]);
+    await neev.sandboxes.update("sb-1", { allowEgress: ["github.com", "*.npmjs.org"] });
+    expect(calls[0]?.body).toEqual({
+      egress: {
+        mode: "allow_list",
+        allow_internet: false,
+        allow: [{ host: "github.com" }, { host: "*.npmjs.org" }],
+      },
+    });
+  });
+
+  it("produces byte-identical egress JSON to the equivalent create() call", async () => {
+    const { neev: n1, calls: c1 } = client([json(201, sandboxData())]);
+    await n1.sandboxes.create({ sandbox_template_id: "sb-x", allowInternet: true });
+    const { neev: n2, calls: c2 } = client([json(200, sandboxData())]);
+    await n2.sandboxes.update("sb-1", { allowInternet: true });
+    const createEgress = (c1[0]?.body as { egress: unknown }).egress;
+    const updateEgress = (c2[0]?.body as { egress: unknown }).egress;
+    expect(JSON.stringify(updateEgress)).toBe(JSON.stringify(createEgress));
+  });
+
+  it("sends resources and egress together in a single PATCH", async () => {
+    const { neev, calls } = client([json(200, sandboxData())]);
+    await neev.sandboxes.update("sb-1", {
+      resources: { cpu: 2, memory_gb: 4 },
+      allowInternet: true,
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.method).toBe("PATCH");
+    expect(calls[0]?.body).toEqual({
+      resources: { cpu: 2, memory_gb: 4 },
+      egress: {
+        mode: "allow_list",
+        allow_internet: true,
+        allow: [{ host: "0.0.0.0/0" }, { host: "::/0" }],
+      },
+    });
+  });
+
+  it("rejects a patch with neither resources nor egress before sending", async () => {
+    const { neev, calls } = client([]);
+    await expect(neev.sandboxes.update("sb-1", {})).rejects.toBeInstanceOf(NeevError);
+    await expect(neev.sandboxes.update("sb-1", {})).rejects.toThrow(/resources.*egress/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("passes disk_gb through so the server's rejection surfaces (not dropped)", async () => {
+    const { neev, calls } = client([
+      json(400, { error: "bad_request", details: "disk_gb is not resizable in place" }),
+    ]);
+    await expect(neev.sandboxes.update("sb-1", { resources: { disk_gb: 20 } })).rejects.toThrow();
+    // disk_gb reached the wire unchanged rather than being silently stripped.
+    expect((calls[0]?.body as { resources: unknown }).resources).toEqual({ disk_gb: 20 });
+  });
+
+  it("updates in place via the Sandbox handle", async () => {
+    const { neev, calls } = client([
+      json(200, sandboxData()), // get
+      json(200, sandboxData({ resources: { cpu: 4, memory_gb: 8 } })), // update
+    ]);
+    const sb = await neev.sandboxes.get("11111111-1111-1111-1111-111111111111");
+    await sb.update({ resources: { cpu: 4, memory_gb: 8 } });
+    expect(sb.resources).toEqual({ cpu: 4, memory_gb: 8 });
+    expect(calls[1]?.method).toBe("PATCH");
+    expect(calls[1]?.body).toEqual({ resources: { cpu: 4, memory_gb: 8 } });
+  });
+});
+
 describe("sandbox snapshots, rollback, and fork", () => {
   it("creates a snapshot and posts the request body", async () => {
     const { neev, calls } = client([json(202, snapshotData({ name: "snap-1" }))]);

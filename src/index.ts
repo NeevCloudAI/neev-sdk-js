@@ -105,6 +105,7 @@ export type {
   SnapshotListResponse,
   SnapshotStatus,
   UpdateAgentParams,
+  UpdateSandboxParams,
   UpdateTimeoutParams,
 } from "./types.js";
 

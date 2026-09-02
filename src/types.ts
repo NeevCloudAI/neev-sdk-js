@@ -100,7 +100,13 @@ export type AgentStatus = components["schemas"]["AgentStatus"];
 export type CreateAgentParams = components["schemas"]["CreateAgentRequest"] & EgressConvenience;
 
 // Partial in-place update accepted by `agents.update` (egress and/or resources).
-export type UpdateAgentParams = components["schemas"]["UpdateAgentRequest"];
+// Carries the same `allowInternet` / `allowEgress` convenience as create.
+export type UpdateAgentParams = components["schemas"]["UpdateAgentRequest"] & EgressConvenience;
+
+// Partial in-place update accepted by `sandboxes.update` (egress and/or resources).
+// At least one of `resources` or `egress` must be provided; `disk_gb` is not
+// resizable in place. Carries the same egress convenience as create.
+export type UpdateSandboxParams = components["schemas"]["UpdateSandboxRequest"] & EgressConvenience;
 
 // Paginated list payload returned by `agents.list`.
 export type AgentListResponse = components["schemas"]["AgentListResponse"];

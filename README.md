@@ -9,7 +9,7 @@ One package, one auth model, one client — adopt new capabilities as they ship.
 
 **Available today**
 
-- **`neev.sandboxes`** — full agent-sandbox lifecycle: create (catalogue template or BYOI image), list, get, pause, resume, keepalive, timeout windows, delete, live metrics, plus snapshots, rollback, and fork. Inside a running sandbox: `files`, `exec`, a `processes` supervisor for long-running, detached processes, and `pty` for interactive terminal sessions. Sandboxes are strongly isolated compute environments for AI agents.
+- **`neev.sandboxes`** — full agent-sandbox lifecycle: create (catalogue template or BYOI image), list, get, update (in-place resize + egress), pause, resume, keepalive, timeout windows, delete, live metrics, plus snapshots, rollback, and fork. Inside a running sandbox: `files`, `exec`, a `processes` supervisor for long-running, detached processes, and `pty` for interactive terminal sessions. Sandboxes are strongly isolated compute environments for AI agents.
 - **`neev.templates`** — the platform sandbox-template catalogue (list, get). A template id (e.g. `sb-ubuntu-26-04-minimal`) is optional when creating a sandbox; omit it to use the platform's default template.
 - **`neev.agents`** — agent lifecycle: create from a catalogue template, list, get, update (in-place egress / cpu / memory), pause, resume, delete. Each agent runs on its own backing sandbox, reachable from the handle via `agent.sandbox()`.
 - **`neev.agentTemplates`** — the platform agent-template catalogue (list, get). A template name (e.g. `claude-code`) is passed as `agent_template` when creating an agent.
@@ -81,6 +81,11 @@ await neev.sandboxes.pause(id);
 await neev.sandboxes.resume(id);
 await neev.sandboxes.delete(id);
 const metrics = await neev.sandboxes.metrics(id, { step: "60s" });
+
+// Update a running sandbox in place: resize cpu/memory and/or re-scope egress
+// (at least one required; disk is not resizable in place; egress needs no restart).
+await neev.sandboxes.update(id, { resources: { cpu: 2, memory_gb: 4 } });
+await neev.sandboxes.update(id, { allowEgress: ["api.github.com"] });
 
 // Lifecycle windows (all in seconds). keepalive resets the idle timer; updateTimeout
 // changes only the windows passed (send 0 to turn one off, omit to leave unchanged).
