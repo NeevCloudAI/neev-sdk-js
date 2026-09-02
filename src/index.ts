@@ -103,6 +103,7 @@ export type {
   SnapshotListResponse,
   SnapshotStatus,
   UpdateAgentParams,
+  UpdateSandboxParams,
 } from "./types.js";
 
 export {

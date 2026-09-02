@@ -73,6 +73,7 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `create(params, scope?)` | `Promise<Sandbox>` | Creates a sandbox in the resolved org/project. The handle may still be `Pending` — call `waitUntilReady`. |
 | `list(params?)` | `Promise<SandboxPage>` | Lists sandboxes with pagination; items are wrapped handles. |
 | `get(id, scope?)` | `Promise<Sandbox>` | Fetches the current record for a sandbox by id. |
+| `update(id, params, scope?)` | `Promise<Sandbox>` | Updates a running sandbox **in place** — `resources` (cpu/memory) and/or `egress`. At least one is required. |
 | `pause(id, scope?)` | `Promise<Sandbox>` | Pauses a sandbox (scales to zero replicas). |
 | `resume(id, scope?)` | `Promise<Sandbox>` | Resumes a paused sandbox (scales to one replica). |
 | `delete(id, scope?)` | `Promise<void>` | Permanently deletes a sandbox. |
@@ -95,6 +96,17 @@ await sandbox.waitUntilReady();
 await neev.sandboxes.create({ name: "web", allowInternet: true });
 // allow specific hosts (FQDN or CIDR, wildcards supported)
 await neev.sandboxes.create({ name: "ci", allowEgress: ["github.com", "*.npmjs.org"] });
+```
+
+**`update(id, params, scope?)`** — updates a **running** sandbox in place and returns the updated handle; the id, name, and preview URLs are unchanged. `params` is `UpdateSandboxParams`: `resources` (cpu/memory, resized in place) and/or `egress` (replaces the policy in full; takes effect for new connections with **no restart**). It also accepts the same `allowInternet` / `allowEgress` convenience as `create` (byte-identical `egress` JSON). **At least one of `resources` or `egress` is required** — an empty patch throws `NeevError` before any request is sent. `disk_gb` is **not** resizable in place; if you change it the server rejects the patch (surfaced as a typed error, not silently dropped). Passing `resources` and `egress` together sends a single `PATCH` and both take effect.
+
+```ts
+// Resize cpu/memory in place.
+await neev.sandboxes.update(id, { resources: { cpu: 2, memory_gb: 4 } });
+// Re-scope egress (replaces the policy in full).
+await neev.sandboxes.update(id, { allowEgress: ["api.github.com"] });
+// Both in one PATCH.
+await neev.sandboxes.update(id, { resources: { cpu: 4 }, allowInternet: true });
 ```
 
 **`list(params?)`** — `params` is `{ page?, limit?, orgId?, projectId? }`; returns `SandboxPage` = `{ items: Sandbox[]; total; page; limit }`.
@@ -208,6 +220,7 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | ------ | ------- | ------- |
 | `waitUntilReady(options?)` | `Promise<this>` | Polls until phase is `"Ready"`. Throws fast if `"Paused"`, or on timeout. |
 | `refresh()` | `Promise<this>` | Re-fetches the record and updates the handle in place. |
+| `update(params)` | `Promise<this>` | Updates in place (`resources` and/or `egress`) and updates the handle. |
 | `pause()` | `Promise<this>` | Pauses (scales to zero) and updates the handle. |
 | `resume()` | `Promise<this>` | Resumes (scales to one) and updates the handle. |
 | `delete()` | `Promise<void>` | Permanently deletes the sandbox. |
