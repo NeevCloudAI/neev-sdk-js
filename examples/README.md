@@ -88,7 +88,7 @@ npx tsx examples/snapshot-fork-restore.ts
 ```sh
 npx tsx examples/update-resize-egress.ts
 ```
-→ `ready … resources: {…}` → `updated … in one PATCH …` → `confirmed resources: {…}, egress: {…}` → `cleaned up`.
+→ `ready … egress: github.com` → `updated … in one PATCH — egress: github.com → google.com` → `confirmed resources: {…}, egress: {…google.com…}` → `cleaned up`.
 
 **2. Streaming exec**
 ```sh
