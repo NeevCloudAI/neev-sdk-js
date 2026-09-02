@@ -10,6 +10,7 @@ import { Sandbox } from "../sandbox.js";
 import type {
   CreateSandboxParams,
   CreateSnapshotParams,
+  OnIdleAction,
   SandboxData,
   SandboxListResponse,
   SandboxMetricsResponse,
@@ -17,6 +18,7 @@ import type {
   SandboxPort,
   SnapshotData,
   SnapshotListResponse,
+  UpdateTimeoutParams,
 } from "../types.js";
 
 // Spec path templates for the aiagent sandbox endpoints. openapi-fetch type-checks
@@ -33,6 +35,23 @@ const ROLLBACK = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sa
 const FORK = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/fork";
 const PORTS = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports";
 const PORT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports/{port}";
+const KEEPALIVE =
+  "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/keepalive";
+const TIMEOUT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/timeout";
+
+// The on_idle values the API accepts. Kept in sync with the generated OnIdleAction
+// enum; used to reject a bad value locally before a request goes out.
+const ON_IDLE_ACTIONS: readonly OnIdleAction[] = ["pause", "delete"];
+
+// Rejects an out-of-enum on_idle before the request is sent. Undefined is allowed
+// (the field is optional); any other non-enum value throws.
+function assertOnIdle(value: OnIdleAction | undefined): void {
+  if (value !== undefined && !ON_IDLE_ACTIONS.includes(value)) {
+    throw new NeevError(
+      `Invalid on_idle "${value}"; expected one of ${ON_IDLE_ACTIONS.map((a) => `"${a}"`).join(", ")}.`,
+    );
+  }
+}
 
 // Defaults for getPortUrl's preview-URL readiness poll.
 const DEFAULT_PORT_WAIT_TIMEOUT_MS = 60_000;
@@ -134,7 +153,11 @@ export class Sandboxes {
 
   // Creates a sandbox in the resolved org/project. The returned handle may still
   // be in the Pending phase — call `waitUntilReady` to block until it is Ready.
+  // `lifecycle` (idle/lifetime windows) and BYOI `image`/`command` pass through the
+  // request body untouched; omitting `lifecycle` sends no lifecycle key, so account
+  // defaults apply.
   async create(params: CreateSandboxParams, scope?: Scope): Promise<Sandbox> {
+    assertOnIdle(params.lifecycle?.on_idle);
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.POST(COLLECTION, {
       params: { path: { org_id: orgId, project_id: projectId } },
@@ -167,6 +190,31 @@ export class Sandboxes {
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.GET(ITEM, {
       params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
+    });
+    return new Sandbox(this, unwrap<SandboxData>(res), scope);
+  }
+
+  // Resets a sandbox's idle timer, keeping a busy sandbox alive without an open
+  // connection. Call it periodically while work is in progress (e.g. once per agent
+  // turn). Returns the updated handle.
+  async keepalive(id: string, scope?: Scope): Promise<Sandbox> {
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.POST(KEEPALIVE, {
+      params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
+    });
+    return new Sandbox(this, unwrap<SandboxData>(res), scope);
+  }
+
+  // Changes a running sandbox's idle/lifetime windows and returns the updated
+  // handle. Durations are in seconds; only the fields passed change (send 0 to turn
+  // a window off, omit a field to leave it unchanged). Rejects an out-of-enum
+  // `on_idle` locally before the request is sent.
+  async updateTimeout(id: string, windows: UpdateTimeoutParams, scope?: Scope): Promise<Sandbox> {
+    assertOnIdle(windows.on_idle);
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.PUT(TIMEOUT, {
+      params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
+      body: windows,
     });
     return new Sandbox(this, unwrap<SandboxData>(res), scope);
   }
