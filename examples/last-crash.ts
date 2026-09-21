@@ -64,9 +64,12 @@ async function main(): Promise<void> {
         console.log(`exec died with the sandbox, as expected: ${(err as Error).message}`),
       );
 
+    // No crash record means the example proved nothing — the OOM never took the
+    // sandbox down, or it did and the server never reported it. Either way this is a
+    // failure, not a quiet success: exiting 0 here would look like the crash path had
+    // been verified when it never ran.
     if (!(await waitForCrash(sandbox))) {
-      console.log("no crash recorded within the timeout");
-      return;
+      throw new Error("no crash record appeared within the timeout");
     }
 
     const crash = sandbox.lastCrash;
