@@ -33,8 +33,7 @@ async function main(): Promise<void> {
       allowEgress: ["google.com"],
     });
     console.log(
-      `updated ${sandbox.id} in one PATCH — resources: ${JSON.stringify(sandbox.resources)}, ` +
-        "egress: github.com → google.com",
+      `updated ${sandbox.id} in one PATCH — resources: ${JSON.stringify(sandbox.resources)}, egress: github.com → google.com`,
     );
 
     // A fresh get confirms the resize landed and the new egress policy is intact —

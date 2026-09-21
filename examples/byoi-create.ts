@@ -2,9 +2,9 @@
  * Bring Your Own Image (BYOI): create a sandbox from a public OCI image instead
  * of a catalogue template, with an explicit start command, then run inside it.
  *
- * Set exactly one of `sandbox_template_id` (catalogue) or `image` (BYOI). The
- * image must be a public reference with an explicit tag or digest; `command`
- * overrides the container's default entrypoint.
+ * Set at most one of `sandbox_template_id` (catalogue) or `image` (BYOI); omit
+ * both for the platform default. The image must be a public reference with an
+ * explicit tag or digest; `command` overrides the container's default entrypoint.
  *
  * Run with (targets the Neev production API by default):
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \

@@ -389,9 +389,7 @@ describe("sandbox update (in-place resize + egress)", () => {
     const { neev, calls } = client([
       json(400, { error: "bad_request", details: "disk_gb is not resizable in place" }),
     ]);
-    await expect(
-      neev.sandboxes.update("sb-1", { resources: { disk_gb: 20 } }),
-    ).rejects.toThrow();
+    await expect(neev.sandboxes.update("sb-1", { resources: { disk_gb: 20 } })).rejects.toThrow();
     // disk_gb reached the wire unchanged rather than being silently stripped.
     expect((calls[0]?.body as { resources: unknown }).resources).toEqual({ disk_gb: 20 });
   });

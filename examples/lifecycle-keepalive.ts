@@ -32,7 +32,9 @@ async function main(): Promise<void> {
     for (let i = 1; i <= 5; i++) {
       await sleep(10_000);
       await sandbox.keepalive();
-      console.log(`keepalive ${i}/5 — phase: ${sandbox.phase}, idle_expires_at: ${sandbox.data.idle_expires_at}`);
+      console.log(
+        `keepalive ${i}/5 — phase: ${sandbox.phase}, idle_expires_at: ${sandbox.data.idle_expires_at}`,
+      );
     }
 
     // Widen the idle window in place (seconds). Only the fields passed change; send
