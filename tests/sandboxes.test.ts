@@ -650,9 +650,9 @@ describe("preview ports", () => {
   it("getPortUrl aborts a stalled probe so the timeout budget is honored", async () => {
     // The expose call returns normally; the readiness probe stalls until aborted.
     let probeAborted = false;
-    const urlOf = (input: RequestInfo | URL): string =>
+    const urlOf = (input: Parameters<typeof fetch>[0]): string =>
       typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchImpl = (async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       if (urlOf(input).endsWith("/ports")) {
         return json(200, { port: 3000, preview_url: "https://p.example/app" });
       }

@@ -65,7 +65,7 @@ describe("Agent handle", () => {
     await agent.refresh();
     expect(calls[1]?.method).toBe("GET");
 
-    await agent.update({ egress: { mode: "allow_list" } });
+    await agent.update({ egress: { mode: "allow_list", allow_internet: false } });
     expect(agent.config).toEqual({ model: "opus" });
     expect(calls[2]?.method).toBe("PATCH");
 
