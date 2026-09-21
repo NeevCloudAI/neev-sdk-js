@@ -230,6 +230,7 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | `templateId` | `string \| null` | Template id it was created from, or `null`. |
 | `resources` | `SandboxResources \| undefined` | Provisioned compute size, or `undefined` when defaulted. |
 | `connectUrl` | `string \| null` | Runtime address, or `null` when not yet configured. |
+| `lastCrash` | `SandboxLastCrash \| null` | Most recent unexpected stop, or `null` if the sandbox has never had one. `storage_reset: true` means it restarted with an empty filesystem — files under `/workspace`, and anything installed since create, are gone. Historical: not cleared when the sandbox recovers. |
 | `data` | `SandboxData` | Full raw API record. |
 
 ### Methods

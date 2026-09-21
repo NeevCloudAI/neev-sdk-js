@@ -16,6 +16,7 @@ import type { SshTunnel, SshTunnelOptions } from "./ssh.js";
 import type {
   CreateSnapshotParams,
   SandboxData,
+  SandboxLastCrash,
   SandboxMetricsResponse,
   SandboxPhase,
   SandboxPort,
@@ -112,6 +113,16 @@ export class Sandbox {
   // Compute size the sandbox was provisioned with, or undefined when defaulted.
   get resources(): SandboxResources | undefined {
     return this.state.resources;
+  }
+
+  // Most recent unexpected stop as last seen from the server, or null if this
+  // sandbox has never had one. Historical: it is not cleared when the sandbox
+  // recovers, so compare `at` against when you last trusted the filesystem
+  // rather than reading non-null as "broken right now". `storage_reset` true
+  // means the sandbox came back with an empty filesystem: files under
+  // /workspace, and anything installed since create, are gone.
+  get lastCrash(): SandboxLastCrash | null {
+    return this.state.last_crash ?? null;
   }
 
   // Filesystem operations on this sandbox's runtime. Each operation resolves the

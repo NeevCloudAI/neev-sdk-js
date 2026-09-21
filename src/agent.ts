@@ -2,7 +2,7 @@ import type { Scope } from "./client.js";
 import { NeevError } from "./errors.js";
 import type { Agents } from "./resources/agents.js";
 import type { Sandbox } from "./sandbox.js";
-import type { AgentData, AgentStatus, UpdateAgentParams } from "./types.js";
+import type { AgentData, AgentLastCrash, AgentStatus, UpdateAgentParams } from "./types.js";
 
 // Options controlling how long `waitUntilReady` polls before giving up.
 export interface AgentWaitOptions {
@@ -61,6 +61,16 @@ export class Agent {
   // overrides), or undefined when the server reported none.
   get config(): Record<string, unknown> | undefined {
     return this.state.config;
+  }
+
+  // Most recent unexpected stop as last seen from the server, or null if this
+  // agent has never had one. Historical: it is not cleared when the agent
+  // recovers, so compare `at` against when you last trusted the filesystem
+  // rather than reading non-null as "broken right now". `storage_reset` true
+  // means the agent came back with an empty filesystem: files under /workspace,
+  // and anything installed since create, are gone.
+  get lastCrash(): AgentLastCrash | null {
+    return this.state.last_crash ?? null;
   }
 
   // Full raw agent record exactly as returned by the API.

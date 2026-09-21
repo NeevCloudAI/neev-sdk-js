@@ -77,6 +77,7 @@ export type {
 
 export type {
   AgentData,
+  AgentLastCrash,
   AgentListResponse,
   AgentStatus,
   AgentTemplate,
@@ -91,6 +92,7 @@ export type {
   SandboxData,
   SandboxEgressConfig,
   SandboxEgressRule,
+  SandboxLastCrash,
   SandboxLifecycle,
   SandboxListResponse,
   SandboxMetricsResponse,

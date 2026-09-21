@@ -186,6 +186,7 @@ await neev.sandboxes.create({
 ```ts
 const sandbox = await neev.sandboxes.get(id);
 await sandbox.refresh();          // re-fetch latest state
+sandbox.lastCrash;                // null, or { reason, at, storage_reset } for the last unexpected stop
 await sandbox.waitUntilReady();   // poll until phase === "Ready"
 await sandbox.pause();
 const snap = await sandbox.snapshot({ waitUntilReady: true }); // capture and wait until Ready
