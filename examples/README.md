@@ -33,6 +33,7 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 | [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
 | [`snapshot-fork-rollback.ts`](./snapshot-fork-rollback.ts) | Snapshot a sandbox → fork a new one from it → roll the original back in place | `npx tsx examples/snapshot-fork-rollback.ts` |
 | [`update-resize-egress.ts`](./update-resize-egress.ts) | Update a running sandbox in place: resize cpu/memory + re-scope egress in one `update()` call (single PATCH) | `npx tsx examples/update-resize-egress.ts` |
+| [`last-crash.ts`](./last-crash.ts) | `sandbox.lastCrash` — seed a file, force an OOM kill, then use `storage_reset` to tell a wiped `/workspace` from one that survived | `npx tsx examples/last-crash.ts` |
 | [`streaming-exec.ts`](./streaming-exec.ts) | `sandbox.exec(cmd, { stream: true })` — output streamed line-by-line as it is produced | `npx tsx examples/streaming-exec.ts` |
 | [`files.ts`](./files.ts) | `sandbox.files` — write, read, stat/exists, mkdir, move, list, remove, and a live `watch` of changes | `npx tsx examples/files.ts` |
 | [`parallel-fanout.ts`](./parallel-fanout.ts) | Several isolated sandboxes run a map/reduce concurrently; reads `metrics()` | `npx tsx examples/parallel-fanout.ts` |
@@ -91,6 +92,12 @@ npx tsx examples/snapshot-fork-rollback.ts
 npx tsx examples/update-resize-egress.ts
 ```
 → `ready … egress: github.com` → `updated … in one PATCH — egress: github.com → google.com` → `confirmed resources: {…}, egress: {…google.com…}` → `cleaned up`.
+
+**1d. Crash detection: did `/workspace` survive?**
+```sh
+npx tsx examples/last-crash.ts
+```
+→ `ready … lastCrash: null` → `seeded /workspace/marker.txt` → `forcing an OOM …` → `exec died with the sandbox, as expected: Request timed out` → `lastCrash: {"at":"…","reason":"OOMKilled","storage_reset":true}` → `storage_reset: true — marker gone` → `re-seeded the workspace` → `cleaned up`.
 
 **2. Streaming exec**
 ```sh
