@@ -188,6 +188,7 @@ const sandbox = await neev.sandboxes.get(id);
 await sandbox.refresh();          // re-fetch latest state
 sandbox.lastCrash;                // null, or { reason, at, storage_reset } for the last unexpected stop
 await sandbox.waitUntilReady();   // poll until phase === "Ready"
+await sandbox.update({ resources: { cpu: 2, memory_gb: 4 } }); // resize (or re-scope egress) in place
 await sandbox.pause();
 const snap = await sandbox.snapshot({ waitUntilReady: true }); // capture and wait until Ready
 const fork = await sandbox.fork("my-fork"); // branch the current state into a new sandbox

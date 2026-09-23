@@ -1,5 +1,6 @@
 /**
- * Create a sandbox, wait for it to become Ready, read its metrics, then clean up.
+ * Create a sandbox, wait for it to become Ready, read its metrics, resize it in
+ * place, then clean up.
  *
  * Uses the default template.
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
@@ -27,6 +28,10 @@ async function main(): Promise<void> {
   // Read the live metric series for the sandbox.
   const metrics = await sandbox.metrics();
   console.log(`metric series: ${metrics.series.map((s) => s.metric).join(", ")}`);
+
+  // Resize cpu/memory in place — no restart, and disk is fixed at creation.
+  await sandbox.update({ resources: { cpu: 2, memory_gb: 4 } });
+  console.log(`resized to ${sandbox.resources?.cpu} vCPU / ${sandbox.resources?.memory_gb} GB`);
 
   // Pause to release compute, then delete to clean up.
   await sandbox.pause();

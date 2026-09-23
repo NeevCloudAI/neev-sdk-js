@@ -1490,7 +1490,7 @@ Compute size for a sandbox / agent (`cpu` / `memory_gb` / `disk_gb`, all optiona
 
 Per-field resolution order for a **sandbox**: caller value → platform default (above). `sandbox_template_id` selects only the image, not resources — there is no sandbox-template resource layer. **Agents** insert a middle layer (the agent template's `default_resources`) — see [Agent resources](#agent-resources).
 
-`cpu` and `memory_gb` are resizable in place via [`agents.update`](#clientagentsupdateid-params-scope) (resized on the running sandbox); `disk_gb` is fixed at creation and is rejected if `update` supplies a different value.
+`cpu` and `memory_gb` are resizable in place on the running sandbox — via [`sandboxes.update`](#clientsandboxesupdateid-params-scope) for a sandbox, and [`agents.update`](#clientagentsupdateid-params-scope) for an agent's backing sandbox. `disk_gb` is fixed at creation and is rejected if `update` supplies a different value.
 
 ### Agent resources
 
