@@ -139,6 +139,9 @@ export function agentData(overrides: Partial<AgentData> = {}): AgentData {
     name: "test-agent",
     agent_template_id: "ag-claude-code",
     sandbox_id: "11111111-1111-1111-1111-111111111111",
+    drive_mode: "pty",
+    metrics_url:
+      "/api/v1beta1/orgs/org_test/projects/proj_test/agents/33333333-3333-3333-3333-333333333333/metrics",
     status: "Provisioning",
     created_at: "2026-06-05T00:00:00Z",
     updated_at: "2026-06-05T00:00:00Z",

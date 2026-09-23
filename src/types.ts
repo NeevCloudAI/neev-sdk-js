@@ -9,6 +9,12 @@ export type SandboxData = components["schemas"]["Sandbox"];
 // Lifecycle phase reported by the service.
 export type SandboxPhase = components["schemas"]["SandboxPhase"];
 
+// The most recent unexpected stop of a sandbox, or null if it has never had one.
+// Historical — not cleared when the sandbox recovers, so read `at` before acting.
+// `storage_reset` true means the sandbox restarted empty: files under /workspace,
+// and anything installed since create, are gone.
+export type SandboxLastCrash = components["schemas"]["SandboxLastCrash"];
+
 // SDK-only convenience fields on sandbox and agent create that translate into the
 // `egress` policy. Pass a full `egress` object for anything these don't cover; an
 // explicit `egress` always wins over them.
@@ -94,6 +100,9 @@ export type AgentData = components["schemas"]["Agent"];
 // Lifecycle status of an agent, derived from its backing sandbox
 // ("Provisioning" | "Ready" | "Paused" | "Failed" | "Deleting").
 export type AgentStatus = components["schemas"]["AgentStatus"];
+
+// The most recent unexpected stop of an agent; same shape as SandboxLastCrash.
+export type AgentLastCrash = components["schemas"]["AgentLastCrash"];
 
 // Request body accepted by `agents.create`. Requires `name` and a catalogue
 // `agent_template` name; the server provisions the backing sandbox from it.

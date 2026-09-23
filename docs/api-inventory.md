@@ -109,6 +109,7 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `UpdateAgentParams` | type alias | `types.ts` |
 | `AgentData` | type alias | `types.ts` |
 | `AgentStatus` | type alias | `types.ts` |
+| `AgentLastCrash` | type alias | `types.ts` |
 | `AgentListResponse` | type alias | `types.ts` |
 | `AgentTemplate` | type alias | `types.ts` |
 | `AgentTemplateListResponse` | type alias | `types.ts` |
@@ -124,6 +125,7 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `SandboxData` | type alias | `types.ts` |
 | `SandboxEgressConfig` | type alias | `types.ts` |
 | `SandboxEgressRule` | type alias | `types.ts` |
+| `SandboxLastCrash` | type alias | `types.ts` |
 | `SandboxListResponse` | type alias | `types.ts` |
 | `SandboxMetricsResponse` | type alias | `types.ts` |
 | `SandboxPhase` | type alias | `types.ts` |
@@ -748,6 +750,7 @@ Fetches a single agent template by id (e.g. `"ag-claude-code"`).
 | `templateId` | `string` | Agent template id it was created from. |
 | `sandboxId` | `string` | Id of the 1:1 backing sandbox. |
 | `config` | `Record<string, unknown> \| undefined` | Effective config (template defaults merged with create-time overrides). |
+| `lastCrash` | `AgentLastCrash \| null` | Most recent unexpected stop, or `null` if the agent has never had one. Historical — not cleared when the agent recovers. See [`SandboxLastCrash`](#sandboxlastcrash). |
 | `data` | `AgentData` | Raw server record. |
 
 ### Methods
@@ -787,6 +790,7 @@ Returned by `create()`, `get()`, `list().items`, `pause()`, `resume()`, `rollbac
 | `region` | `string` | Region slug the sandbox runs in. |
 | `templateId` | `string \| null` | Catalogue template id it was created from, or `null` when unknown. |
 | `resources` | `SandboxResources \| undefined` | Compute size, or `undefined` when defaulted. |
+| `lastCrash` | `SandboxLastCrash \| null` | Most recent unexpected stop as last seen from the server, or `null` if the sandbox has never had one. `storage_reset: true` means it restarted with an empty filesystem. Historical — not cleared when the sandbox recovers. |
 | `files` | `SandboxFiles` | Filesystem facade; resolves its connection lazily on first use (waits for Ready). |
 | `processes` | `SandboxProcesses` | Process-supervisor facade; resolves its connection lazily on first use (waits for Ready). |
 | `pty` | `SandboxPty` | Interactive-terminal facade; resolves its connection lazily on first use (waits for Ready). |
@@ -1436,10 +1440,39 @@ Alias for the generated `Sandbox` schema — the full lifecycle sandbox record w
 | `resources` | `SandboxResources` | no |
 | `env` | `EnvVar[]` | no |
 | `egress` | `SandboxEgressConfig` | no |
+| `last_crash` | `SandboxLastCrash \| null` | no |
 | `created_at` | `string` | yes |
 | `updated_at` | `string` | yes |
 
-> The handle reads `id`, `name`, `phase`, `replicas`, `connect_url`, `region`, `sandbox_template_id`, and `resources` from this shape.
+> The handle reads `id`, `name`, `phase`, `replicas`, `connect_url`, `region`, `sandbox_template_id`, `resources`, and `last_crash` from this shape.
+
+### `SandboxLastCrash`
+
+Alias for the generated `SandboxLastCrash` — the sandbox's most recent unexpected stop. Read it as `sandbox.lastCrash` (`null` when the sandbox has never had one) or raw as `sandbox.data.last_crash`.
+
+| Field | Type | Required |
+| ----- | ---- | -------- |
+| `reason` | `string` | yes |
+| `at` | `string` (date-time) | yes |
+| `storage_reset` | `boolean` | yes |
+
+`storage_reset: true` means the sandbox restarted with an empty filesystem: **files under `/workspace`, and anything installed since create, are gone.** Re-upload and reinstall before trusting the sandbox again. `false` means it restarted with its files intact.
+
+The record is **historical**: it is not cleared when the sandbox recovers, is resumed, or is rolled back, so a non-`null` value does not mean the sandbox is broken now. Compare `at` against the point you last trusted the filesystem:
+
+```ts
+const sandbox = await neev.sandboxes.get(id);
+const crash = sandbox.lastCrash;
+if (crash?.storage_reset && new Date(crash.at) > lastKnownGoodWrite) {
+  // /workspace was wiped after our last good write — re-seed it.
+}
+```
+
+Beware `!sandbox.lastCrash?.storage_reset`: it conflates "never crashed" with "crashed but the files survived". Check `sandbox.lastCrash === null` first when those cases differ for you.
+
+The `Sandbox` handle holds a cached snapshot of the record, and `exec` / `files` do not update it — call `refresh()` to pick up a crash detected after the handle was fetched.
+
+`AgentLastCrash` is the same shape for an agent, exposed as `agent.lastCrash` / `agent.data.last_crash`.
 
 ### `SandboxPhase`
 
@@ -1853,7 +1886,7 @@ Compact reviewer index.
 
 | Symbol | Kind | Notes |
 | ------ | ---- | ----- |
-| `id`, `name`, `status`, `templateId`, `sandboxId`, `config`, `data` | getters | `config` is `Record<string, unknown> \| undefined`. |
+| `id`, `name`, `status`, `templateId`, `sandboxId`, `config`, `lastCrash`, `data` | getters | `config` is `Record<string, unknown> \| undefined`; `lastCrash` is `AgentLastCrash \| null`. |
 | `sandbox` | method | `Promise<Sandbox>` (backing sandbox for runtime access). |
 | `refresh` | method | `Promise<this>` |
 | `update` | method | `Promise<this>`; `UpdateAgentParams`. |
@@ -1866,7 +1899,7 @@ Compact reviewer index.
 
 | Symbol | Kind | Notes |
 | ------ | ---- | ----- |
-| `id`, `name`, `phase`, `replicas`, `connectUrl`, `region`, `templateId`, `resources`, `data` | getters | `connectUrl` is `string \| null`. |
+| `id`, `name`, `phase`, `replicas`, `connectUrl`, `region`, `templateId`, `resources`, `lastCrash`, `data` | getters | `connectUrl` is `string \| null`; `lastCrash` is `SandboxLastCrash \| null`. |
 | `files` | getter | `SandboxFiles` (lazy connection). |
 | `processes` | getter | `SandboxProcesses` (lazy connection). |
 | `refresh` | method | `Promise<this>` |

@@ -83,9 +83,7 @@ describe("agents resource", () => {
   });
 
   it("patches an agent in place", async () => {
-    const { neev, calls } = client([
-      json(200, agentData({ status: "Ready", resources: { cpu: 2, memory_gb: 4 } })),
-    ]);
+    const { neev, calls } = client([json(200, agentData({ status: "Ready" }))]);
     const agent = await neev.agents.update("ag-1", { resources: { cpu: 2, memory_gb: 4 } });
     expect(agent.data.config).toBeUndefined();
     expect(calls[0]?.method).toBe("PATCH");

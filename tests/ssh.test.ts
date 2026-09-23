@@ -25,9 +25,13 @@ class EchoWS implements SandboxWebSocket {
     this.opened = true;
     this.emit("open");
   }
-  addEventListener(type: string, listener: (ev: unknown) => void): void {
+  addEventListener(type: "open", listener: () => void): void;
+  addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
+  addEventListener(type: "close", listener: () => void): void;
+  addEventListener(type: "error", listener: (event: unknown) => void): void;
+  addEventListener(type: string, listener: (ev: never) => void): void {
     const arr = this.listeners.get(type) ?? [];
-    arr.push(listener);
+    arr.push(listener as (ev: unknown) => void);
     this.listeners.set(type, arr);
   }
   send(data: string | ArrayBufferLike | ArrayBufferView): void {

@@ -23,9 +23,13 @@ class FakeWS implements SandboxWebSocket {
       }
     });
   }
-  addEventListener(type: string, listener: (ev: unknown) => void): void {
+  addEventListener(type: "open", listener: () => void): void;
+  addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
+  addEventListener(type: "close", listener: () => void): void;
+  addEventListener(type: "error", listener: (event: unknown) => void): void;
+  addEventListener(type: string, listener: (ev: never) => void): void {
     const arr = this.listeners.get(type) ?? [];
-    arr.push(listener);
+    arr.push(listener as (ev: unknown) => void);
     this.listeners.set(type, arr);
   }
   send(data: string | ArrayBufferLike | ArrayBufferView): void {
@@ -82,7 +86,7 @@ describe("pty", () => {
 
     ws.emit("message", { data: new TextEncoder().encode("hello").buffer });
     expect(onData).toHaveBeenCalledTimes(1);
-    expect(onData.mock.calls[0][0]).toEqual(new TextEncoder().encode("hello"));
+    expect(onData.mock.calls[0]?.[0]).toEqual(new TextEncoder().encode("hello"));
 
     const waiting = handle.wait();
     ws.emit("message", { data: JSON.stringify({ type: "exit", exit_code: 7 }) });

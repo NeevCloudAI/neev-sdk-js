@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type FetchLike, Neev, NeevError } from "../src/index.js";
+import { type FetchLike, Neev, NeevError, type SandboxLastCrash } from "../src/index.js";
 import { json, mockFetch, sandboxData } from "./helpers.js";
 
 // Builds a client backed by the given queued responses.
@@ -38,6 +38,43 @@ describe("Sandbox handle", () => {
     expect(sb.connectUrl).toBe("https://sb.sandboxes.example");
     expect(sb.data.region).toBe("as-south-1");
     expect(JSON.parse(JSON.stringify(sb)).org_id).toBe("org_test");
+    // Compile-time check: the getter exists and its type is exported from the barrel.
+    const lastCrash: SandboxLastCrash | null = sb.lastCrash;
+    expect(lastCrash).toBeNull();
+  });
+
+  it("reports the last crash, distinguishing a storage reset from a survivor", async () => {
+    const neev = client([
+      json(201, sandboxData({ last_crash: null })),
+      json(
+        201,
+        sandboxData({
+          last_crash: { reason: "OOMKilled", at: "2026-06-05T01:00:00Z", storage_reset: false },
+        }),
+      ),
+      json(
+        201,
+        sandboxData({
+          last_crash: { reason: "NodeLost", at: "2026-06-05T02:00:00Z", storage_reset: true },
+        }),
+      ),
+    ]);
+    // An explicit null from the server reads back as null, exactly like an absent field.
+    const never = await neev.sandboxes.create({ name: "never" });
+    expect(never.lastCrash).toBeNull();
+
+    // A crash whose files survived is distinguishable from never having crashed.
+    const survived = await neev.sandboxes.create({ name: "survived" });
+    expect(survived.lastCrash).toEqual({
+      reason: "OOMKilled",
+      at: "2026-06-05T01:00:00Z",
+      storage_reset: false,
+    });
+
+    // A storage reset means the sandbox came back with an empty filesystem.
+    const wiped = await neev.sandboxes.create({ name: "wiped" });
+    expect(wiped.lastCrash?.storage_reset).toBe(true);
+    expect(JSON.parse(JSON.stringify(wiped)).last_crash.reason).toBe("NodeLost");
   });
 
   it("updates its state in place after pause", async () => {

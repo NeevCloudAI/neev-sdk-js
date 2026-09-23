@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Agent, type FetchLike, Neev, Sandbox } from "../src/index.js";
+import { Agent, type AgentLastCrash, type FetchLike, Neev, Sandbox } from "../src/index.js";
 import { agentData, json, mockFetch, sandboxData } from "./helpers.js";
 
 // Builds a client backed by the given queued responses.
@@ -39,6 +39,35 @@ describe("Agent handle", () => {
     expect(agent.sandboxId).toBe("11111111-1111-1111-1111-111111111111");
     expect(agent.config).toEqual({ model: "opus" });
     expect(JSON.parse(JSON.stringify(agent)).org_id).toBe("org_test");
+    // Compile-time check: the getter exists and its type is exported from the barrel.
+    const lastCrash: AgentLastCrash | null = agent.lastCrash;
+    expect(lastCrash).toBeNull();
+  });
+
+  it("reports the last crash, distinguishing a storage reset from a survivor", async () => {
+    const { neev } = client([
+      json(
+        201,
+        agentData({
+          last_crash: { reason: "OOMKilled", at: "2026-06-05T01:00:00Z", storage_reset: false },
+        }),
+      ),
+      json(
+        201,
+        agentData({
+          last_crash: { reason: "NodeLost", at: "2026-06-05T02:00:00Z", storage_reset: true },
+        }),
+      ),
+    ]);
+    const survived = await neev.agents.create({ name: "a", agent_template: "claude-code" });
+    expect(survived.lastCrash).toEqual({
+      reason: "OOMKilled",
+      at: "2026-06-05T01:00:00Z",
+      storage_reset: false,
+    });
+
+    const wiped = await neev.agents.create({ name: "b", agent_template: "claude-code" });
+    expect(wiped.lastCrash?.storage_reset).toBe(true);
   });
 
   it("updates its state in place after pause", async () => {
@@ -65,7 +94,7 @@ describe("Agent handle", () => {
     await agent.refresh();
     expect(calls[1]?.method).toBe("GET");
 
-    await agent.update({ egress: { mode: "allow_list" } });
+    await agent.update({ egress: { mode: "allow_list", allow_internet: false } });
     expect(agent.config).toEqual({ model: "opus" });
     expect(calls[2]?.method).toBe("PATCH");
 
