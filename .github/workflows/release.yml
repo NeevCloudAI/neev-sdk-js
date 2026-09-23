@@ -1,7 +1,12 @@
 # SDK release — deliberately manual. Nothing publishes on a push to main.
 # Mirrors the backend's tag-driven release convention (on: push tags 'v*')
 # plus a manual workflow_dispatch. A publish only happens when someone pushes a
-# version tag or runs this workflow by hand, and requires the NPM_TOKEN secret.
+# version tag or runs this workflow by hand.
+#
+# Authentication is npm trusted publishing: npm exchanges this workflow's OIDC
+# identity for a short-lived token, so there is no stored secret. That means the
+# package's trusted publisher on npmjs.com must name this repo AND this workflow
+# file — rename the file and the next release fails to authenticate.
 name: Release
 
 on:
@@ -16,7 +21,7 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write # required for npm provenance via OIDC
+  id-token: write # mints the OIDC token npm exchanges to authenticate the publish
 
 jobs:
   publish:
@@ -26,12 +31,15 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
+      # Trusted publishing landed in npm 11.5.1; the npm bundled with Node 22 is
+      # older than that, so the publish would fall back to looking for a token.
+      - name: Install an npm with trusted publishing support
+        run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
-      - name: Publish packages with a pending changeset
-        run: pnpm changeset:publish
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # No token env: npm authenticates via OIDC, and a NODE_AUTH_TOKEN here
+      # would take precedence over it.
+      - name: Build and publish to npm
+        run: pnpm release:publish
