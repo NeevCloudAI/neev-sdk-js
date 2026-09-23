@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.8.0
+
+### Minor Changes
+
+- c37fd51: Rename the in-place snapshot revert from `restore` to `rollback` to match platform terminology. `sandboxes.restore(id, snapshotId)` and `sandbox.restore(snapshotId)` are now `sandboxes.rollback(id, snapshotId)` and `sandbox.rollback(snapshotId)`, and the call targets the new `POST .../sandboxes/{id}/rollback` endpoint.
+
+  The naming now distinguishes **rollback** (revert an existing sandbox to a previous snapshot, in place) from **restore** (create a new sandbox from a snapshot, via `sandboxes.create({ restore })`). The create-from-snapshot field is `restore`; the older `from_snapshot` field remains as a deprecated alias.
+
+  **Breaking:** call sites using `restore` for in-place revert must switch to `rollback`.
+
+- 4328b02: Add in-place update for sandboxes and extend it for agents. `sandboxes.update(id, params)` and `sandbox.update(params)` are new: they resize `resources` (cpu/memory) and/or replace the `egress` policy on a running sandbox via a single `PATCH`, keeping its id, name, and preview URLs. `agents.update` / `agent.update` now accept the same `allowInternet` / `allowEgress` egress convenience that `create` uses.
+
+  At least one of `resources` or `egress` is required — an empty patch throws `NeevError` before any request is sent, naming both fields. `disk_gb` is not resizable in place; changing it surfaces the server's rejection rather than being silently dropped. `egress` replaces the policy in full and takes effect for new connections with no restart. The convenience shape produces byte-identical JSON to the equivalent `create()` call.
+
+  Adds the `UpdateSandboxParams` type (exported) and extends `UpdateAgentParams` with `EgressConvenience`.
+
+- b4d2d83: Expose a sandbox's most recent unexpected stop as `sandbox.lastCrash`, and an agent's as `agent.lastCrash`. Every read path that returns a handle — `create`, `get`, `list().items`, `refresh`, `pause`/`resume`, `update` — carries it, and the raw field stays available as `sandbox.data.last_crash`.
+
+  `lastCrash` is `null` when the sandbox has never crashed, otherwise `{ reason, at, storage_reset }`. `storage_reset: true` means the sandbox restarted with an empty filesystem: files under `/workspace`, and anything installed since create, are gone; `false` means the files survived the restart. Until now an SDK caller could not tell a restarted sandbox from one that had simply lost its files — it read back as Ready with an empty workspace.
+
+  The record is historical and is not cleared when the sandbox recovers, so compare `at` against when you last trusted the filesystem rather than treating a non-`null` value as "broken right now". The handle holds a cached snapshot — call `refresh()` to pick up a crash detected after the record was fetched.
+
+  Adds the exported types `SandboxLastCrash` and `AgentLastCrash`.
+
+- 0994982: Add sandbox lifecycle windows and surface create-time options. New `sandboxes.keepalive(id)` (resets the idle timer) and `sandboxes.updateTimeout(id, windows)` (changes idle/lifetime windows in place), plus the matching `sandbox.keepalive()` and `sandbox.updateTimeout(windows)` handle methods. `create()` now documents and supports `lifecycle` (idle/lifetime windows) — omitting it sends no `lifecycle` key so account defaults apply — and BYOI `image` / `command`.
+
+  Windows are in seconds (`idle_timeout_seconds`, `max_lifetime_seconds`, `paused_retention_seconds`, `on_idle`), passed through unchanged: send `0` to turn a window off (no limit), an omitted field is left unchanged. An out-of-enum `on_idle` (anything but `"pause"`/`"delete"`) throws `NeevError` before the request is sent. Adds exported types `OnIdleAction`, `SandboxLifecycle`, and `UpdateTimeoutParams`.
+
+- 3fb3dae: Add optional `name`, `status`, and `sandboxId` filters to `sandboxes.list()`. `name` is a case-insensitive substring match on the sandbox name, `status` filters by lifecycle phase, and `sandboxId` narrows to a single sandbox; each combines with AND and is omitted when unset. Also adds the `Pausing` phase to `SandboxPhase`, which the platform reports while a pause is in flight.
+
 ## 0.7.0-beta
 
 ### Minor Changes
