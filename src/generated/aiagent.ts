@@ -167,8 +167,8 @@ export interface paths {
         /**
          * List the ports exposed for preview URLs
          * @description Returns the ports currently exposed for this sandbox's preview URLs,
-         *     each with its public preview URL. Ports are private by default — a port
-         *     is only reachable through a preview URL after you expose it.
+         *     each with its slug and public preview URL. Ports are private by default —
+         *     a port is only reachable through a preview URL after you expose it.
          */
         get: operations["listSandboxPorts"];
         put?: never;
@@ -176,7 +176,12 @@ export interface paths {
          * Expose a port for credential-free preview URLs
          * @description Exposes a port so it can be reached through a public preview URL, and
          *     returns that URL. Exposing a port that is already exposed returns the
-         *     same URL and makes no other change.
+         *     same URL and makes no other change, unless you supply a different slug —
+         *     that replaces the slug and breaks the previous URL.
+         *
+         *     The preview URL carries a slug that is the only thing gating it: the URL
+         *     needs no credential, so treat it as a secret. Omit `slug` and a random one
+         *     is generated for you.
          *
          *     The port must be between 1 and 65535. Some ports are reserved by the
          *     platform and cannot be exposed; requests for those are rejected.
@@ -338,12 +343,44 @@ export interface paths {
         };
         /**
          * Read live health metrics for a sandbox
-         * @description Returns the bounded metric set for one sandbox (CPU / memory / disk plus
-         *     lifecycle and rate series). `from` / `to` / `step` are optional and
-         *     default to the last hour; the full v1 metric set is always returned (no
-         *     metric selector).
+         * @description Returns the bounded metric set for one sandbox (CPU / memory / disk
+         *     plus lifecycle and rate series). `from` / `to` / `step` are optional
+         *     and default to the last hour; the full v1 metric set is always
+         *     returned (no metric selector).
          */
         get: operations["getSandboxMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the command audit trail for a sandbox
+         * @description What ran inside the sandbox — terminal commands, SSH, process and file
+         *     operations — newest first, with the credential each was made under and how
+         *     it ended.
+         *
+         *     Only the program name is recorded, never its arguments, and input typed at
+         *     a hidden password prompt is not captured at all. A trail shows that `psql`
+         *     ran; it cannot show the connection string it ran against.
+         *
+         *     The trail covers the last `retention_days` days. `window_truncated` is true
+         *     when `from` reaches further back than that.
+         *
+         *     Page with `cursor`: pass the previous response's `next_cursor`. No
+         *     `next_cursor` means there is nothing older in the window.
+         */
+        get: operations["getSandboxAudit"];
         put?: never;
         post?: never;
         delete?: never;
@@ -361,9 +398,9 @@ export interface paths {
         };
         /**
          * List sandbox templates
-         * @description Returns platform-managed sandbox runtime templates available for sandbox
-         *     create. Only templates with status `active` or `deprecated` are
-         *     returned. Internal template details are not exposed.
+         * @description Returns platform-managed sandbox runtime templates available for
+         *     sandbox create. Only templates with status `active` or `deprecated`
+         *     are returned. Internal template details are not exposed.
          */
         get: operations["listSandboxTemplates"];
         put?: never;
@@ -479,6 +516,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/keepalive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset an agent's idle timer
+         * @description Extends the idle window of the agent's backing sandbox so a busy agent
+         *     stays running without an open connection. Call it periodically while
+         *     work is in progress, for example once per agent turn.
+         */
+        post: operations["keepaliveAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/connect": {
         parameters: {
             query?: never;
@@ -520,8 +579,8 @@ export interface paths {
         put?: never;
         /**
          * Create an agent snapshot
-         * @description Snapshots the sandbox backing this agent. Behaves the same as creating a
-         *     sandbox snapshot directly, scoped through the agent's ID instead.
+         * @description Snapshots the sandbox backing this agent. Behaves the same as creating
+         *     a sandbox snapshot directly, scoped through the agent's ID instead.
          */
         post: operations["createAgentSnapshot"];
         delete?: never;
@@ -552,7 +611,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/restore": {
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/rollback": {
         parameters: {
             query?: never;
             header?: never;
@@ -562,10 +621,92 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Restore an agent from a snapshot
+         * Rollback an agent from a snapshot
          * @description Restarts the agent's backing sandbox from a previously taken snapshot.
          */
-        post: operations["restoreAgent"];
+        post: operations["rollbackAgent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/ports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the ports exposed for the agent's preview URLs
+         * @description Returns the ports currently exposed for this agent's preview URLs, each
+         *     with its slug and public preview URL. Ports are private by default — a
+         *     port is only reachable through a preview URL after you expose it.
+         */
+        get: operations["listAgentPorts"];
+        put?: never;
+        /**
+         * Expose an agent port for credential-free preview URLs
+         * @description Exposes a port on the agent so it can be reached through a public preview
+         *     URL, and returns that URL. Exposing a port that is already exposed returns
+         *     the same URL and makes no other change, unless you supply a different
+         *     slug — that replaces the slug and breaks the previous URL.
+         *
+         *     The preview URL carries a slug that is the only thing gating it: the URL
+         *     needs no credential, so treat it as a secret. Omit `slug` and a random one
+         *     is generated for you.
+         *
+         *     The port must be between 1 and 65535. Some ports are reserved by the
+         *     platform and cannot be exposed; requests for those are rejected.
+         */
+        post: operations["exposeAgentPort"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/ports/{port}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a previously exposed agent preview port
+         * @description Stops serving an agent port through its preview URL. Revoking a port that
+         *     is not currently exposed succeeds and changes nothing.
+         */
+        delete: operations["revokeAgentPort"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the command audit trail for an agent
+         * @description What the agent ran inside its sandbox, newest first. Same shape and same
+         *     recording rules as the sandbox trail: program names without arguments, and
+         *     nothing typed at a hidden password prompt.
+         *
+         *     An agent works through process and file operations rather than a terminal,
+         *     so that is most of what its trail contains.
+         */
+        get: operations["getAgentAudit"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -620,8 +761,26 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ErrorResponse: {
+            /**
+             * @deprecated
+             * @description Deprecated: read `message` instead. Carries the same text and is kept
+             *     so existing clients keep working.
+             */
             error: string;
+            /**
+             * @description A human-readable description of what went wrong, suitable for showing
+             *     to the caller.
+             */
+            message?: string;
             details?: string;
+            /**
+             * @description A machine-readable classification of the failure. Branch on this rather
+             *     than on the message text, which may be reworded at any time.
+             * @enum {string}
+             */
+            code?: "unauthorized" | "forbidden" | "not_found" | "method_not_allowed" | "unsupported_media_type" | "validation_error" | "bad_request" | "conflict" | "too_early" | "service_unavailable" | "internal_server_error" | "phone_verification_required" | "kyc_verification_required" | "kyc_verification_required_by_owner" | "sandbox_quota_exceeded" | "agent_quota_exceeded";
+            /** @description Optional scope indicating which limit was hit, e.g., `organization` or `project`. */
+            scope?: string;
         };
         EnvVar: {
             name: string;
@@ -647,8 +806,8 @@ export interface components {
              */
             disk_gb?: number;
             /**
-             * @description Portion of disk_gb reserved for the container filesystem; the rest
-             *     is available to /workspace. Raise it when installs write outside
+             * @description Portion of disk_gb reserved for the container filesystem; the rest is
+             *     available to /workspace. Raise it when installs write outside
              *     /workspace. Must be less than disk_gb. Defaults to 20% of disk_gb,
              *     minimum 4. Can only be set when the sandbox is created.
              * @example 4
@@ -670,10 +829,10 @@ export interface components {
             command?: string[];
             resources?: components["schemas"]["SandboxResources"];
             phase: components["schemas"]["SandboxPhase"];
+            /** @description Whether the sandbox can be reached by name yet. Briefly false after a sandbox is created; a call made before it turns true is refused and is worth retrying. */
+            addressable?: boolean;
             /** @description Public URL the SDK calls (API key + X-Sandbox-Id). null when not configured. */
             connect_url?: string | null;
-            /** @description Template for a public preview URL with {port} left for getUrl({port}) to fill client-side. null when not configured. */
-            preview_url_template?: string | null;
             /** @description 0 = paused, 1 = running. */
             replicas: number;
             egress?: components["schemas"]["SandboxEgressConfig"] | null;
@@ -705,9 +864,9 @@ export interface components {
             hard_expires_at?: string | null;
         };
         /**
-         * @description What happens when a sandbox becomes idle or reaches its maximum
-         *     lifetime. pause stops it but keeps its state so it can be resumed;
-         *     delete removes the sandbox and its data.
+         * @description What happens when a sandbox becomes idle or reaches its maximum lifetime.
+         *     pause stops it but keeps its state so it can be resumed; delete removes
+         *     the sandbox and its data.
          * @default pause
          * @enum {string}
          */
@@ -730,10 +889,11 @@ export interface components {
             on_idle?: components["schemas"]["OnIdleAction"];
         };
         /**
-         * @description The most recent unexpected stop of the sandbox, or null if it has never
-         *     had one. It records a past event and is not cleared when the sandbox
-         *     recovers or is restored, so read `at` before acting on it; storage_reset
-         *     says whether the sandbox's files survived that stop.
+         * @description The most recent unexpected stop of the sandbox, or null if it has never had one.
+         *     It records a past event and is not cleared when the sandbox recovers, so read
+         *     `at` before acting on it; storage_reset says whether the sandbox's files survived
+         *     that stop. Restoring the sandbox from a snapshot taken before a stop that reset
+         *     storage returns those files, and clears this once the restore has completed.
          */
         SandboxLastCrash: {
             /**
@@ -747,9 +907,9 @@ export interface components {
              */
             at: string;
             /**
-             * @description True when the sandbox restarted with an empty filesystem: files
-             *     under /workspace, and anything installed since create, are gone.
-             *     False when it restarted with its files intact.
+             * @description True when the sandbox restarted with an empty filesystem: files under
+             *     /workspace, and anything installed since create, are gone. False when it
+             *     restarted with its files intact.
              */
             storage_reset: boolean;
         };
@@ -758,7 +918,9 @@ export interface components {
              * @description Sandbox name. Optional — when omitted, the server generates one (a
              *     "sandbox-" prefix plus a short random suffix). When provided, must be
              *     a valid DNS name: lowercase alphanumeric characters or '-', starting
-             *     with a letter, ending with an alphanumeric, max 63 characters.
+             *     with a letter, ending with an alphanumeric, max 63 characters. It may
+             *     not be formatted as a UUID, because a sandbox can also be addressed by
+             *     name and such a name would be read as an id.
              * @example my-sandbox
              */
             name?: string;
@@ -789,8 +951,8 @@ export interface components {
              * Format: uuid
              * @description When set, the new sandbox is restored from this snapshot instead of
              *     cold-starting from the image. Snapshot must belong to the same
-             *     project. Sizing and region must match the snapshot's origin. Must
-             *     not be combined with `image`.
+             *     project. Sizing and region must match the snapshot's origin. Must not
+             *     be combined with `image`.
              */
             restore?: string | null;
             /**
@@ -804,10 +966,23 @@ export interface components {
         ExposePortRequest: {
             /** @description User port to expose for preview URLs. */
             port: number;
+            /**
+             * @description Optional slug for this port's preview URL: exactly 8 lowercase letters
+             *     and digits. Omit it and a random one is generated, which is what makes
+             *     the URL unguessable. Supplying one on a port that is already exposed
+             *     replaces its slug and breaks the previous URL — that is how you rotate a
+             *     preview URL that has leaked.
+             *
+             *     A slug you choose is a name, not a secret. Anyone who guesses it reaches
+             *     the port, so pick a random slug for anything you would not publish.
+             */
+            slug?: string;
         };
         SandboxPort: {
             /** @description The exposed user port. */
             port: number;
+            /** @description The slug gating this port's preview URL. */
+            slug: string;
             /** @description Public credential-free preview URL for this port. */
             preview_url: string;
         };
@@ -816,21 +991,36 @@ export interface components {
         };
         /**
          * @description Request to update a running sandbox's CPU/memory and/or egress rules.
-         *     At least one of `resources` or `egress` must be provided.
+         *     At least one of `resources`, `egress`, `egress_add` or `egress_remove`
+         *     must be provided. `egress` replaces the policy in full; `egress_add` and
+         *     `egress_remove` edit the allow-list in place and cannot be combined with it.
          */
         UpdateSandboxRequest: {
             /**
-             * @description New cpu/memory sizing, resized in place on the running sandbox. Only
-             *     the fields provided change. disk_gb is not resizable in place and is
+             * @description New cpu/memory sizing, resized in place on the running sandbox. Only the
+             *     fields provided change. disk_gb is not resizable in place and is
              *     rejected if supplied with a different value.
              */
             resources?: components["schemas"]["SandboxResources"];
             /**
-             * @description New egress policy for the sandbox. Replaces the existing policy in
-             *     full and takes effect immediately for new connections — no sandbox
+             * @description New egress policy for the sandbox. Replaces the existing policy
+             *     in full and takes effect immediately for new connections — no sandbox
              *     restart is required.
              */
             egress?: components["schemas"]["SandboxEgressConfig"];
+            /**
+             * @description Destinations to add to the existing allow-list, leaving every other
+             *     rule in place. Adding a host already allowed replaces its ports and
+             *     protocol. Rejected with `egress`, and rejected when the current mode
+             *     is deny_all — switch the mode with `egress` first.
+             */
+            egress_add?: components["schemas"]["SandboxEgressRules"];
+            /**
+             * @description Destinations to drop from the existing allow-list, leaving every
+             *     other rule in place. Removing a host that is not allowed is a no-op.
+             *     Applied before `egress_add`, so one call can swap a destination.
+             */
+            egress_remove?: components["schemas"]["SandboxEgressRules"];
         };
         /** @description Optional body for the pause endpoint. */
         PauseSandboxRequest: Record<string, never>;
@@ -890,8 +1080,8 @@ export interface components {
             restorability: components["schemas"]["SnapshotRestorability"];
             /**
              * @description The configuration this snapshot was captured with, recorded so the
-             *     snapshot can be restored consistently. Null for snapshots taken
-             *     before it was recorded.
+             *     snapshot can be restored consistently. Null for snapshots taken before
+             *     it was recorded.
              */
             build_descriptor?: {
                 [key: string]: unknown;
@@ -912,8 +1102,7 @@ export interface components {
             /**
              * @description Optional name for this snapshot. Must be a valid DNS name (lowercase
              *     alphanumeric or '-', starting with a letter, max 63 characters) so it
-             *     can name sandboxes created on fork and restore. Omit to leave
-             *     unnamed.
+             *     can name sandboxes created on fork and restore. Omit to leave unnamed.
              */
             name?: string;
         };
@@ -921,8 +1110,8 @@ export interface components {
         RollbackSandboxRequest: {
             /**
              * Format: uuid
-             * @description UUID of the snapshot to restore from. Must belong to this sandbox or
-             *     another sandbox in the same project.
+             * @description UUID of the snapshot to restore from. Must belong to this sandbox
+             *     or another sandbox in the same project.
              */
             snapshot_id: string;
         };
@@ -933,8 +1122,8 @@ export interface components {
         RestoreSandboxRequest: {
             /**
              * Format: uuid
-             * @description UUID of the snapshot to restore from. Must belong to this sandbox or
-             *     another sandbox in the same project.
+             * @description UUID of the snapshot to restore from. Must belong to this sandbox
+             *     or another sandbox in the same project.
              */
             snapshot_id: string;
         };
@@ -943,8 +1132,9 @@ export interface components {
             /**
              * @description Name for the new forked sandbox. Must be unique within the project,
              *     and a valid DNS name: lowercase alphanumeric characters or '-',
-             *     starting with a letter, ending with an alphanumeric, max 63
-             *     characters.
+             *     starting with a letter, ending with an alphanumeric, max 63 characters.
+             *     It may not be formatted as a UUID, because a sandbox can also be
+             *     addressed by name and such a name would be read as an id.
              */
             name: string;
         };
@@ -957,7 +1147,7 @@ export interface components {
              */
             mode: "deny_all" | "allow_list";
             /**
-             * @description Escape hatch: if true, allows 0.0.0.0/0 (the entire internet). Strictly audit-logged.
+             * @description Escape hatch: if true, allows all outbound traffic (0.0.0.0/0 and ::/0). Applies only in allow_list mode; deny_all ignores it.
              * @default false
              */
             allow_internet: boolean;
@@ -968,9 +1158,24 @@ export interface components {
         SandboxEgressRule: {
             /** @description IP address, CIDR block, or domain name */
             host: string;
+            /** @description Destination ports allowed on this host. Omit to allow every port. */
             ports?: number[];
-            /** @enum {string} */
+            /**
+             * @description Transport protocol allowed on this host. Defaults to TCP when
+             *     `ports` is set. Given without `ports`, every port of this protocol
+             *     is allowed. Omit both to allow every port and protocol.
+             * @enum {string}
+             */
             protocol?: "TCP" | "UDP";
+        };
+        /**
+         * @description A set of egress allow-rules on their own, used to add or remove
+         *     destinations without restating the whole policy. Carries no mode or
+         *     allow_internet: those are policy-wide and only settable via `egress`.
+         */
+        SandboxEgressRules: {
+            /** @description Egress rules to add to, or remove from, the existing allow-list. */
+            allow: components["schemas"]["SandboxEgressRule"][];
         };
         SandboxListResponse: {
             items: components["schemas"]["Sandbox"][];
@@ -986,6 +1191,8 @@ export interface components {
             id: string;
             name: string;
             description: string;
+            /** @description Display icon for the template (e.g. an SVG document) served as a string; null when the template has no icon. */
+            icon?: string | null;
             category: components["schemas"]["SandboxTemplateCategory"];
             status: components["schemas"]["SandboxTemplateStatus"];
             /** Format: date-time */
@@ -1013,6 +1220,53 @@ export interface components {
             /** @description Token lifetime in seconds. */
             expires_in: number;
         };
+        AuditRecord: {
+            /**
+             * Format: date-time
+             * @description When the operation was recorded.
+             */
+            at: string;
+            /** @description Stable id of this record, unique within the trail. */
+            id: string;
+            /** @description The operation, such as `pty_command`, `ssh`, `exec`, `process.start` or `fs.read`. */
+            tool: string;
+            /** @description The program that ran, without its arguments. Absent on operations that run no program, such as a file read. Reads `[redacted]` where the program name could not be established. A terminal command interrupted with Ctrl-C is prefixed `[Ctrl-C]`. */
+            command?: string;
+            /** @description What the operation acted on — the file path it read or wrote, or the process it named. A move carries both paths as `source -> destination`. Absent where the operation names nothing, and truncated with a trailing `...` if unusually long. */
+            target?: string;
+            /** @enum {string} */
+            outcome: "success" | "error";
+            /** @description Why it ended that way: `ok`, `permission_denied`, `internal`. */
+            reason_code?: string;
+            /** @description Correlates the record to the request that caused it. */
+            request_id?: string;
+            /** @description The credential the operation was made under. It identifies a credential, not a person. */
+            caller_source?: string;
+            /** @description The terminal a `pty_command` belongs to. Absent otherwise. */
+            pty_id?: string;
+            /** @description Ordinal within that terminal. Absent outside a `pty_command`. */
+            seq?: number;
+            /** Format: int64 */
+            duration_ms?: number;
+        };
+        AuditTrailResponse: {
+            /**
+             * Format: uuid
+             * @description The sandbox the records came from. For an agent trail this is the sandbox backing the agent, not the agent id.
+             */
+            sandbox_id: string;
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            /** @description How many days of trail are available. */
+            retention_days: number;
+            /** @description True when the requested window reaches further back than the available trail, so it begins later than asked. */
+            window_truncated: boolean;
+            /** @description Pass as `cursor` for the next page. Absent when the window is exhausted. */
+            next_cursor?: string;
+            records: components["schemas"]["AuditRecord"][];
+        };
         SandboxMetricsResponse: {
             /** Format: uuid */
             sandbox_id: string;
@@ -1030,6 +1284,11 @@ export interface components {
          */
         AgentStatus: "Provisioning" | "Ready" | "Pausing" | "Paused" | "Failed" | "Deleting";
         Agent: {
+            /**
+             * @description Idle window in seconds for the agent's backing sandbox; 0 when the
+             *     agent has no idle limit, null when it uses the account default.
+             */
+            idle_timeout_seconds?: number | null;
             /** Format: uuid */
             id: string;
             org_id: string;
@@ -1055,8 +1314,8 @@ export interface components {
              */
             web_ui_url?: string | null;
             /**
-             * @description API path for the sandbox's live health metrics (the
-             *     getSandboxMetrics endpoint), relative to this API's base URL.
+             * @description API path for the sandbox's live health metrics (the getSandboxMetrics
+             *     endpoint), relative to this API's base URL.
              */
             metrics_url: string;
             /**
@@ -1072,10 +1331,11 @@ export interface components {
             egress?: components["schemas"]["SandboxEgressConfig"];
         };
         /**
-         * @description The most recent unexpected stop of the agent, or null if it has never
-         *     had one. It records a past event and is not cleared when the agent
-         *     recovers or is restored, so read `at` before acting on it; storage_reset
-         *     says whether the agent's files survived that stop.
+         * @description The most recent unexpected stop of the agent, or null if it has never had one.
+         *     It records a past event and is not cleared when the agent recovers, so read
+         *     `at` before acting on it; storage_reset says whether the agent's files survived
+         *     that stop. Restoring the agent from a snapshot taken before a stop that reset
+         *     storage returns those files, and clears this once the restore has completed.
          */
         AgentLastCrash: {
             /**
@@ -1090,8 +1350,8 @@ export interface components {
             at: string;
             /**
              * @description True when the agent restarted with an empty filesystem: files under
-             *     /workspace, and anything installed since create, are gone. False
-             *     when it restarted with its files intact.
+             *     /workspace, and anything installed since create, are gone. False when it
+             *     restarted with its files intact.
              */
             storage_reset: boolean;
         };
@@ -1107,8 +1367,8 @@ export interface components {
             /** @description Direct address the client calls to reach the agent. */
             connect_url: string;
             /**
-             * @description Short-lived connect token, bound to this project and agent,
-             *     presented as a bearer credential when calling the agent directly.
+             * @description Short-lived connect token, bound to this project and agent, presented
+             *     as a bearer credential when calling the agent directly.
              */
             token: string;
             /**
@@ -1121,7 +1381,9 @@ export interface components {
             /**
              * @description Agent name. Must be a valid DNS name: lowercase alphanumeric
              *     characters or '-', starting with a letter, ending with an
-             *     alphanumeric, max 63 characters.
+             *     alphanumeric, max 63 characters. It may not be formatted as a UUID,
+             *     because an agent can also be addressed by name and such a name would
+             *     be read as an id.
              * @example my-agent
              */
             name: string;
@@ -1132,14 +1394,20 @@ export interface components {
              */
             agent_template: string;
             /**
+             * @description Act on the agent after this many seconds without activity, which by
+             *     default pauses it. Omit to use the account default, or send 0 for no
+             *     idle limit, which keeps the agent consuming quota until it is deleted.
+             * @example 900
+             */
+            idle_timeout_seconds?: number;
+            /**
              * @description Region to provision the backing sandbox in; omit to use the platform default.
              * @example dev
              */
             region?: string;
             /**
              * @description Agent configuration overrides, shallow-merged over the template's
-             *     default_config. Shape is template-specific (see template
-             *     config_schema).
+             *     default_config. Shape is template-specific (see template config_schema).
              */
             config?: {
                 [key: string]: unknown;
@@ -1155,18 +1423,51 @@ export interface components {
             egress?: components["schemas"]["SandboxEgressConfig"];
         };
         /**
-         * @description Request to update a running agent's CPU/memory sizing and/or network
-         *     egress rules. At least one of `resources` or `egress` must be provided.
+         * @description Request to update a running agent's CPU/memory sizing, network egress rules
+         *     and/or idle window. At least one of `resources`, `egress`, `egress_add`,
+         *     `egress_remove` or `idle_timeout_seconds` must be provided. `egress`
+         *     replaces the policy in full; `egress_add` and `egress_remove` edit the
+         *     allow-list in place and cannot be combined with it.
          */
         UpdateAgentRequest: {
             /**
-             * @description New cpu/memory sizing, resized in place on the running sandbox. Only
-             *     the fields provided change. disk_gb is not resizable in place and is
+             * @description New idle window in seconds, applied to the agent's backing sandbox.
+             *     0 removes the idle limit, so the agent runs until it is deleted.
+             * @example 900
+             */
+            idle_timeout_seconds?: number;
+            /**
+             * @description New cpu/memory sizing, resized in place on the running sandbox. Only the
+             *     fields provided change. disk_gb is not resizable in place and is
              *     rejected if supplied with a different value.
              */
             resources?: components["schemas"]["SandboxResources"];
-            /** @description Network egress policy update for the agent's backing sandbox. */
+            /**
+             * @description Network egress policy for the agent's backing sandbox. Replaces the
+             *     existing policy in full.
+             */
             egress?: components["schemas"]["SandboxEgressConfig"];
+            /**
+             * @description Destinations to add to the existing allow-list, leaving every other
+             *     rule in place. Adding a host already allowed replaces its ports and
+             *     protocol. Rejected with `egress`, and rejected when the current mode
+             *     is deny_all — switch the mode with `egress` first.
+             */
+            egress_add?: components["schemas"]["SandboxEgressRules"];
+            /**
+             * @description Destinations to drop from the existing allow-list, leaving every
+             *     other rule in place. Removing a host that is not allowed is a no-op.
+             *     Applied before `egress_add`, so one call can swap a destination.
+             */
+            egress_remove?: components["schemas"]["SandboxEgressRules"];
+        };
+        /** @description Body for POST .../agents/{id}/rollback. */
+        RollbackAgentRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the snapshot to restore the agent's backing sandbox from.
+             */
+            snapshot_id: string;
         };
         AgentListResponse: {
             items: components["schemas"]["Agent"][];
@@ -1196,9 +1497,9 @@ export interface components {
             };
             /**
              * @description Recommended default sizing for agents of this template. An agent
-             *     inherits these when the create request omits the corresponding
-             *     field; caller-supplied resources take precedence. Null/omitted fields
-             *     fall back to the platform default.
+             *     inherits these when the create request omits the corresponding field;
+             *     caller-supplied resources take precedence. Null/omitted fields fall
+             *     back to the platform default.
              */
             default_resources?: components["schemas"]["SandboxResources"] | null;
             /**
@@ -1284,13 +1585,22 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
+        /** @description Temporarily unavailable; retry shortly. */
+        ServiceUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
     };
     parameters: {
         /** @description Organization identifier. */
         OrgID: string;
         /** @description Project identifier. */
         ProjectID: string;
-        /** @description Sandbox UUID. */
+        /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
         SandboxID: string;
         /** @description Snapshot UUID. */
         SnapshotID: string;
@@ -1301,8 +1611,16 @@ export interface components {
         SandboxNameSearch: string;
         /** @description Filter to a single sandbox by its id. */
         SandboxIDFilter: string;
-        /** @description Agent UUID. */
+        /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
         AgentID: string;
+        /** @description Start of the window (RFC3339). Defaults to 24 hours before `to`. */
+        AuditFrom: string;
+        /** @description End of the window (RFC3339). Defaults to now. */
+        AuditTo: string;
+        /** @description Continuation token from the previous response's `next_cursor`. A token that is not valid is rejected rather than ignored. */
+        AuditCursor: string;
+        /** @description Records per page. Clamped server-side. */
+        AuditLimit: number;
         AgentTemplateID: string;
     };
     requestBodies: never;
@@ -1391,7 +1709,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1422,7 +1740,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1452,7 +1770,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1488,7 +1806,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1525,7 +1843,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1556,7 +1874,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1592,7 +1910,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1623,7 +1941,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1656,7 +1974,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1675,6 +1993,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
             500: components["responses"]["InternalServerError"];
         };
     };
@@ -1687,7 +2006,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1724,7 +2043,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
                 port: number;
             };
@@ -1759,7 +2078,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1790,7 +2109,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1887,7 +2206,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1924,7 +2243,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -1961,7 +2280,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -2005,7 +2324,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Sandbox UUID. */
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
                 sandbox_id: components["parameters"]["SandboxID"];
             };
             cookie?: never;
@@ -2026,6 +2345,48 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
+        };
+    };
+    getSandboxAudit: {
+        parameters: {
+            query?: {
+                /** @description Start of the window (RFC3339). Defaults to 24 hours before `to`. */
+                from?: components["parameters"]["AuditFrom"];
+                /** @description End of the window (RFC3339). Defaults to now. */
+                to?: components["parameters"]["AuditTo"];
+                /** @description Continuation token from the previous response's `next_cursor`. A token that is not valid is rejected rather than ignored. */
+                cursor?: components["parameters"]["AuditCursor"];
+                /** @description Records per page. Clamped server-side. */
+                limit?: components["parameters"]["AuditLimit"];
+            };
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way. */
+                sandbox_id: components["parameters"]["SandboxID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the sandbox's audit trail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditTrailResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listSandboxTemplates: {
@@ -2154,7 +2515,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Agent UUID. */
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
                 agent_id: components["parameters"]["AgentID"];
             };
             cookie?: never;
@@ -2185,7 +2546,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Agent UUID. */
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
                 agent_id: components["parameters"]["AgentID"];
             };
             cookie?: never;
@@ -2214,7 +2575,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Agent UUID. */
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
                 agent_id: components["parameters"]["AgentID"];
             };
             cookie?: never;
@@ -2250,7 +2611,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Agent UUID. */
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
                 agent_id: components["parameters"]["AgentID"];
             };
             cookie?: never;
@@ -2282,7 +2643,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Agent UUID. */
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
                 agent_id: components["parameters"]["AgentID"];
             };
             cookie?: never;
@@ -2305,6 +2666,37 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
+    keepaliveAgent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
+                agent_id: components["parameters"]["AgentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Idle timer reset */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
     connectAgent: {
         parameters: {
             query?: never;
@@ -2314,7 +2706,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Agent UUID. */
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
                 agent_id: components["parameters"]["AgentID"];
             };
             cookie?: never;
@@ -2350,7 +2742,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Agent UUID. */
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
                 agent_id: components["parameters"]["AgentID"];
             };
             cookie?: never;
@@ -2386,7 +2778,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Agent UUID. */
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
                 agent_id: components["parameters"]["AgentID"];
             };
             cookie?: never;
@@ -2394,6 +2786,11 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": {
+                    /**
+                     * @description Optional name for this snapshot. Must be a valid DNS name (lowercase
+                     *     alphanumeric or '-', starting with a letter, max 63 characters) so it
+                     *     can name sandboxes created on fork and restore. Omit to leave unnamed.
+                     */
                     name?: string;
                     /** @description Duration string, e.g. 720h. Omit or '0' for no expiry. */
                     retain_for?: string;
@@ -2426,7 +2823,7 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Agent UUID. */
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
                 agent_id: components["parameters"]["AgentID"];
             };
             cookie?: never;
@@ -2455,7 +2852,7 @@ export interface operations {
             500: components["responses"]["InternalServerError"];
         };
     };
-    restoreAgent: {
+    rollbackAgent: {
         parameters: {
             query?: never;
             header?: never;
@@ -2464,17 +2861,14 @@ export interface operations {
                 org_id: components["parameters"]["OrgID"];
                 /** @description Project identifier. */
                 project_id: components["parameters"]["ProjectID"];
-                /** @description Agent UUID. */
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
                 agent_id: components["parameters"]["AgentID"];
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": {
-                    /** Format: uuid */
-                    snapshot_id: string;
-                };
+                "application/json": components["schemas"]["RollbackAgentRequest"];
             };
         };
         responses: {
@@ -2492,6 +2886,146 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalServerError"];
+        };
+    };
+    listAgentPorts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
+                agent_id: components["parameters"]["AgentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exposed ports */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxPortList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    exposeAgentPort: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
+                agent_id: components["parameters"]["AgentID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExposePortRequest"];
+            };
+        };
+        responses: {
+            /** @description Port exposed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxPort"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    revokeAgentPort: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
+                agent_id: components["parameters"]["AgentID"];
+                port: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Port revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+        };
+    };
+    getAgentAudit: {
+        parameters: {
+            query?: {
+                /** @description Start of the window (RFC3339). Defaults to 24 hours before `to`. */
+                from?: components["parameters"]["AuditFrom"];
+                /** @description End of the window (RFC3339). Defaults to now. */
+                to?: components["parameters"]["AuditTo"];
+                /** @description Continuation token from the previous response's `next_cursor`. A token that is not valid is rejected rather than ignored. */
+                cursor?: components["parameters"]["AuditCursor"];
+                /** @description Records per page. Clamped server-side. */
+                limit?: components["parameters"]["AuditLimit"];
+            };
+            header?: never;
+            path: {
+                /** @description Organization identifier. */
+                org_id: components["parameters"]["OrgID"];
+                /** @description Project identifier. */
+                project_id: components["parameters"]["ProjectID"];
+                /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
+                agent_id: components["parameters"]["AgentID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the agent's audit trail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditTrailResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalServerError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listAgentTemplates: {

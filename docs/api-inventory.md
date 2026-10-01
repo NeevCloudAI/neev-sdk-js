@@ -94,7 +94,15 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `ReadFileOptions` | interface (type) | `runtime.ts` |
 | `WriteFileOptions` | interface (type) | `runtime.ts` |
 | `WriteFileResult` | interface (type) | `runtime.ts` |
+| `DownloadFileOptions` | interface (type) | `runtime.ts` |
+| `DownloadFileResult` | interface (type) | `runtime.ts` |
+| `UploadOptions` | interface (type) | `upload.ts` |
 | `ListSandboxesParams` | interface (type) | `resources/sandboxes.ts` |
+| `AuditParams` | interface (type) | `resources/sandboxes.ts` |
+| `AuditQuery` | interface (type) | `resources/sandboxes.ts` |
+| `ExposePortOptions` | interface (type) | `preview.ts` |
+| `ExposePortParams` | interface (type) | `preview.ts` |
+| `GetPortUrlOptions` | interface (type) | `preview.ts` |
 | `MetricsParams` | interface (type) | `resources/sandboxes.ts` |
 | `MetricsQuery` | interface (type) | `resources/sandboxes.ts` |
 | `SandboxPage` | interface (type) | `resources/sandboxes.ts` |
@@ -113,6 +121,8 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `AgentListResponse` | type alias | `types.ts` |
 | `AgentTemplate` | type alias | `types.ts` |
 | `AgentTemplateListResponse` | type alias | `types.ts` |
+| `AuditRecord` | type alias | `types.ts` |
+| `AuditTrail` | type alias | `types.ts` |
 | `CreateSandboxParams` | type alias | `types.ts` |
 | `UpdateSandboxParams` | type alias | `types.ts` |
 | `OnIdleAction` | type alias | `types.ts` |
@@ -125,6 +135,7 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `SandboxData` | type alias | `types.ts` |
 | `SandboxEgressConfig` | type alias | `types.ts` |
 | `SandboxEgressRule` | type alias | `types.ts` |
+| `SandboxEgressRules` | type alias | `types.ts` |
 | `SandboxLastCrash` | type alias | `types.ts` |
 | `SandboxListResponse` | type alias | `types.ts` |
 | `SandboxMetricsResponse` | type alias | `types.ts` |
@@ -137,8 +148,9 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `SnapshotData` | type alias | `types.ts` |
 | `SnapshotListResponse` | type alias | `types.ts` |
 | `SnapshotStatus` | type alias | `types.ts` |
-| `NeevError` … `InternalServerError` | classes | `errors.ts` |
+| `NeevError` … `InternalServerError`, `ServiceUnavailableError` | classes | `errors.ts` |
 | `ApiErrorBody` | interface (type) | `errors.ts` |
+| `ErrorCode` | type alias (union) | `errors.ts` |
 
 > Note: `ListSnapshotsParams` and `SnapshotPage` are declared and `export`ed in `resources/sandboxes.ts` and are the return/param types of `listSnapshots` / `Sandbox.snapshots`, but they are not re-exported from the package root in `index.ts`. They are documented below alongside the methods that use them.
 
@@ -152,7 +164,7 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 constructor(options?: NeevOptions)
 ```
 
-The platform client. Construct once and reuse. Exposes two resource namespaces plus an untyped escape hatch:
+The platform client. Construct once and reuse. Exposes four resource namespaces plus an untyped escape hatch:
 
 - `client.sandboxes` — sandbox lifecycle operations (`Sandboxes`)
 - `client.templates` — read-only template catalogue (`SandboxTemplates`)
@@ -272,7 +284,7 @@ const pausedWeb = await client.sandboxes.list({ name: "web", status: "Paused" })
 get(id: string, scope?: Scope): Promise<Sandbox>
 ```
 
-Fetches a single sandbox by id.
+Fetches a single sandbox by id or by name — names are unique within a project. Every other method that takes a sandbox `id` accepts its name too.
 
 **Returns:** `Promise<Sandbox>`.
 
@@ -289,19 +301,24 @@ console.log(sandbox.phase, sandbox.connectUrl);
 update(id: string, params: UpdateSandboxParams, scope?: Scope): Promise<Sandbox>
 ```
 
-Updates a **running** sandbox in place and returns the updated handle; the id, name, and preview URLs are unchanged. `UpdateSandboxParams` = the generated `UpdateSandboxRequest` (`{ resources?: SandboxResources; egress?: SandboxEgressConfig }`) plus the SDK-only `EgressConvenience` fields (`allowInternet` / `allowEgress`). **At least one of `resources` or `egress` is required.**
+Updates a **running** sandbox in place and returns the updated handle; the id, name, and preview URLs are unchanged. `UpdateSandboxParams` = the generated `UpdateSandboxRequest` (`{ resources?: SandboxResources; egress?: SandboxEgressConfig; egress_add?: SandboxEgressRules; egress_remove?: SandboxEgressRules }`) plus the SDK-only `EgressConvenience` fields (`allowInternet` / `allowEgress`). **At least one of `resources`, `egress`, `egress_add` or `egress_remove` is required.**
 
 - `resources` resizes `cpu` / `memory_gb` in place. `disk_gb` is **not** resizable in place — if changed, the server rejects the patch (surfaced as a typed error, not silently dropped).
 - `egress` replaces the policy in full and takes effect for new connections with **no restart**. The `allowInternet` / `allowEgress` convenience maps to `egress` exactly as it does on `create` (byte-identical JSON); an explicit `egress` wins.
+- `egress_add` / `egress_remove` (`{ allow: SandboxEgressRule[] }`) edit the existing allow-list in place, leaving every other rule alone. Removals apply first, so one call can swap a host; adding a host already allowed replaces its ports and protocol. They cannot be combined with `egress` or the convenience fields, and `egress_add` is rejected while the policy is `deny_all`.
 - Passing both `resources` and `egress` sends a single `PATCH` and both take effect.
 
 **Returns:** `Promise<Sandbox>` — the updated handle.
 
-**Raises:** `NeevError` locally when neither `resources` nor `egress` is provided (before any request is sent); `NotFoundError` (404), `BadRequestError` (400, e.g. changing `disk_gb`), plus scope/auth/transport errors.
+**Raises:** `NeevError` locally when the patch is empty or mixes `egress` with `egress_add` / `egress_remove` (before any request is sent); `NotFoundError` (404), `BadRequestError` (400, e.g. changing `disk_gb`), plus scope/auth/transport errors.
 
 ```ts
 await client.sandboxes.update(id, { resources: { cpu: 2, memory_gb: 4 } });
 await client.sandboxes.update(id, { allowEgress: ["api.github.com"] });
+await client.sandboxes.update(id, {
+  egress_remove: { allow: [{ host: "old.example.com" }] },
+  egress_add: { allow: [{ host: "api.example.com", ports: [443] }] },
+});
 // or via handle (updates state in place):
 await sandbox.update({ resources: { cpu: 4 }, allowInternet: true });
 ```
@@ -312,7 +329,7 @@ await sandbox.update({ resources: { cpu: 4 }, allowInternet: true });
 pause(id: string, scope?: Scope): Promise<Sandbox>
 ```
 
-Pauses a sandbox by scaling it to zero replicas. The lifecycle phase moves toward `Paused`.
+Pauses a sandbox: it stops running and keeps its state so it can be resumed. The lifecycle phase moves toward `Paused`.
 
 **Returns:** `Promise<Sandbox>` — the updated handle (not `void`).
 
@@ -331,7 +348,7 @@ A paused sandbox will not become `Ready` until `resume()` is called. Calling `wa
 resume(id: string, scope?: Scope): Promise<Sandbox>
 ```
 
-Resumes a paused sandbox by scaling it back to one replica, moving it toward `Ready`.
+Resumes a paused sandbox from its kept state, moving it toward `Ready`.
 
 **Returns:** `Promise<Sandbox>` — the updated handle.
 
@@ -425,6 +442,25 @@ for (const s of metrics.series) {
 }
 ```
 
+### `client.sandboxes.audit(id, params?)`
+
+```ts
+audit(id: string, params?: AuditParams): Promise<AuditTrail>
+```
+
+Reads one page of the sandbox's audit trail, newest first: terminal commands, SSH, process and file operations, with the credential each was made under (`caller_source`) and how it ended (`outcome`, `reason_code`). Only the program name is recorded, never its arguments, and input at a hidden password prompt is not captured.
+
+`AuditParams` = `{ from?: string; to?: string; cursor?: string; limit?: number; orgId?; projectId? }` — `from` / `to` are RFC3339 (default: the 24 hours before now), `limit` is 1–200 (default 50).
+
+**Returns:** `AuditTrail` = `{ sandbox_id; from; to; retention_days; window_truncated; next_cursor?; records: AuditRecord[] }`. `window_truncated` is true when `from` reaches past the `retention_days` window. Pass `next_cursor` as `cursor` for the next page; it is absent when the window is exhausted.
+
+**Raises:** `BadRequestError` (400) for an invalid cursor or window, `ServiceUnavailableError` (503) when the trail is temporarily unreadable, plus scope/auth/transport errors.
+
+```ts
+let page = await client.sandboxes.audit(id, { limit: 50 });
+while (page.next_cursor) page = await client.sandboxes.audit(id, { cursor: page.next_cursor });
+```
+
 ### `client.sandboxes.createSnapshot(id, params?, scope?)`
 
 ```ts
@@ -438,10 +474,8 @@ Captures a filesystem snapshot of a sandbox. Returns immediately with `status ==
 | Name | Type | Description |
 | ---- | ---- | ----------- |
 | `id` | `string` | Sandbox id to snapshot. |
-| `params` | `CreateSnapshotParams` (optional) | Optional `name` and other snapshot-create fields (`include_memory` is excluded — see below). |
+| `params` | `CreateSnapshotParams` (optional) | Optional `name` for the snapshot. |
 | `scope` | `Scope` (optional) | Per-call scope override. |
-
-The SDK always forces `include_memory: false` on the wire (memory capture is unsupported), regardless of `params`.
 
 **Returns:** `Promise<SnapshotData>` — typically with `status: "Pending"`.
 
@@ -692,7 +726,7 @@ Lists agents in the resolved org/project. `params` = `{ page?, limit?, orgId?, p
 get(id: string, scope?: Scope): Promise<Agent>
 ```
 
-Fetches a single agent by id (a UUID, from `agents.list`).
+Fetches a single agent by id or by name — names are unique within a project. Every other method that takes an agent `id` accepts its name too.
 
 ### `client.agents.update(id, params, scope?)`
 
@@ -700,7 +734,35 @@ Fetches a single agent by id (a UUID, from `agents.list`).
 update(id: string, params: UpdateAgentParams, scope?: Scope): Promise<Agent>
 ```
 
-Updates an agent in place. `UpdateAgentParams` = the generated `UpdateAgentRequest` (`{ egress?: SandboxEgressConfig; resources?: SandboxResources }`) plus the SDK-only `allowInternet` / `allowEgress` convenience (same as `create`, mapped to `egress`); at least one of `resources` or `egress` is required. `resources` resizes `cpu` / `memory_gb` in place (`disk_gb` is fixed at creation) — see [Agent resources](#agent-resources) for defaults and bounds. `egress` replaces the policy in full with no restart.
+Updates an agent in place. `UpdateAgentParams` = the generated `UpdateAgentRequest` (`{ egress?; egress_add?; egress_remove?; resources?; idle_timeout_seconds? }`) plus the SDK-only `allowInternet` / `allowEgress` convenience (same as `create`, mapped to `egress`); at least one of `resources`, `egress`, `egress_add`, `egress_remove` or `idle_timeout_seconds` is required. `egress_add` / `egress_remove` behave exactly as on [`sandboxes.update`](#clientsandboxesupdateid-params-scope) and cannot be combined with `egress`. `idle_timeout_seconds` sets the idle window (`0` = no idle limit, which keeps the agent consuming quota until deleted). `resources` resizes `cpu` / `memory_gb` in place (`disk_gb` is fixed at creation) — see [Agent resources](#agent-resources) for defaults and bounds. `egress` replaces the policy in full with no restart.
+
+### `client.agents.keepalive(id, scope?)` / `rollback(id, snapshotId, scope?)`
+
+```ts
+keepalive(id: string, scope?: Scope): Promise<Agent>
+rollback(id: string, snapshotId: string, scope?: Scope): Promise<Agent>
+```
+
+`keepalive` resets the agent's idle timer so a busy agent stays running without an open connection (call it e.g. once per agent turn). `rollback` restores the agent's backing sandbox in place from one of its snapshots.
+
+### `client.agents.exposePort(id, port, params?)` / `listPorts(id, scope?)` / `revokePort(id, port, scope?)` / `getPortUrl(id, port, options?, scope?)`
+
+```ts
+exposePort(id: string, port: number, params?: ExposePortParams): Promise<SandboxPort>
+listPorts(id: string, scope?: Scope): Promise<SandboxPort[]>
+revokePort(id: string, port: number, scope?: Scope): Promise<void>
+getPortUrl(id: string, port: number, options?: GetPortUrlOptions, scope?: Scope): Promise<string>
+```
+
+Preview URLs for an agent's ports, with the same semantics as the sandbox methods: see [`sandbox.exposePort`](#sandboxexposeportport-options--listports--revokeportport).
+
+### `client.agents.audit(id, params?)`
+
+```ts
+audit(id: string, params?: AuditParams): Promise<AuditTrail>
+```
+
+One page of what the agent ran inside its sandbox, newest first — same shape and recording rules as [`sandboxes.audit`](#clientsandboxesauditid-params). The response's `sandbox_id` is the agent's backing sandbox, not the agent id.
 
 ### `client.agents.pause(id, scope?)` / `resume(id, scope?)` / `delete(id, scope?)`
 
@@ -750,7 +812,8 @@ Fetches a single agent template by id (e.g. `"ag-claude-code"`).
 | `templateId` | `string` | Agent template id it was created from. |
 | `sandboxId` | `string` | Id of the 1:1 backing sandbox. |
 | `config` | `Record<string, unknown> \| undefined` | Effective config (template defaults merged with create-time overrides). |
-| `lastCrash` | `AgentLastCrash \| null` | Most recent unexpected stop, or `null` if the agent has never had one. Historical — not cleared when the agent recovers. See [`SandboxLastCrash`](#sandboxlastcrash). |
+| `idleTimeoutSeconds` | `number \| null` | Idle window in seconds: `0` = no idle limit, `null` = the account default. |
+| `lastCrash` | `AgentLastCrash \| null` | Most recent unexpected stop, or `null` if the agent has never had one. Historical — not cleared when the agent recovers; restoring from a snapshot taken before that stop brings the files back and clears it. See [`SandboxLastCrash`](#sandboxlastcrash). |
 | `data` | `AgentData` | Raw server record. |
 
 ### Methods
@@ -761,6 +824,11 @@ Fetches a single agent template by id (e.g. `"ag-claude-code"`).
 | `refresh()` | `Promise<this>` | Re-fetches the latest server state. |
 | `update(params)` | `Promise<this>` | Updates in place (`UpdateAgentParams`), refreshing the handle. |
 | `pause()` / `resume()` | `Promise<this>` | Suspend / restart the backing sandbox. |
+| `keepalive()` | `Promise<this>` | Resets the idle timer and updates the handle. |
+| `rollback(snapshotId)` | `Promise<this>` | Rolls the agent back in place to a snapshot and updates the handle. |
+| `getUrl(options)` | `Promise<string>` | Exposes `options.port` and returns its preview URL once routable; `options` = `{ port, slug?, waitUntilReady?, timeoutMs?, pollIntervalMs? }`. |
+| `exposePort(port, options?)` / `listPorts()` / `revokePort(port)` | — | Preview-port control, as on the sandbox handle. |
+| `audit(params?)` | `Promise<AuditTrail>` | One page of the agent's audit trail; `params` = `{ from?, to?, cursor?, limit? }`. |
 | `delete()` | `Promise<void>` | Deletes the agent. |
 | `waitUntilReady(options?)` | `Promise<this>` | Polls until the status is Ready. `options` = `{ timeoutMs?; pollIntervalMs? }`. |
 | `toJSON()` | `AgentData` | The raw server record (for `JSON.stringify`). |
@@ -785,12 +853,13 @@ Returned by `create()`, `get()`, `list().items`, `pause()`, `resume()`, `rollbac
 | `id` | `string` | Sandbox UUID. |
 | `name` | `string` | Human-readable name. |
 | `phase` | `SandboxPhase` | Current lifecycle phase as last seen from the server. |
-| `replicas` | `number` | Desired replica count (`0` when paused, `1` when running). |
+| `replicas` | `number` | `1` while the sandbox is running, `0` while it is paused. |
 | `connectUrl` | `string \| null` | Runtime URL, or `null` when not yet configured. |
 | `region` | `string` | Region slug the sandbox runs in. |
 | `templateId` | `string \| null` | Catalogue template id it was created from, or `null` when unknown. |
 | `resources` | `SandboxResources \| undefined` | Compute size, or `undefined` when defaulted. |
-| `lastCrash` | `SandboxLastCrash \| null` | Most recent unexpected stop as last seen from the server, or `null` if the sandbox has never had one. `storage_reset: true` means it restarted with an empty filesystem. Historical — not cleared when the sandbox recovers. |
+| `addressable` | `boolean` | Whether the sandbox can be reached yet. Briefly `false` after create; `waitUntilReady` and runtime calls wait for it. `true` when not reported. |
+| `lastCrash` | `SandboxLastCrash \| null` | Most recent unexpected stop as last seen from the server, or `null` if the sandbox has never had one. `storage_reset: true` means it restarted with an empty filesystem. Historical — not cleared when the sandbox recovers; restoring from a snapshot taken before that stop brings the files back and clears it. |
 | `files` | `SandboxFiles` | Filesystem facade; resolves its connection lazily on first use (waits for Ready). |
 | `processes` | `SandboxProcesses` | Process-supervisor facade; resolves its connection lazily on first use (waits for Ready). |
 | `pty` | `SandboxPty` | Interactive-terminal facade; resolves its connection lazily on first use (waits for Ready). |
@@ -817,7 +886,7 @@ console.log(sandbox.phase, sandbox.replicas);
 update(params: UpdateSandboxParams): Promise<this>
 ```
 
-Delegates to `client.sandboxes.update`, updating this sandbox **in place** (`resources` and/or `egress`) and refreshing handle state; returns `this`. Same semantics and validation as the resource method — at least one of `resources` or `egress` is required, `disk_gb` is not resizable in place, and `egress` needs no restart.
+Delegates to `client.sandboxes.update`, updating this sandbox **in place** (`resources`, `egress`, or an `egress_add` / `egress_remove` edit) and refreshing handle state; returns `this`. Same semantics and validation as the resource method — at least one of `resources`, `egress`, `egress_add` or `egress_remove` is required, `egress_add` / `egress_remove` can't be combined with `egress`, `disk_gb` is not resizable in place, and `egress` needs no restart.
 
 ```ts
 await sandbox.update({ resources: { cpu: 2, memory_gb: 4 } });
@@ -830,7 +899,7 @@ await sandbox.update({ allowEgress: ["api.github.com"] });
 waitUntilReady(options?: WaitOptions): Promise<this>
 ```
 
-Polls `refresh()` until `phase === "Ready"`, then resolves with this handle.
+Polls `refresh()` until `phase === "Ready"` and the sandbox is addressable, then resolves with this handle.
 
 **Parameters (`WaitOptions`):**
 
@@ -861,8 +930,8 @@ delete(): Promise<void>
 Convenience wrappers that delegate to `client.sandboxes` using the handle's scope and update handle state in place (except `delete`, which removes the remote resource).
 
 ```ts
-await sandbox.pause();   // replicas → 0
-await sandbox.resume();  // replicas → 1, then:
+await sandbox.pause();   // stops running, keeps its state
+await sandbox.resume();  // picks up where it left off, then:
 await sandbox.waitUntilReady();
 await sandbox.delete();
 ```
@@ -900,7 +969,7 @@ snapshot(options?: CreateSnapshotParams & SnapshotWaitOptions): Promise<Snapshot
 snapshots(params?: ListSnapshotsParams): Promise<SnapshotPage>
 ```
 
-Convenience wrappers for `createSnapshot` and `listSnapshots` on this sandbox. `snapshot` takes the snapshot-create fields (`name`, `retain_for`) plus `SnapshotWaitOptions` (`{ waitUntilReady?: boolean; timeoutMs?; pollIntervalMs? }`): by default it returns the `Pending` `SnapshotData`, but with `{ waitUntilReady: true }` it blocks (via `waitForSnapshot`) and resolves only once the snapshot is `Ready`. `snapshots` is **paginated** and returns a `SnapshotPage`.
+Convenience wrappers for `createSnapshot` and `listSnapshots` on this sandbox. `snapshot` takes the snapshot-create field (`name`) plus `SnapshotWaitOptions` (`{ waitUntilReady?: boolean; timeoutMs?; pollIntervalMs? }`): by default it returns the `Pending` `SnapshotData`, but with `{ waitUntilReady: true }` it blocks (via `waitForSnapshot`) and resolves only once the snapshot is `Ready`. `snapshots` is **paginated** and returns a `SnapshotPage`.
 
 ```ts
 const pending = await sandbox.snapshot({ name: "demo-snap" });                 // Pending
@@ -932,7 +1001,7 @@ await fork.waitUntilReady();
 getUrl(options: { port: number } & GetPortUrlOptions): Promise<string>
 ```
 
-Exposes `options.port` for preview URLs and returns its public URL. The gateway route is not live the instant a port is exposed, so by default this polls the URL until it is routable before returning. `GetPortUrlOptions`: `waitUntilReady?` (default true), `timeoutMs?` (default 60000), `pollIntervalMs?` (default 2000).
+Exposes `options.port` for preview URLs and returns its public URL. A preview URL is not reachable the instant a port is exposed, so by default this polls the URL until it is routable before returning. `GetPortUrlOptions`: `slug?` (see `exposePort`), `waitUntilReady?` (default true), `timeoutMs?` (default 60000), `pollIntervalMs?` (default 2000).
 
 **Returns:** `Promise<string>` — the preview URL.
 
@@ -941,17 +1010,19 @@ await sandbox.processes.start(["busybox", "httpd", "-f", "-p", "3000"]);
 const url = await sandbox.getUrl({ port: 3000 });
 ```
 
-### `sandbox.exposePort(port)` / `listPorts()` / `revokePort(port)`
+### `sandbox.exposePort(port, options?)` / `listPorts()` / `revokePort(port)`
 
 ```ts
-exposePort(port: number): Promise<SandboxPort>
+exposePort(port: number, options?: ExposePortOptions): Promise<SandboxPort>
 listPorts(): Promise<SandboxPort[]>
 revokePort(port: number): Promise<void>
 ```
 
 Lower-level port control: `exposePort` exposes a port without the readiness wait (idempotent — re-exposing returns the same URL), `listPorts` returns the exposed ports, and `revokePort` stops serving one.
 
-`SandboxPort`: `{ port: number; preview_url: string }`.
+The preview URL needs no credential: its slug is the only thing gating it, so treat the URL as a secret. `ExposePortOptions.slug` (exactly 8 lowercase letters and digits) chooses the slug; omit it for a random, unguessable one. Exposing an already-exposed port with a different slug replaces it and breaks the previous URL — that is how you rotate a leaked URL. A slug you choose is a name, not a secret.
+
+`SandboxPort`: `{ port: number; slug: string; preview_url: string }`. The matching resource methods are `client.sandboxes.exposePort(id, port, params?)`, `listPorts(id, scope?)`, `revokePort(id, port, scope?)`, and `getPortUrl(id, port, options?, scope?)`. On the resource method `ExposePortParams` = `Scope & ExposePortOptions`, so the slug travels alongside an optional scope override: `exposePort(id, 3000, { slug, projectId })`, and a call that passes only a scope as its third argument behaves as it always has.
 
 ```ts
 const ports = await sandbox.listPorts();
@@ -1067,7 +1138,7 @@ Access via the `sandbox.files` getter (a `SandboxFiles`). The first call resolve
 write(path: string, content: string | Uint8Array, options?: WriteFileOptions): Promise<WriteFileResult>
 ```
 
-Writes string or binary content to a path in the sandbox.
+Writes string or binary content to a path in the sandbox. Content larger than 1 MiB — more than the sandbox accepts in one request — is sent with [`upload`](#sandboxfilesuploadpath-data-options) automatically; smaller content is one request.
 
 **Parameters:** `path: string`; `content: string | Uint8Array`; `options.cwd?: string`; `options.signal?: AbortSignal`.
 
@@ -1076,6 +1147,39 @@ Writes string or binary content to a path in the sandbox.
 ```ts
 const info = await sandbox.files.write("src/main.py", 'print("hello")\n');
 console.log(`Wrote ${info.bytesWritten} bytes`);
+```
+
+### `sandbox.files.upload(path, data, options?)`
+
+```ts
+upload(path: string, data: string | Uint8Array | ArrayBuffer | Blob, options?: UploadOptions): Promise<WriteFileResult>
+```
+
+Uploads data in chunks over the resumable (tus) upload, so a file of any size can be written. The sandbox's reported offset is authoritative: a chunk that fails in transit, or is refused with `409` or a transient `5xx`, resumes from the last byte the sandbox received; five such failures in a row without progress end the upload. Any failure after the upload starts cancels it before the error is thrown. Empty data, or a sandbox without resumable uploads, is written in a single request.
+
+`UploadOptions`: `chunkSize?: number` (64 KiB to 1 MiB, default 1 MiB — the most one request can carry), `cwd?: string`, `onProgress?: (bytesSent: number, totalBytes: number) => void` (called after each accepted chunk), `signal?: AbortSignal`.
+
+**Raises:** `NeevError` for an out-of-range `chunkSize` (before any request) or an upload that stops advancing; typed `APIError` subclasses for a refused chunk — an `InternalServerError` on the final chunk means the file could not be written.
+
+```ts
+await sandbox.files.upload("data.bin", blob, {
+  chunkSize: 512 << 10,
+  onProgress: (sent, total) => console.log(`${sent}/${total}`),
+});
+```
+
+### `sandbox.files.uploadFile(localPath, remotePath, options?)` / `downloadFile(remotePath, localPath, options?)`
+
+```ts
+uploadFile(localPath: string, remotePath: string, options?: UploadOptions): Promise<WriteFileResult>
+downloadFile(remotePath: string, localPath: string, options?: DownloadFileOptions): Promise<DownloadFileResult>
+```
+
+Node only. `uploadFile` uploads a local file as `upload` does, reading it from disk one chunk at a time so it is never held in memory whole. `downloadFile` streams a sandbox file to `localPath` through a temporary file in the same directory, renamed into place only once the whole file has arrived, so a failed download leaves nothing behind. `DownloadFileOptions` = `{ cwd?, signal? }`; `DownloadFileResult` = `{ bytesWritten: number }`.
+
+```ts
+await sandbox.files.uploadFile("./dataset.parquet", "data/dataset.parquet");
+const { bytesWritten } = await sandbox.files.downloadFile("out/report.pdf", "./report.pdf");
 ```
 
 ### `sandbox.files.read(path, options?)` / `readText(path, options?)`
@@ -1433,18 +1537,24 @@ Alias for the generated `Sandbox` schema — the full lifecycle sandbox record w
 | `project_id` | `string` | yes |
 | `name` | `string` | yes |
 | `region` | `string` | yes |
+| `image` | `string` | yes |
+| `command` | `string[]` | no |
 | `phase` | `SandboxPhase` | yes |
-| `replicas` | `number` (0–1) | yes |
+| `addressable` | `boolean` | no — briefly `false` right after create; a runtime call made before it turns `true` is refused. Absent reads as `true`. |
+| `replicas` | `number` | yes — `1` while running, `0` while paused |
 | `connect_url` | `string \| null` | no |
-| `sandbox_template_id` | `string` | no |
+| `sandbox_template_id` | `string \| null` | no |
+| `created_by` | `string \| null` | no |
 | `resources` | `SandboxResources` | no |
-| `env` | `EnvVar[]` | no |
-| `egress` | `SandboxEgressConfig` | no |
+| `egress` | `SandboxEgressConfig \| null` | no |
 | `last_crash` | `SandboxLastCrash \| null` | no |
+| `idle_timeout_seconds` / `max_lifetime_seconds` / `paused_retention_seconds` | `number \| null` | no |
+| `on_idle` | `OnIdleAction` | no |
+| `idle_expires_at` / `hard_expires_at` | `string \| null` | no |
 | `created_at` | `string` | yes |
 | `updated_at` | `string` | yes |
 
-> The handle reads `id`, `name`, `phase`, `replicas`, `connect_url`, `region`, `sandbox_template_id`, `resources`, and `last_crash` from this shape.
+> The handle reads `id`, `name`, `phase`, `addressable`, `replicas`, `connect_url`, `region`, `sandbox_template_id`, `resources`, and `last_crash` from this shape.
 
 ### `SandboxLastCrash`
 
@@ -1458,7 +1568,7 @@ Alias for the generated `SandboxLastCrash` — the sandbox's most recent unexpec
 
 `storage_reset: true` means the sandbox restarted with an empty filesystem: **files under `/workspace`, and anything installed since create, are gone.** Re-upload and reinstall before trusting the sandbox again. `false` means it restarted with its files intact.
 
-The record is **historical**: it is not cleared when the sandbox recovers, is resumed, or is rolled back, so a non-`null` value does not mean the sandbox is broken now. Compare `at` against the point you last trusted the filesystem:
+The record is **historical**: it is not cleared when the sandbox recovers or is resumed, so a non-`null` value does not mean the sandbox is broken now. Rolling back to a snapshot taken **before** a stop that reset storage brings those files back and clears `last_crash` once the rollback completes. Compare `at` against the point you last trusted the filesystem:
 
 ```ts
 const sandbox = await neev.sandboxes.get(id);
@@ -1498,9 +1608,9 @@ An agent runs on a 1:1 backing sandbox, so **agent resources use the same `Sandb
 
 `agents.update` resizes `cpu` / `memory_gb` in place on the running sandbox; `disk_gb` cannot be changed after creation.
 
-### `SandboxEgressConfig` / `SandboxEgressRule`
+### `SandboxEgressConfig` / `SandboxEgressRule` / `SandboxEgressRules`
 
-`SandboxEgressConfig` — network egress policy (mode plus optional allow rules). `SandboxEgressRule` — a single egress allow rule (host plus optional ports/protocol). Shapes per the generated schema.
+`SandboxEgressConfig` — network egress policy: `mode` (`"deny_all"` or `"allow_list"`), optional `allow` rules, and `allow_internet` (allows all outbound traffic, `0.0.0.0/0` and `::/0`; applies only in `allow_list` mode). `SandboxEgressRule` — a single allow rule: `host` (FQDN or CIDR), optional `ports` (omit to allow every port) and `protocol` (`"TCP"` or `"UDP"`; defaults to TCP when `ports` is set). Both `ports` and `protocol` are enforced. `SandboxEgressRules` — `{ allow: SandboxEgressRule[] }` on its own, the shape of `egress_add` / `egress_remove` on `update`.
 
 ### `EgressConvenience`
 
@@ -1512,8 +1622,9 @@ The generated `CreateAgentRequest` plus the SDK-only `EgressConvenience` fields.
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
-| `name` | `string` (DNS-1123 label) | yes |
+| `name` | `string` (lowercase letters, digits and `-`; not formatted as a UUID) | yes |
 | `agent_template` | `string` (catalogue name) | yes |
+| `idle_timeout_seconds` | `number` | no — omit for the account default; `0` = no idle limit (the agent holds quota until deleted) |
 | `region` | `string` | no |
 | `env` | `EnvVar[]` | no |
 | `config` | `Record<string, unknown>` | no (template-specific overrides) |
@@ -1524,29 +1635,32 @@ The generated `CreateAgentRequest` plus the SDK-only `EgressConvenience` fields.
 
 ### `UpdateAgentParams`
 
-The generated `UpdateAgentRequest` plus the SDK-only `EgressConvenience` fields — the body for `agents.update`. At least one of `resources` or `egress` must be provided (the `allowInternet` / `allowEgress` convenience counts, since it produces `egress`).
+The generated `UpdateAgentRequest` plus the SDK-only `EgressConvenience` fields — the body for `agents.update`. At least one of `resources`, `egress`, `egress_add`, `egress_remove` or `idle_timeout_seconds` must be provided (the `allowInternet` / `allowEgress` convenience counts, since it produces `egress`); `egress_add` / `egress_remove` can't be combined with `egress` or the convenience fields. Either mistake throws `NeevError` before any request.
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
-| `egress` | `SandboxEgressConfig` | no |
+| `egress` | `SandboxEgressConfig` | no — replaces the policy in full |
+| `egress_add` / `egress_remove` | `SandboxEgressRules` | no — edit the allow-list in place; removals apply first |
+| `idle_timeout_seconds` | `number` | no — `0` removes the idle limit |
 | `resources` | `SandboxResources` | no |
 | `allowInternet` | `boolean` (convenience) | no |
 | `allowEgress` | `string[]` (convenience) | no |
 
 ### `UpdateSandboxParams`
 
-The generated `UpdateSandboxRequest` plus the SDK-only `EgressConvenience` fields — the body for `sandboxes.update`. At least one of `resources` or `egress` must be provided. `disk_gb` inside `resources` is not resizable in place and is rejected by the server if changed. The `allowInternet` / `allowEgress` convenience maps to `egress` byte-identically to `create`.
+The generated `UpdateSandboxRequest` plus the SDK-only `EgressConvenience` fields — the body for `sandboxes.update`. At least one of `resources`, `egress`, `egress_add` or `egress_remove` must be provided, and `egress_add` / `egress_remove` can't be combined with `egress` or the convenience fields — either mistake throws `NeevError` before any request. `disk_gb` inside `resources` is not resizable in place and is rejected by the server if changed. The `allowInternet` / `allowEgress` convenience maps to `egress` byte-identically to `create`.
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
 | `resources` | `SandboxResources` | no |
-| `egress` | `SandboxEgressConfig` | no |
+| `egress` | `SandboxEgressConfig` | no — replaces the policy in full |
+| `egress_add` / `egress_remove` | `SandboxEgressRules` | no — edit the allow-list in place; removals apply first, and `egress_add` needs `allow_list` mode |
 | `allowInternet` | `boolean` (convenience) | no |
 | `allowEgress` | `string[]` (convenience) | no |
 
 ### `AgentData`
 
-Alias for the generated `Agent` schema — the full agent record wrapped by the `Agent` handle: `id`, `org_id`, `project_id`, `name`, `agent_template_id`, `sandbox_id` (the 1:1 backing sandbox), `drive_mode`, `status` (`AgentStatus`), `config?`, `metrics_url`, `web_ui_url?`, `gateway_token?`, `created_at`, `updated_at`.
+Alias for the generated `Agent` schema — the full agent record wrapped by the `Agent` handle: `id`, `org_id`, `project_id`, `name`, `agent_template_id`, `sandbox_id` (the 1:1 backing sandbox), `drive_mode`, `status` (`AgentStatus`), `config?`, `idle_timeout_seconds?` (`0` = no idle limit, `null` = account default), `egress?`, `last_crash?` (`AgentLastCrash`), `metrics_url`, `web_ui_url?`, `gateway_token?`, `created_at`, `updated_at`.
 
 ### `AgentStatus`
 
@@ -1582,7 +1696,7 @@ Paginated list payload returned by `sandboxes.list` (before the SDK wraps items 
 
 ### `SandboxTemplate`
 
-A platform-managed sandbox runtime template, referenced as `sandbox_template_id` at create time. Typically includes `id`, `name`, `description`, `category` (`SandboxTemplateCategory`), `status` (`SandboxTemplateStatus`), and timestamps. Shape per the generated schema.
+A platform-managed sandbox runtime template, referenced as `sandbox_template_id` at create time. Includes `id`, `name`, `description`, `icon` (a display icon such as an SVG document, or `null`), `category` (`SandboxTemplateCategory`), `status` (`SandboxTemplateStatus`), and timestamps. Shape per the generated schema.
 
 ### `SandboxTemplateCategory`
 
@@ -1603,6 +1717,35 @@ Paginated list payload returned by `templates.list`.
 | `page` | `number` |
 | `limit` | `number` |
 
+### `AuditTrail` / `AuditRecord`
+
+`AuditTrail` (the generated `AuditTrailResponse`) is one page of an audit trail, returned by `sandboxes.audit` / `agents.audit` and the handle `audit()` methods.
+
+| Field | Type | Required |
+| ----- | ---- | -------- |
+| `sandbox_id` | `string` | yes — for an agent trail, the agent's backing sandbox |
+| `from` / `to` | `string` (RFC3339) | yes |
+| `retention_days` | `number` | yes |
+| `window_truncated` | `boolean` | yes — `from` reached further back than the available trail |
+| `next_cursor` | `string` | no — absent when the window is exhausted |
+| `records` | `AuditRecord[]` | yes |
+
+`AuditRecord` fields:
+
+| Field | Type | Required |
+| ----- | ---- | -------- |
+| `at` | `string` | yes |
+| `id` | `string` | yes |
+| `tool` | `string` | yes — e.g. `pty_command`, `ssh`, `exec`, `process.start`, `fs.read` |
+| `command` | `string` | no — program name only, never arguments; `[redacted]` when unknown, `[Ctrl-C]`-prefixed when interrupted |
+| `target` | `string` | no — the path or process acted on; a move reads `source -> destination` |
+| `outcome` | `"success" \| "error"` | yes |
+| `reason_code` | `string` | no — `ok`, `permission_denied`, `internal` |
+| `request_id` | `string` | no |
+| `caller_source` | `string` | no — the credential, not a person |
+| `pty_id` / `seq` | `string` / `number` | no — only on `pty_command` |
+| `duration_ms` | `number` | no |
+
 ### `SnapshotData`
 
 Alias for the generated `Snapshot` schema — a snapshot captured from a sandbox's filesystem.
@@ -1615,11 +1758,16 @@ Alias for the generated `Snapshot` schema — a snapshot captured from a sandbox
 | `project_id` | `string` | yes |
 | `name` | `string` | no |
 | `status` | `SnapshotStatus` | yes |
-| `include_memory` | `boolean` | yes (always `false` from this SDK) |
+| `snapshot_type` | `SnapshotType` | yes |
+| `source_region` | `string` | yes |
+| `size_bytes` | `number \| null` | no |
+| `error_message` | `string \| null` | no |
+| `expires_at` | `string \| null` | no |
+| `restorability` | `SnapshotRestorability` | yes |
 | `created_at` | `string` | yes |
 | `updated_at` | `string` | yes |
 
-> Additional fields (size, source region, expiry, error message) may be present per the generated schema.
+> Additional fields (`created_by`, `sandbox_format_version`, `build_descriptor`) are present per the generated schema.
 
 ### `SnapshotStatus`
 
@@ -1627,13 +1775,11 @@ Lifecycle status of a snapshot: `"Pending" | "Running" | "Ready" | "Failed"`. A 
 
 ### `CreateSnapshotParams`
 
-Caller-facing options for `sandbox.snapshot` / `sandboxes.createSnapshot`. Defined as the generated `CreateSnapshotRequest` with `include_memory` omitted — the SDK always sets `include_memory: false` on the wire, so callers cannot request memory capture.
+Caller-facing options for `sandbox.snapshot` / `sandboxes.createSnapshot`, the generated `CreateSnapshotRequest`.
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
-| `name` | `string` | no |
-
-> Other non-`include_memory` fields of `CreateSnapshotRequest` (e.g. retention) are accepted per the generated schema.
+| `name` | `string` | no — a DNS-style name (lowercase letters, digits and `-`, starting with a letter, max 63 characters) so it can name sandboxes forked or restored from it. |
 
 ### `SnapshotListResponse`
 
@@ -1738,7 +1884,7 @@ All SDK errors inherit from `NeevError`. Import from `@neevcloud/sdk`. Branch wi
 | `NeevError` | Base class; thrown directly for client-side problems (missing API key, missing scope, invalid exec args, readiness timeout, `Paused` sandbox, exec stream ending without an exit). |
 | `APIConnectionError` | Request never produced a response — DNS failure, connection reset, caller abort. |
 | `APITimeoutError` | Request aborted because it exceeded the configured timeout (subclass of `APIConnectionError`). |
-| `APIError` | Base for any non-2xx HTTP response. Carries `status`, `code`, `details`, `requestId`. |
+| `APIError` | Base for any non-2xx HTTP response. Carries `status`, `code`, `scope`, `details`, `requestId`. |
 | `BadRequestError` | HTTP 400 |
 | `AuthenticationError` | HTTP 401 |
 | `PermissionDeniedError` | HTTP 403 |
@@ -1748,10 +1894,13 @@ All SDK errors inherit from `NeevError`. Import from `@neevcloud/sdk`. Branch wi
 | `RateLimitError` | HTTP 429 |
 | `DeadlineExceededError` | HTTP 504 |
 | `InternalServerError` | HTTP 5xx (default for any 500+ status not matched above) |
+| `ServiceUnavailableError` | HTTP 503 — temporarily unavailable; retry shortly (subclass of `InternalServerError`) |
 
-`APIError` properties: `status: number`, `code?: string` (from the body's `error` field), `details?: string` (from the body's `details` field), `requestId?: string` (from the `x-request-id` header).
+`APIError` properties: `status: number`, `code?: ErrorCode | string` (the body's machine-readable `code` — branch on this rather than on the message text, which may be reworded), `scope?: string` (which limit a quota refusal hit: `organization` or `project`), `details?: string` (from the body's `details` field), `requestId?: string` (from the `x-request-id` header). The error's `message` is composed from the status, `code`, and the body's human-readable `message`.
 
-Runtime exec/file errors are mapped to the same hierarchy via reason codes: `permission_denied` → 403, `invalid_argument` → 400, `not_found` → 404, `failed_precondition` → 412, `resource_exhausted` → 429, `deadline_exceeded` → 504, `unavailable` → 503, `internal` → 500.
+`ErrorCode` is one of `unauthorized`, `forbidden`, `not_found`, `method_not_allowed`, `unsupported_media_type`, `validation_error`, `bad_request`, `conflict`, `too_early`, `service_unavailable`, `internal_server_error`, `phone_verification_required`, `kyc_verification_required`, `kyc_verification_required_by_owner`, `sandbox_quota_exceeded`, `agent_quota_exceeded`.
+
+Runtime exec/file errors are mapped to the same hierarchy via reason codes, which they carry as `code`: `permission_denied` → 403, `invalid_argument` → 400, `not_found` → 404, `failed_precondition` → 412, `resource_exhausted` → 429, `deadline_exceeded` → 504, `unavailable` → 503, `internal` → 500.
 
 ```ts
 import { Neev, NotFoundError, AuthenticationError, NeevError } from "@neevcloud/sdk";
@@ -1845,14 +1994,19 @@ Compact reviewer index.
 | `Sandboxes.updateTimeout` | method | `Promise<Sandbox>` |
 | `Sandboxes.delete` | method | `Promise<void>` |
 | `Sandboxes.metrics` | method | `Promise<SandboxMetricsResponse>` |
-| `Sandboxes.createSnapshot` | method | `Promise<SnapshotData>` (forces `include_memory: false`) |
+| `Sandboxes.audit` | method | `Promise<AuditTrail>` (one page) |
+| `Sandboxes.exposePort` | method | `Promise<SandboxPort>`; `ExposePortParams` (slug + scope). |
+| `Sandboxes.listPorts` / `revokePort` | methods | `Promise<SandboxPort[]>` / `Promise<void>` |
+| `Sandboxes.getPortUrl` | method | `Promise<string>` (waits until routable by default) |
+| `Sandboxes.createSnapshot` | method | `Promise<SnapshotData>` |
+| `Sandboxes.waitForSnapshot` | method | `Promise<SnapshotData>` (resolves once `Ready`) |
 | `Sandboxes.listSnapshots` | method | `Promise<SnapshotPage>` (paginated) |
 | `Sandboxes.getSnapshot` | method | `Promise<SnapshotData>` |
 | `Sandboxes.deleteSnapshot` | method | `Promise<void>` |
 | `Sandboxes.rollback` | method | `Promise<Sandbox>` (in place) |
 | `Sandboxes.fork` | method | `Promise<Sandbox>` (new sandbox from current live state) |
 | `Sandboxes.connect` | method | `SandboxConnection` (sync) |
-| `ListSandboxesParams`, `SandboxPage`, `ListSnapshotsParams`, `SnapshotPage`, `MetricsQuery`, `MetricsParams` | types | Params/return shapes. |
+| `ListSandboxesParams`, `SandboxPage`, `ListSnapshotsParams`, `SnapshotPage`, `MetricsQuery`, `MetricsParams`, `AuditQuery`, `AuditParams`, `WaitForSnapshotParams`, `ExposePortOptions`, `ExposePortParams`, `GetPortUrlOptions` | types | Params/return shapes. |
 
 ### Templates resource (`resources/templates.ts`)
 
@@ -1871,6 +2025,12 @@ Compact reviewer index.
 | `Agents.get` | method | `Promise<Agent>` |
 | `Agents.update` | method | `Promise<Agent>` (in place) |
 | `Agents.pause` / `resume` | methods | `Promise<Agent>` |
+| `Agents.keepalive` | method | `Promise<Agent>` |
+| `Agents.rollback` | method | `Promise<Agent>` (in place) |
+| `Agents.exposePort` | method | `Promise<SandboxPort>`; `ExposePortParams` (slug + scope). |
+| `Agents.listPorts` / `revokePort` | methods | `Promise<SandboxPort[]>` / `Promise<void>` |
+| `Agents.getPortUrl` | method | `Promise<string>` |
+| `Agents.audit` | method | `Promise<AuditTrail>` (one page) |
 | `Agents.delete` | method | `Promise<void>` |
 | `ListAgentsParams`, `AgentPage` | types | Params/return shapes. |
 
@@ -1886,11 +2046,15 @@ Compact reviewer index.
 
 | Symbol | Kind | Notes |
 | ------ | ---- | ----- |
-| `id`, `name`, `status`, `templateId`, `sandboxId`, `config`, `lastCrash`, `data` | getters | `config` is `Record<string, unknown> \| undefined`; `lastCrash` is `AgentLastCrash \| null`. |
+| `id`, `name`, `status`, `templateId`, `sandboxId`, `config`, `idleTimeoutSeconds`, `lastCrash`, `data` | getters | `config` is `Record<string, unknown> \| undefined`; `idleTimeoutSeconds` is `number \| null`; `lastCrash` is `AgentLastCrash \| null`. |
 | `sandbox` | method | `Promise<Sandbox>` (backing sandbox for runtime access). |
 | `refresh` | method | `Promise<this>` |
 | `update` | method | `Promise<this>`; `UpdateAgentParams`. |
-| `pause` / `resume` | methods | `Promise<this>` |
+| `pause` / `resume` / `keepalive` | methods | `Promise<this>` |
+| `rollback` | method | `Promise<this>` (in place) |
+| `getUrl` | method | `Promise<string>` (preview URL, waits until routable) |
+| `exposePort` / `listPorts` / `revokePort` | methods | `Promise<SandboxPort>` / `Promise<SandboxPort[]>` / `Promise<void>` |
+| `audit` | method | `Promise<AuditTrail>` |
 | `delete` | method | `Promise<void>` |
 | `waitUntilReady` | method | `Promise<this>`; `AgentWaitOptions`. |
 | `toJSON` | method | `AgentData`. |
@@ -1899,7 +2063,7 @@ Compact reviewer index.
 
 | Symbol | Kind | Notes |
 | ------ | ---- | ----- |
-| `id`, `name`, `phase`, `replicas`, `connectUrl`, `region`, `templateId`, `resources`, `lastCrash`, `data` | getters | `connectUrl` is `string \| null`; `lastCrash` is `SandboxLastCrash \| null`. |
+| `id`, `name`, `phase`, `replicas`, `connectUrl`, `addressable`, `region`, `templateId`, `resources`, `lastCrash`, `data` | getters | `connectUrl` is `string \| null`; `addressable` is `boolean`; `lastCrash` is `SandboxLastCrash \| null`. |
 | `files` | getter | `SandboxFiles` (lazy connection). |
 | `processes` | getter | `SandboxProcesses` (lazy connection). |
 | `refresh` | method | `Promise<this>` |
@@ -1910,6 +2074,9 @@ Compact reviewer index.
 | `updateTimeout` | method | `Promise<this>`; `UpdateTimeoutParams`. |
 | `delete` | method | `Promise<void>` |
 | `metrics` | method | `Promise<SandboxMetricsResponse>` |
+| `audit` | method | `Promise<AuditTrail>` |
+| `getUrl` | method | `Promise<string>` (preview URL, waits until routable) |
+| `exposePort` / `listPorts` / `revokePort` | methods | `Promise<SandboxPort>` / `Promise<SandboxPort[]>` / `Promise<void>` |
 | `snapshot` | method | `Promise<SnapshotData>` |
 | `snapshots` | method | `Promise<SnapshotPage>` (paginated) |
 | `rollback` | method | `Promise<this>` (in place) |
@@ -1926,11 +2093,13 @@ Compact reviewer index.
 | `SandboxConnection` | class | `files`, `processes`, `exec`, `execStream`, `request`. |
 | `SandboxConnection.exec` | method | `Promise<ExecResult>` |
 | `SandboxConnection.execStream` | method | `AsyncGenerator<ExecStreamEvent>` |
-| `SandboxFiles.write` | method | `Promise<WriteFileResult>` (`bytesWritten`). |
+| `SandboxFiles.write` | method | `Promise<WriteFileResult>` (`bytesWritten`); over 1 MiB goes through `upload`. |
+| `SandboxFiles.upload` | method | `Promise<WriteFileResult>` (resumable chunks). |
+| `SandboxFiles.uploadFile` / `downloadFile` | methods | `Promise<WriteFileResult>` / `Promise<DownloadFileResult>` (Node only). |
 | `SandboxFiles.read` | method | `Promise<Uint8Array>` |
 | `SandboxFiles.readText` | method | `Promise<string>` |
 | `SandboxFiles.list` | method | `Promise<FileEntry[]>` |
-| `ExecOptions`, `ExecResult`, `ExecStreamEvent`, `FileEntry`, `WriteFileOptions`, `ReadFileOptions`, `ListFilesOptions`, `WriteFileResult` | types | Runtime shapes. |
+| `ExecOptions`, `ExecResult`, `ExecStreamEvent`, `FileEntry`, `WriteFileOptions`, `ReadFileOptions`, `ListFilesOptions`, `WriteFileResult`, `UploadOptions`, `DownloadFileOptions`, `DownloadFileResult` | types | Runtime shapes. |
 
 ### Processes (`processes.ts`)
 

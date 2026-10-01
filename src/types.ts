@@ -12,7 +12,8 @@ export type SandboxPhase = components["schemas"]["SandboxPhase"];
 // The most recent unexpected stop of a sandbox, or null if it has never had one.
 // Historical — not cleared when the sandbox recovers, so read `at` before acting.
 // `storage_reset` true means the sandbox restarted empty: files under /workspace,
-// and anything installed since create, are gone.
+// and anything installed since create, are gone. Restoring from a snapshot taken
+// before that stop brings the files back and clears it once the restore completes.
 export type SandboxLastCrash = components["schemas"]["SandboxLastCrash"];
 
 // SDK-only convenience fields on sandbox and agent create that translate into the
@@ -54,6 +55,10 @@ export type SandboxEgressConfig = components["schemas"]["SandboxEgressConfig"];
 // A single egress allow rule (host plus optional ports/protocol).
 export type SandboxEgressRule = components["schemas"]["SandboxEgressRule"];
 
+// A set of allow rules on their own, used by `egress_add` / `egress_remove` on
+// update to edit the allow-list in place without restating the whole policy.
+export type SandboxEgressRules = components["schemas"]["SandboxEgressRules"];
+
 // A single environment variable passed to a sandbox.
 export type EnvVar = components["schemas"]["EnvVar"];
 
@@ -66,8 +71,16 @@ export type SandboxMetricsResponse = components["schemas"]["SandboxMetricsRespon
 // One named time series within a metrics response.
 export type MetricSeries = components["schemas"]["MetricSeries"];
 
-// A port exposed for credential-free preview URLs, with its public URL.
+// A port exposed for credential-free preview URLs, with its slug and public URL.
 export type SandboxPort = components["schemas"]["SandboxPort"];
+
+// One operation recorded in a sandbox's audit trail: the program that ran (never
+// its arguments) or the file/process it acted on, and how it ended.
+export type AuditRecord = components["schemas"]["AuditRecord"];
+
+// One page of a sandbox's audit trail, newest first. Pass `next_cursor` as
+// `cursor` to read the next page; it is absent when the window is exhausted.
+export type AuditTrail = components["schemas"]["AuditTrailResponse"];
 
 // A platform-managed sandbox runtime template, referenced as
 // `sandbox_template_id` at create time.
@@ -108,13 +121,17 @@ export type AgentLastCrash = components["schemas"]["AgentLastCrash"];
 // `agent_template` name; the server provisions the backing sandbox from it.
 export type CreateAgentParams = components["schemas"]["CreateAgentRequest"] & EgressConvenience;
 
-// Partial in-place update accepted by `agents.update` (egress and/or resources).
-// Carries the same `allowInternet` / `allowEgress` convenience as create.
+// Partial in-place update accepted by `agents.update` (resources, egress and/or
+// idle window). `egress_add` / `egress_remove` edit the allow-list in place and
+// cannot be combined with `egress`. Carries the same `allowInternet` /
+// `allowEgress` convenience as create.
 export type UpdateAgentParams = components["schemas"]["UpdateAgentRequest"] & EgressConvenience;
 
 // Partial in-place update accepted by `sandboxes.update` (egress and/or resources).
-// At least one of `resources` or `egress` must be provided; `disk_gb` is not
-// resizable in place. Carries the same egress convenience as create.
+// At least one of `resources`, `egress`, `egress_add` or `egress_remove` must be
+// provided; `egress` replaces the policy in full and cannot be combined with
+// `egress_add` / `egress_remove`. `disk_gb` is not resizable in place. Carries the
+// same egress convenience as create.
 export type UpdateSandboxParams = components["schemas"]["UpdateSandboxRequest"] & EgressConvenience;
 
 // Paginated list payload returned by `agents.list`.

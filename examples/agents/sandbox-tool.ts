@@ -61,7 +61,7 @@ export class SandboxCodeExecutor {
   }
 
   // Writes the given Python source into the sandbox and runs it with python3.
-  // Paths are workspace-relative (the sandbox rejects absolute paths). Requires a
+  // Paths are relative to the workspace (absolute paths must stay inside it). Requires a
   // python-capable template; the minimal catalogue images do not ship python3.
   async runPython(code: string): Promise<RunResult> {
     const sandbox = await this.ensure();

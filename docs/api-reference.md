@@ -13,6 +13,10 @@ Task-oriented API lists and copy-paste snippets for the public `@neevcloud/sdk` 
 - [Lifecycle](#lifecycle)
 - [Snapshots](#snapshots)
 
+**Agents** — client-level API
+
+- [Agents](#agents) — `neev.agents`, `neev.agentTemplates`, and the `Agent` handle
+
 **Working with a sandbox**
 
 - [Sandbox handle](#sandbox-handle)
@@ -28,7 +32,7 @@ Task-oriented API lists and copy-paste snippets for the public `@neevcloud/sdk` 
 
 ## Client
 
-Construct one `Neev` instance and reuse it; the resource namespaces (`sandboxes`, `templates`, `raw`) hang off the instance. Every config field is optional and falls back to a `NEEV_*` environment variable.
+Construct one `Neev` instance and reuse it; the resource namespaces (`sandboxes`, `templates`, `agents`, `agentTemplates`, `raw`) hang off the instance. Every config field is optional and falls back to a `NEEV_*` environment variable.
 
 ```ts
 import { Neev } from "@neevcloud/sdk";
@@ -62,7 +66,7 @@ There is no `close()` — the client holds no persistent connections. Most metho
 
 ## Lifecycle
 
-Lifecycle APIs manage sandboxes and templates via the platform gateway.
+Lifecycle APIs manage sandboxes and templates. Agents have their own section: [Agents](#agents).
 
 ### `neev.sandboxes`
 
@@ -72,14 +76,19 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | ------ | ------- | ------- |
 | `create(params, scope?)` | `Promise<Sandbox>` | Creates a sandbox in the resolved org/project. The handle may still be `Pending` — call `waitUntilReady`. |
 | `list(params?)` | `Promise<SandboxPage>` | Lists sandboxes with pagination; items are wrapped handles. |
-| `get(id, scope?)` | `Promise<Sandbox>` | Fetches the current record for a sandbox by id. |
-| `update(id, params, scope?)` | `Promise<Sandbox>` | Updates a running sandbox **in place** — `resources` (cpu/memory) and/or `egress`. At least one is required. |
-| `pause(id, scope?)` | `Promise<Sandbox>` | Pauses a sandbox (scales to zero replicas). |
-| `resume(id, scope?)` | `Promise<Sandbox>` | Resumes a paused sandbox (scales to one replica). |
+| `get(id, scope?)` | `Promise<Sandbox>` | Fetches the current record for a sandbox by id or by name. Every method that takes an `id` accepts a name too. |
+| `update(id, params, scope?)` | `Promise<Sandbox>` | Updates a running sandbox **in place** — `resources` (cpu/memory), `egress`, or an in-place `egress_add` / `egress_remove` edit. At least one is required. |
+| `pause(id, scope?)` | `Promise<Sandbox>` | Pauses a sandbox: it stops running and keeps its state. |
+| `resume(id, scope?)` | `Promise<Sandbox>` | Resumes a paused sandbox from its kept state. |
 | `keepalive(id, scope?)` | `Promise<Sandbox>` | Resets the idle timer, holding a busy sandbox alive without an open connection. |
 | `updateTimeout(id, windows, scope?)` | `Promise<Sandbox>` | Changes the idle/lifetime windows (seconds); only the fields passed change. |
 | `delete(id, scope?)` | `Promise<void>` | Permanently deletes a sandbox. |
 | `metrics(id, params?)` | `Promise<SandboxMetricsResponse>` | Reads the live, tenant-scoped metric series over an optional time window. |
+| `audit(id, params?)` | `Promise<AuditTrail>` | Reads one page of the audit trail, newest first; `params` is `{ from?, to?, cursor?, limit? }`. |
+| `exposePort(id, port, params?)` | `Promise<SandboxPort>` | Exposes a port for preview URLs; `params.slug` chooses or rotates the URL's slug. |
+| `listPorts(id, scope?)` | `Promise<SandboxPort[]>` | Lists the exposed preview ports. |
+| `revokePort(id, port, scope?)` | `Promise<void>` | Stops serving a preview port. |
+| `getPortUrl(id, port, options?, scope?)` | `Promise<string>` | Exposes a port and returns its preview URL once routable; `options` = `{ slug?, waitUntilReady?, timeoutMs?, pollIntervalMs? }`. |
 | `createSnapshot(id, params?, scope?)` | `Promise<SnapshotData>` | Captures a filesystem snapshot; returns immediately with `status: "Pending"`. |
 | `listSnapshots(id, params?)` | `Promise<SnapshotPage>` | Lists a sandbox's snapshots. **Paginated** — accepts `{ page, limit }`, returns `{ items, total, page, limit }`. |
 | `getSnapshot(snapshotId, scope?)` | `Promise<SnapshotData>` | Fetches snapshot metadata by project-scoped id. |
@@ -105,7 +114,7 @@ await neev.sandboxes.create({ image: "docker.io/library/python:3.12-slim", comma
 await neev.sandboxes.create({ lifecycle: { idle_timeout_seconds: 600, max_lifetime_seconds: 7200, on_idle: "pause" } });
 ```
 
-**`update(id, params, scope?)`** — updates a **running** sandbox in place and returns the updated handle; the id, name, and preview URLs are unchanged. `params` is `UpdateSandboxParams`: `resources` (cpu/memory, resized in place) and/or `egress` (replaces the policy in full; takes effect for new connections with **no restart**). It also accepts the same `allowInternet` / `allowEgress` convenience as `create` (byte-identical `egress` JSON). **At least one of `resources` or `egress` is required** — an empty patch throws `NeevError` before any request is sent. `disk_gb` is **not** resizable in place; if you change it the server rejects the patch (surfaced as a typed error, not silently dropped). Passing `resources` and `egress` together sends a single `PATCH` and both take effect.
+**`update(id, params, scope?)`** — updates a **running** sandbox in place and returns the updated handle; the id, name, and preview URLs are unchanged. `params` is `UpdateSandboxParams`: `resources` (cpu/memory, resized in place) and/or `egress` (replaces the policy in full; takes effect for new connections with **no restart**). It also accepts the same `allowInternet` / `allowEgress` convenience as `create` (byte-identical `egress` JSON). `egress_add` / `egress_remove` (each `{ allow: SandboxEgressRule[] }`) edit the existing allow-list in place instead — removals apply first, so one call can swap a host; they can't be combined with `egress` (or the convenience fields) and `egress_add` needs the sandbox to already be in `allow_list` mode. **At least one of `resources`, `egress`, `egress_add` or `egress_remove` is required** — an empty or conflicting patch throws `NeevError` before any request is sent. `disk_gb` is **not** resizable in place; if you change it the server rejects the patch (surfaced as a typed error, not silently dropped). Passing `resources` and `egress` together sends a single `PATCH` and both take effect.
 
 ```ts
 // Resize cpu/memory in place.
@@ -114,6 +123,8 @@ await neev.sandboxes.update(id, { resources: { cpu: 2, memory_gb: 4 } });
 await neev.sandboxes.update(id, { allowEgress: ["api.github.com"] });
 // Both in one PATCH.
 await neev.sandboxes.update(id, { resources: { cpu: 4 }, allowInternet: true });
+// Edit the allow-list in place, leaving every other rule alone.
+await neev.sandboxes.update(id, { egress_add: { allow: [{ host: "pypi.org", ports: [443] }] } });
 ```
 
 **`list(params?)`** — `params` is `{ page?, limit?, orgId?, projectId? }`; returns `SandboxPage` = `{ items: Sandbox[]; total; page; limit }`.
@@ -146,6 +157,13 @@ await neev.sandboxes.updateTimeout(id, { max_lifetime_seconds: 0 });
 
 ```ts
 const metrics = await neev.sandboxes.metrics(id, { step: "60s" });
+```
+
+**`audit(id, params?)`** — `params` is `{ from?, to?, cursor?, limit?, orgId?, projectId? }`; `from` defaults to 24 hours before `to` (now), `limit` is 1–200 (default 50). Returns one page: `{ sandbox_id, from, to, retention_days, window_truncated, next_cursor?, records }`. Pass `next_cursor` back as `cursor` for the next page. Only program names are recorded, never arguments.
+
+```ts
+let page = await neev.sandboxes.audit(id, { limit: 50 });
+while (page.next_cursor) page = await neev.sandboxes.audit(id, { cursor: page.next_cursor });
 ```
 
 ### `neev.templates`
@@ -208,9 +226,90 @@ const pending = await sandbox.snapshot({ name: "checkpoint" }); // status: "Pend
 const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once Ready
 ```
 
-`waitForSnapshot(snapshotId, params?)` accepts `WaitForSnapshotParams` = `Scope & { timeoutMs?: number (default 300000); pollIntervalMs?: number (default 2000) }`. `sandbox.snapshot(options?)` takes the snapshot-create fields (`name`, `retain_for`) plus `SnapshotWaitOptions` (`{ waitUntilReady?: boolean; timeoutMs?; pollIntervalMs? }`).
+`waitForSnapshot(snapshotId, params?)` accepts `WaitForSnapshotParams` = `Scope & { timeoutMs?: number (default 300000); pollIntervalMs?: number (default 2000) }`. `sandbox.snapshot(options?)` takes the snapshot-create field (`name`) plus `SnapshotWaitOptions` (`{ waitUntilReady?: boolean; timeoutMs?; pollIntervalMs? }`).
 
 `listSnapshots` / `sandbox.snapshots()` return a `SnapshotPage` (`{ items: SnapshotData[]; total; page; limit }`) and accept `{ page, limit }`.
+
+---
+
+## Agents
+
+An agent is a catalogue template (e.g. `"claude-code"`) running on a backing sandbox that the platform provisions for it, one to one. Manage it through `neev.agents`; reach its files, `exec`, and processes through `agent.sandbox()`. Every method that takes an `id` accepts the agent's name too.
+
+### `neev.agents`
+
+| Method | Returns | Summary |
+| ------ | ------- | ------- |
+| `create(params, scope?)` | `Promise<Agent>` | Creates an agent from a catalogue template (`name` + `agent_template` required). The handle may still be `Provisioning` — call `waitUntilReady`. |
+| `list(params?)` | `Promise<AgentPage>` | Lists agents; `params` = `{ page?, limit?, orgId?, projectId? }`. |
+| `get(id, scope?)` | `Promise<Agent>` | Fetches an agent by id or by name. |
+| `update(id, params, scope?)` | `Promise<Agent>` | Updates in place — `resources`, `egress`, `egress_add` / `egress_remove`, or `idle_timeout_seconds`. At least one is required. |
+| `pause(id, scope?)` | `Promise<Agent>` | Pauses the agent's backing sandbox. |
+| `resume(id, scope?)` | `Promise<Agent>` | Resumes a paused agent. |
+| `keepalive(id, scope?)` | `Promise<Agent>` | Resets the idle timer so a busy agent stays running without an open connection. |
+| `rollback(id, snapshotId, scope?)` | `Promise<Agent>` | Restores the agent's backing sandbox in place from a snapshot. |
+| `exposePort(id, port, params?)` | `Promise<SandboxPort>` | Exposes an agent port for preview URLs; `params` = `{ slug?, orgId?, projectId? }`. |
+| `listPorts(id, scope?)` | `Promise<SandboxPort[]>` | Lists the agent's exposed preview ports. |
+| `revokePort(id, port, scope?)` | `Promise<void>` | Stops serving an agent preview port. |
+| `getPortUrl(id, port, options?, scope?)` | `Promise<string>` | Exposes a port and returns its preview URL once routable; same options as `neev.sandboxes.getPortUrl`. |
+| `audit(id, params?)` | `Promise<AuditTrail>` | Reads one page of what the agent ran in its sandbox; `params` = `{ from?, to?, cursor?, limit?, orgId?, projectId? }`. |
+| `delete(id, scope?)` | `Promise<void>` | Permanently deletes the agent and its backing sandbox. |
+
+**`create(params, scope?)`** — `params` is `CreateAgentParams`: `name` and `agent_template` are required; `config` overrides the template's `default_config`; `resources` and `egress` (or the `allowInternet` / `allowEgress` convenience) work as on `neev.sandboxes.create`. `idle_timeout_seconds` sets the idle window: omit it for the account default, or send `0` for no idle limit (the agent then holds quota until it is deleted).
+
+**`update(id, params, scope?)`** — `params` is `UpdateAgentParams`, with the same `resources` / `egress` / `egress_add` / `egress_remove` rules as `neev.sandboxes.update`, plus `idle_timeout_seconds` (`0` removes the idle limit). **At least one of `resources`, `egress`, `egress_add`, `egress_remove` or `idle_timeout_seconds` is required**, and `egress_add` / `egress_remove` can't be combined with `egress` — either mistake throws `NeevError` before any request is sent.
+
+```ts
+const agent = await neev.agents.create({ name: "reviewer", agent_template: "claude-code", idle_timeout_seconds: 900 });
+await agent.waitUntilReady();
+
+await neev.agents.update(agent.id, { egress_add: { allow: [{ host: "api.github.com", ports: [443] }] } });
+await neev.agents.keepalive(agent.id);              // e.g. once per agent turn
+const port = await neev.agents.exposePort(agent.id, 3000);
+const trail = await neev.agents.audit(agent.id, { limit: 50 });
+```
+
+The agent audit trail has the same shape and recording rules as the sandbox one. Its `sandbox_id` is the agent's backing sandbox, not the agent id.
+
+### `neev.agentTemplates`
+
+Read-only catalogue of agent templates. A template's `name` is what you pass as `agent_template` at create time.
+
+| Method | Returns | Summary |
+| ------ | ------- | ------- |
+| `list(params?)` | `Promise<AgentTemplatePage>` | Lists active agent templates; `params` = `{ page?, limit? }`. |
+| `get(id)` | `Promise<AgentTemplate>` | Fetches a single agent template by id. |
+
+### `Agent` handle
+
+Returned by `neev.agents.create`, `get`, and `list().items`.
+
+| Member | Returns | Summary |
+| ------ | ------- | ------- |
+| `id` / `name` | `string` | Agent UUID and name. |
+| `status` | `AgentStatus` | `"Provisioning" \| "Ready" \| "Paused" \| "Failed" \| "Deleting"`, as last seen. |
+| `templateId` / `sandboxId` | `string` | Template it was created from; id of its backing sandbox. |
+| `config` | `Record<string, unknown> \| undefined` | Effective template config. |
+| `idleTimeoutSeconds` | `number \| null` | Idle window in seconds; `0` = no idle limit, `null` = account default. |
+| `lastCrash` | `AgentLastCrash \| null` | Most recent unexpected stop; same semantics as `sandbox.lastCrash`. |
+| `data` / `toJSON()` | `AgentData` | Raw API record. |
+| `waitUntilReady(options?)` | `Promise<this>` | Polls until `"Ready"`; throws fast on `"Failed"` or `"Paused"`, or on timeout. `options` = `{ timeoutMs?, pollIntervalMs? }`. |
+| `refresh()` | `Promise<this>` | Re-fetches and updates the handle. |
+| `update(params)` / `pause()` / `resume()` / `keepalive()` | `Promise<this>` | Lifecycle actions; each updates the handle. |
+| `rollback(snapshotId)` | `Promise<this>` | Restores the backing sandbox from a snapshot and updates the handle. |
+| `exposePort(port, options?)` / `listPorts()` / `revokePort(port)` | — | Preview ports, as on the sandbox handle. |
+| `getUrl(options)` | `Promise<string>` | Exposes `options.port` and returns its preview URL once routable; `options` = `{ port, slug?, waitUntilReady?, timeoutMs?, pollIntervalMs? }`. |
+| `audit(params?)` | `Promise<AuditTrail>` | One page of the audit trail; `params` = `{ from?, to?, cursor?, limit? }`. |
+| `sandbox()` | `Promise<Sandbox>` | The backing sandbox as a `Sandbox` handle, for `files` / `exec` / `processes`. |
+| `delete()` | `Promise<void>` | Permanently deletes the agent. |
+
+```ts
+const agent = await neev.agents.get("reviewer");
+const url = await agent.getUrl({ port: 3000 });
+await agent.keepalive();
+const sandbox = await agent.sandbox();
+await sandbox.files.write("notes.md", "# hello\n");
+```
 
 ---
 
@@ -225,33 +324,35 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | `id` | `string` | Sandbox UUID. |
 | `name` | `string` | Human-readable name. |
 | `phase` | `SandboxPhase` | Lifecycle phase as last seen (e.g. `"Pending"`, `"Ready"`, `"Paused"`). |
-| `replicas` | `number` | Desired replica count (0 paused, 1 running). |
+| `replicas` | `number` | `1` while running, `0` while paused. |
 | `region` | `string` | Region slug the sandbox runs in. |
 | `templateId` | `string \| null` | Template id it was created from, or `null`. |
 | `resources` | `SandboxResources \| undefined` | Provisioned compute size, or `undefined` when defaulted. |
 | `connectUrl` | `string \| null` | Runtime address, or `null` when not yet configured. |
-| `lastCrash` | `SandboxLastCrash \| null` | Most recent unexpected stop, or `null` if the sandbox has never had one. `storage_reset: true` means it restarted with an empty filesystem — files under `/workspace`, and anything installed since create, are gone. Historical: not cleared when the sandbox recovers. |
+| `addressable` | `boolean` | Whether the sandbox can be reached yet; briefly `false` after create. `waitUntilReady` and runtime calls wait for it. |
+| `lastCrash` | `SandboxLastCrash \| null` | Most recent unexpected stop, or `null` if the sandbox has never had one. `storage_reset: true` means it restarted with an empty filesystem — files under `/workspace`, and anything installed since create, are gone. Historical: not cleared when the sandbox recovers; restoring from a snapshot taken before that stop brings the files back and clears it. |
 | `data` | `SandboxData` | Full raw API record. |
 
 ### Methods
 
 | Method | Returns | Summary |
 | ------ | ------- | ------- |
-| `waitUntilReady(options?)` | `Promise<this>` | Polls until phase is `"Ready"`. Throws fast if `"Paused"`, or on timeout. |
+| `waitUntilReady(options?)` | `Promise<this>` | Polls until phase is `"Ready"` and the sandbox is addressable. Throws fast if `"Paused"`, or on timeout. |
 | `refresh()` | `Promise<this>` | Re-fetches the record and updates the handle in place. |
-| `update(params)` | `Promise<this>` | Updates in place (`resources` and/or `egress`) and updates the handle. |
-| `pause()` | `Promise<this>` | Pauses (scales to zero) and updates the handle. |
-| `resume()` | `Promise<this>` | Resumes (scales to one) and updates the handle. |
+| `update(params)` | `Promise<this>` | Updates in place (`resources`, `egress`, or `egress_add` / `egress_remove`) and updates the handle. |
+| `pause()` | `Promise<this>` | Pauses (stops running, keeps state) and updates the handle. |
+| `resume()` | `Promise<this>` | Resumes from the kept state and updates the handle. |
 | `keepalive()` | `Promise<this>` | Resets the idle timer and updates the handle. |
 | `updateTimeout(windows)` | `Promise<this>` | Changes the idle/lifetime windows (seconds) and updates the handle. |
 | `delete()` | `Promise<void>` | Permanently deletes the sandbox. |
 | `metrics(params?)` | `Promise<SandboxMetricsResponse>` | Reads the live metric series; `params` is `{ from?, to?, step? }`. |
+| `audit(params?)` | `Promise<AuditTrail>` | Reads one page of the audit trail; `params` is `{ from?, to?, cursor?, limit? }`. |
 | `snapshot(options?)` | `Promise<SnapshotData>` | Captures this sandbox's state (starts `Pending`). Pass `{ waitUntilReady: true }` to resolve only once the snapshot is `Ready`. |
 | `snapshots(params?)` | `Promise<SnapshotPage>` | Lists this sandbox's snapshots (paginated: `{ page, limit }`). |
 | `rollback(snapshotId)` | `Promise<this>` | Rolls this sandbox back in place to a chosen snapshot. |
 | `fork(name)` | `Promise<Sandbox>` | Forks the current live state into a new sandbox handle. |
-| `getUrl(options)` | `Promise<string>` | Exposes `options.port` and returns its public preview URL, waiting until the URL is routable. `options` = `{ port, waitUntilReady?, timeoutMs?, pollIntervalMs? }`. |
-| `exposePort(port)` | `Promise<SandboxPort>` | Exposes a port for preview URLs (no readiness wait). |
+| `getUrl(options)` | `Promise<string>` | Exposes `options.port` and returns its public preview URL, waiting until the URL is routable. `options` = `{ port, slug?, waitUntilReady?, timeoutMs?, pollIntervalMs? }`. |
+| `exposePort(port, options?)` | `Promise<SandboxPort>` | Exposes a port for preview URLs (no readiness wait). `options.slug` chooses the URL's slug; a different slug on an exposed port rotates it and breaks the old URL. |
 | `listPorts()` | `Promise<SandboxPort[]>` | Lists the ports currently exposed for preview URLs. |
 | `revokePort(port)` | `Promise<void>` | Stops serving a previously exposed port. |
 | `ssh(options?)` | `Promise<SshTunnel>` | Opens a local SSH tunnel (loopback listener) to the sandbox; `options` = `{ port?, host? }`. Node only (see runtime). |
@@ -275,7 +376,7 @@ console.log(sandbox.id, sandbox.phase, sandbox.connectUrl);
 
 ## Runtime
 
-Runtime APIs run commands and access files **inside** a sandbox, reached directly at the sandbox's `connect_url`. Use `sandbox.exec` / `sandbox.files` on the handle — it resolves and caches the connection automatically, waiting until the sandbox is `Ready` on first use. These calls are **never retried** (a retried `write`/`exec` could run twice). File paths are workspace-relative (the sandbox rejects absolute paths).
+Runtime APIs run commands and access files **inside** a sandbox, reached directly at the sandbox's `connect_url`. Use `sandbox.exec` / `sandbox.files` on the handle — it resolves and caches the connection automatically, waiting until the sandbox is `Ready` on first use. These calls are **never retried** (a retried `write`/`exec` could run twice). File paths are relative to the workspace, or absolute inside it (a path outside the workspace is refused). Chunked uploads are the one exception to "never retried": a failed chunk resumes from the last byte the sandbox received.
 
 ### Exec
 
@@ -311,7 +412,10 @@ for await (const event of sandbox.exec(["sh", "-c", "for i in 1 2 3; do echo $i;
 
 | Method | Returns | Summary |
 | ------ | ------- | ------- |
-| `write(path, content, options?)` | `Promise<WriteFileResult>` | Writes string or `Uint8Array`; returns `{ bytesWritten }`. |
+| `write(path, content, options?)` | `Promise<WriteFileResult>` | Writes string or `Uint8Array`; returns `{ bytesWritten }`. Content over 1 MiB is sent with `upload` automatically. |
+| `upload(path, data, options?)` | `Promise<WriteFileResult>` | Uploads a string, `Uint8Array`, `ArrayBuffer` or `Blob` in resumable chunks; `options` = `{ chunkSize?, cwd?, onProgress?, signal? }` (`chunkSize` 64 KiB–1 MiB, default 1 MiB). |
+| `uploadFile(localPath, remotePath, options?)` | `Promise<WriteFileResult>` | Node only. Uploads a local file chunk by chunk, never holding it in memory whole. Same options as `upload`. |
+| `downloadFile(remotePath, localPath, options?)` | `Promise<DownloadFileResult>` | Node only. Streams a sandbox file to disk; returns `{ bytesWritten }`. Nothing is left at `localPath` if it fails. `options` = `{ cwd?, signal? }`. |
 | `read(path, options?)` | `Promise<Uint8Array>` | Reads a file as raw bytes (binary-safe). |
 | `readText(path, options?)` | `Promise<string>` | Reads a file and decodes it as UTF-8. |
 | `list(path, options?)` | `Promise<FileEntry[]>` | Lists directory entries; `options` = `{ cwd?, recursive?, maxCount?, signal? }`. |
@@ -420,8 +524,8 @@ Listed for completeness; prefer the handle methods above.
 
 | Type | Summary |
 | ---- | ------- |
-| `SandboxConnection` | A live connection to one sandbox.s runtime. Construct via `neev.createSandboxConnection(connectUrl)`, or reach it through `sandbox.exec` / `sandbox.files` / `sandbox.processes` / `sandbox.pty`. Exposes `exec`, `execStream`, and `files` / `processes` / `pty` facades. |
-| `SandboxFiles` | The filesystem facade (`write`/`read`/`readText`/`list`). Accessed via `sandbox.files` or `connection.files`. |
+| `SandboxConnection` | A live connection to one sandbox's runtime. Construct via `neev.createSandboxConnection(connectUrl)`, or reach it through `sandbox.exec` / `sandbox.files` / `sandbox.processes` / `sandbox.pty`. Exposes `exec`, `execStream`, and `files` / `processes` / `pty` facades. |
+| `SandboxFiles` | The filesystem facade (`write`/`upload`/`read`/`readText`/`list`/…). Accessed via `sandbox.files` or `connection.files`. |
 | `SandboxProcesses` | The process-supervisor facade (`start`/`get`/`list`/`kill`/`killAll`/`logs`/`follow`). Accessed via `sandbox.processes` or `connection.processes`. |
 | `SandboxPty` | The interactive-terminal facade (`create` → `PtyHandle`). Accessed via `sandbox.pty` or `connection.pty`. |
 
@@ -429,7 +533,7 @@ Listed for completeness; prefer the handle methods above.
 
 ## Errors
 
-Every failure is a `NeevError` subclass — branch on `instanceof` rather than parsing strings. `APIError` carries `status`, `code`, `details`, and `requestId`.
+Every failure is a `NeevError` subclass — branch on `instanceof` rather than parsing strings. `APIError` carries `status`, `code`, `scope`, `details`, and `requestId`. `code` is a machine-readable `ErrorCode` (`not_found`, `validation_error`, `sandbox_quota_exceeded`, …) — branch on it rather than on the message text; `scope` says which limit a quota refusal hit (`organization` or `project`). Errors from a sandbox's runtime (files, exec, processes) carry the runtime's reason code in `code` (e.g. `not_found`, `invalid_argument`, `permission_denied`) and its explanation in the error message.
 
 ```ts
 import { NotFoundError, RateLimitError, APIError } from "@neevcloud/sdk";
@@ -450,7 +554,7 @@ try {
 | `NeevError` | — | Base class for every SDK error. |
 | `APIConnectionError` | — | No HTTP response (DNS, reset, abort). |
 | `APITimeoutError` | — | Request exceeded the configured timeout. |
-| `APIError` | non-2xx | Base for HTTP responses; carries `status`/`code`/`details`/`requestId`. |
+| `APIError` | non-2xx | Base for HTTP responses; carries `status`/`code`/`scope`/`details`/`requestId`. |
 | `BadRequestError` | 400 | Malformed or invalid request. |
 | `AuthenticationError` | 401 | Missing, invalid, or expired API key. |
 | `PermissionDeniedError` | 403 | Not allowed on this org/project/resource. |
@@ -460,6 +564,7 @@ try {
 | `RateLimitError` | 429 | Rate limit exceeded. |
 | `DeadlineExceededError` | 504 | Operation exceeded the server deadline. |
 | `InternalServerError` | 5xx | Server failed to handle a valid request. |
+| `ServiceUnavailableError` | 503 | Temporarily unavailable; retry shortly. A subclass of `InternalServerError`. |
 
 ---
 
@@ -479,6 +584,10 @@ Minimal one-liners for each public API.
 | `neev.sandboxes.resume(id)` | `await neev.sandboxes.resume(id);` |
 | `neev.sandboxes.delete(id)` | `await neev.sandboxes.delete(id);` |
 | `neev.sandboxes.metrics(id, ...)` | `const m = await neev.sandboxes.metrics(id, { step: "60s" });` |
+| `neev.sandboxes.audit(id, ...)` | `const trail = await neev.sandboxes.audit(id, { limit: 50 });` |
+| `neev.sandboxes.update(id, ...)` | `await neev.sandboxes.update(id, { egress_remove: { allow: [{ host: "pypi.org" }] } });` |
+| `neev.sandboxes.keepalive(id)` | `await neev.sandboxes.keepalive(id);` |
+| `neev.sandboxes.exposePort(id, port, ...)` | `const p = await neev.sandboxes.exposePort(id, 3000, { slug: "k3x9q2ab" });` |
 | `neev.sandboxes.createSnapshot(id, ...)` | `const snap = await neev.sandboxes.createSnapshot(id, { name: "checkpoint" });` |
 | `neev.sandboxes.listSnapshots(id, ...)` | `const { items } = await neev.sandboxes.listSnapshots(id, { page: 1, limit: 20 });` |
 | `neev.sandboxes.getSnapshot(snapshotId)` | `const snap = await neev.sandboxes.getSnapshot(snapshotId);` |
@@ -488,6 +597,13 @@ Minimal one-liners for each public API.
 | `neev.sandboxes.fork(id, name)` | `const fork = await neev.sandboxes.fork(id, "my-fork");` |
 | `neev.templates.list(...)` | `const { items } = await neev.templates.list({ limit: 10 });` |
 | `neev.templates.get(id)` | `const tpl = await neev.templates.get("sb-ubuntu-26-04-minimal");` |
+| `neev.agents.create(...)` | `const agent = await neev.agents.create({ name: "reviewer", agent_template: "claude-code" });` |
+| `neev.agents.keepalive(id)` | `await neev.agents.keepalive(id);` |
+| `neev.agents.rollback(id, snapshotId)` | `await neev.agents.rollback(id, snapshotId);` |
+| `neev.agents.audit(id, ...)` | `const trail = await neev.agents.audit(id, { limit: 50 });` |
+| `neev.agentTemplates.list(...)` | `const { items } = await neev.agentTemplates.list();` |
+| `agent.getUrl(...)` | `const url = await agent.getUrl({ port: 3000 });` |
+| `agent.sandbox()` | `const sandbox = await agent.sandbox();` |
 | `neev.raw.request(...)` | `const data = await neev.raw.request<T>({ method: "GET", path });` |
 | `sandbox.id` / `.name` / `.phase` | `console.log(sandbox.phase, sandbox.replicas);` |
 | `sandbox.connectUrl` | `console.log(sandbox.connectUrl);` |
@@ -501,6 +617,10 @@ Minimal one-liners for each public API.
 | `sandbox.fork(name)` | `const fork = await sandbox.fork("my-fork");` |
 | `sandbox.delete()` | `await sandbox.delete();` |
 | `sandbox.metrics(...)` | `const m = await sandbox.metrics({ step: "60s" });` |
+| `sandbox.audit(...)` | `const { records, next_cursor } = await sandbox.audit({ limit: 50 });` |
+| `sandbox.addressable` | `console.log(sandbox.addressable);` |
+| `sandbox.getUrl(...)` | `const url = await sandbox.getUrl({ port: 3000 });` |
+| `sandbox.exposePort(...)` | `const p = await sandbox.exposePort(3000, { slug: "k3x9q2ab" });` |
 | `sandbox.toJSON()` | `JSON.stringify(sandbox);` |
 
 ### Runtime
@@ -511,6 +631,9 @@ Minimal one-liners for each public API.
 | `sandbox.exec(..., { stream: true })` | `for await (const e of sandbox.exec(cmd, { stream: true })) { /* … */ }` |
 | `sandbox.execStream(...)` (deprecated) | `for await (const e of sandbox.execStream(cmd)) { /* … */ }` |
 | `sandbox.files.write(...)` | `await sandbox.files.write("main.py", "print('hi')");` |
+| `sandbox.files.upload(...)` | `await sandbox.files.upload("data.bin", bytes, { onProgress: (sent, total) => {} });` |
+| `sandbox.files.uploadFile(...)` | `await sandbox.files.uploadFile("./data.bin", "data.bin");` |
+| `sandbox.files.downloadFile(...)` | `const { bytesWritten } = await sandbox.files.downloadFile("out.tar", "./out.tar");` |
 | `sandbox.files.read(...)` | `const bytes = await sandbox.files.read("main.py");` |
 | `sandbox.files.readText(...)` | `const text = await sandbox.files.readText("main.py");` |
 | `sandbox.files.list(...)` | `const entries = await sandbox.files.list(".", { recursive: true });` |

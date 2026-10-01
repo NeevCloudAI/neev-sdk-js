@@ -202,14 +202,14 @@ async function main(): Promise<void> {
     const result = await sandbox.exec(["sh", "-c", "echo hello from sandbox"]);
     console.log(`stdout=${result.stdout.trim()} exitCode=${result.exitCode}`);
 
-    // 4. Write and read a file. Paths are workspace-relative — the sandbox
-    //    rejects absolute paths.
+    // 4. Write and read a file. Paths are relative to the workspace, or absolute
+    //    inside it.
     const { bytesWritten } = await sandbox.files.write("notes.txt", "written by the SDK\n");
     console.log(`wrote ${bytesWritten} bytes`);
     const text = await sandbox.files.readText("notes.txt");
     console.log(`file contents: ${text.trim()}`);
 
-    // 5. Pause to release compute (scales to zero replicas).
+    // 5. Pause to release compute (the sandbox stops running and keeps its state).
     await sandbox.pause();
     console.log(`paused (replicas: ${sandbox.replicas})`);
   } finally {
@@ -281,6 +281,11 @@ try {
   }
 }
 ```
+
+`err.code` is a machine-readable `ErrorCode` such as `not_found` or
+`sandbox_quota_exceeded` — branch on it, not on the message text. A `503`
+surfaces as `ServiceUnavailableError` (a subclass of `InternalServerError`):
+the platform is briefly unavailable, so retry shortly.
 
 For snapshot capture, rollback, and fork workflows, see
 [`examples/snapshot-fork-rollback.ts`](../examples/snapshot-fork-rollback.ts) and

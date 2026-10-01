@@ -1,3 +1,4 @@
+import { NeevError } from "./errors.js";
 import type { EgressConvenience, SandboxEgressConfig, SandboxEgressRule } from "./types.js";
 
 // buildEgress maps the allowInternet/allowEgress convenience to a SandboxEgressConfig.
@@ -28,4 +29,23 @@ export function withEgressConvenience<T extends { egress?: SandboxEgressConfig |
     if (egress) body.egress = egress;
   }
   return body;
+}
+
+// assertUpdateBody rejects an in-place update that sets none of `fields`, or that mixes
+// a full `egress` replacement with an `egress_add` / `egress_remove` edit (the server
+// refuses both). Shared by sandbox and agent update; `method` prefixes the error.
+export function assertUpdateBody(body: object, method: string, fields: readonly string[]): void {
+  const set = body as Record<string, unknown>;
+  const edits = set.egress_add !== undefined || set.egress_remove !== undefined;
+  if (set.egress !== undefined && edits) {
+    throw new NeevError(
+      `${method}: \`egress\` replaces the policy in full and cannot be combined with \`egress_add\` / \`egress_remove\` (or \`allowInternet\` / \`allowEgress\`).`,
+    );
+  }
+  if (fields.every((field) => set[field] === undefined)) {
+    const names = fields.map((field) => `\`${field}\``);
+    throw new NeevError(
+      `${method} requires at least one of ${names.slice(0, -1).join(", ")} or ${names.at(-1)}.`,
+    );
+  }
 }

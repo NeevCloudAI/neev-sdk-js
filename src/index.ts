@@ -15,6 +15,8 @@ export type { AgentWaitOptions } from "./agent.js";
 
 export { SandboxConnection, SandboxFiles } from "./runtime.js";
 export type {
+  DownloadFileOptions,
+  DownloadFileResult,
   ExecOptions,
   ExecResult,
   ExecStreamEvent,
@@ -28,6 +30,8 @@ export type {
   WriteFileOptions,
   WriteFileResult,
 } from "./runtime.js";
+
+export type { UploadOptions } from "./upload.js";
 
 export { Process, SandboxProcesses, Signal } from "./processes.js";
 export type {
@@ -55,6 +59,10 @@ export { openSshTunnel } from "./ssh.js";
 export type { SshTunnel, SshTunnelOptions } from "./ssh.js";
 
 export type {
+  AuditParams,
+  AuditQuery,
+  ExposePortOptions,
+  ExposePortParams,
   GetPortUrlOptions,
   ListSandboxesParams,
   MetricsParams,
@@ -82,6 +90,8 @@ export type {
   AgentStatus,
   AgentTemplate,
   AgentTemplateListResponse,
+  AuditRecord,
+  AuditTrail,
   CreateAgentParams,
   CreateSandboxParams,
   CreateSnapshotParams,
@@ -92,6 +102,7 @@ export type {
   SandboxData,
   SandboxEgressConfig,
   SandboxEgressRule,
+  SandboxEgressRules,
   SandboxLastCrash,
   SandboxLifecycle,
   SandboxListResponse,
@@ -125,5 +136,6 @@ export {
   PermissionDeniedError,
   PreconditionFailedError,
   RateLimitError,
+  ServiceUnavailableError,
 } from "./errors.js";
-export type { ApiErrorBody } from "./errors.js";
+export type { ApiErrorBody, ErrorCode } from "./errors.js";

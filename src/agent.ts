@@ -1,8 +1,17 @@
 import type { Scope } from "./client.js";
 import { NeevError } from "./errors.js";
+import type { ExposePortOptions, GetPortUrlOptions } from "./preview.js";
 import type { Agents } from "./resources/agents.js";
+import type { AuditQuery } from "./resources/sandboxes.js";
 import type { Sandbox } from "./sandbox.js";
-import type { AgentData, AgentLastCrash, AgentStatus, UpdateAgentParams } from "./types.js";
+import type {
+  AgentData,
+  AgentLastCrash,
+  AgentStatus,
+  AuditTrail,
+  SandboxPort,
+  UpdateAgentParams,
+} from "./types.js";
 
 // Options controlling how long `waitUntilReady` polls before giving up.
 export interface AgentWaitOptions {
@@ -63,12 +72,20 @@ export class Agent {
     return this.state.config;
   }
 
+  // Idle window in seconds: 0 when the agent has no idle limit, null when it
+  // uses the account default.
+  get idleTimeoutSeconds(): number | null {
+    return this.state.idle_timeout_seconds ?? null;
+  }
+
   // Most recent unexpected stop as last seen from the server, or null if this
   // agent has never had one. Historical: it is not cleared when the agent
   // recovers, so compare `at` against when you last trusted the filesystem
   // rather than reading non-null as "broken right now". `storage_reset` true
   // means the agent came back with an empty filesystem: files under /workspace,
-  // and anything installed since create, are gone.
+  // and anything installed since create, are gone. Restoring from a snapshot
+  // taken before that stop brings the files back and clears this once the
+  // restore completes.
   get lastCrash(): AgentLastCrash | null {
     return this.state.last_crash ?? null;
   }
@@ -96,7 +113,8 @@ export class Agent {
     return this;
   }
 
-  // Updates the agent in place (egress and/or cpu/memory) and updates this handle.
+  // Updates the agent in place (cpu/memory, egress and/or idle window) and updates
+  // this handle. `egress_add` / `egress_remove` cannot be combined with `egress`.
   async update(params: UpdateAgentParams): Promise<this> {
     const next = await this.agents.update(this.id, params, this.scope);
     this.state = next.data;
@@ -115,6 +133,50 @@ export class Agent {
     const next = await this.agents.resume(this.id, this.scope);
     this.state = next.data;
     return this;
+  }
+
+  // Resets this agent's idle timer and updates this handle. Call it periodically
+  // while work is in progress to hold the agent past its idle deadline.
+  async keepalive(): Promise<this> {
+    const next = await this.agents.keepalive(this.id, this.scope);
+    this.state = next.data;
+    return this;
+  }
+
+  // Rolls this agent back in place to one of its snapshots and updates the handle.
+  async rollback(snapshotId: string): Promise<this> {
+    const next = await this.agents.rollback(this.id, snapshotId, this.scope);
+    this.state = next.data;
+    return this;
+  }
+
+  // Exposes a port and returns its public preview URL, by default waiting until the
+  // URL is reachable. Pass `slug` to choose or rotate the URL's slug.
+  async getUrl(options: { port: number } & GetPortUrlOptions): Promise<string> {
+    const { port, ...wait } = options;
+    return this.agents.getPortUrl(this.id, port, wait, this.scope);
+  }
+
+  // Exposes a port for preview URLs and returns it with its slug and URL (no
+  // readiness wait). Pass `slug` to choose one, or a different one to rotate it.
+  async exposePort(port: number, options: ExposePortOptions = {}): Promise<SandboxPort> {
+    return this.agents.exposePort(this.id, port, { ...this.scope, ...options });
+  }
+
+  // Lists the ports currently exposed for this agent's preview URLs.
+  async listPorts(): Promise<SandboxPort[]> {
+    return this.agents.listPorts(this.id, this.scope);
+  }
+
+  // Revokes a previously exposed preview port.
+  async revokePort(port: number): Promise<void> {
+    return this.agents.revokePort(this.id, port, this.scope);
+  }
+
+  // Reads one page of this agent's audit trail, newest first. Pass the returned
+  // `next_cursor` as `cursor` to read the next page.
+  async audit(params: AuditQuery = {}): Promise<AuditTrail> {
+    return this.agents.audit(this.id, { ...params, ...this.scope });
   }
 
   // Permanently deletes the agent and its backing sandbox.

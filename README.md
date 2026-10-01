@@ -9,9 +9,9 @@ One package, one auth model, one client — adopt new capabilities as they ship.
 
 **Available today**
 
-- **`neev.sandboxes`** — full agent-sandbox lifecycle: create (catalogue template or BYOI image), list, get, update (in-place resize + egress), pause, resume, keepalive, timeout windows, delete, live metrics, plus snapshots, rollback, and fork. Inside a running sandbox: `files`, `exec`, a `processes` supervisor for long-running, detached processes, and `pty` for interactive terminal sessions. Sandboxes are strongly isolated compute environments for AI agents.
+- **`neev.sandboxes`** — full agent-sandbox lifecycle: create (catalogue template or BYOI image), list, get (by id or name), update (in-place resize + egress, or an in-place allow-list edit), pause, resume, keepalive, timeout windows, delete, live metrics, an audit trail of what ran, preview URLs for ports, plus snapshots, rollback, and fork. Inside a running sandbox: `files` (including resumable chunked uploads and local-disk `uploadFile` / `downloadFile`), `exec`, a `processes` supervisor for long-running, detached processes, `pty` for interactive terminal sessions, and `ssh`. Sandboxes are strongly isolated compute environments for AI agents.
 - **`neev.templates`** — the platform sandbox-template catalogue (list, get). A template id (e.g. `sb-ubuntu-26-04-minimal`) is optional when creating a sandbox; omit it to use the platform's default template.
-- **`neev.agents`** — agent lifecycle: create from a catalogue template, list, get, update (in-place egress / cpu / memory), pause, resume, delete. Each agent runs on its own backing sandbox, reachable from the handle via `agent.sandbox()`.
+- **`neev.agents`** — agent lifecycle: create from a catalogue template, list, get (by id or name), update (in-place egress / cpu / memory / idle window), pause, resume, keepalive, rollback, preview URLs, audit trail, delete. Each agent runs on its own backing sandbox, reachable from the handle via `agent.sandbox()`.
 - **`neev.agentTemplates`** — the platform agent-template catalogue (list, get). A template name (e.g. `claude-code`) is passed as `agent_template` when creating an agent.
 
 **Coming next**
@@ -76,7 +76,7 @@ To run the examples from a clone (including against dev), see [`examples/README.
 ```ts
 const page = await neev.sandboxes.list({ limit: 50 });
 const paused = await neev.sandboxes.list({ name: "web", status: "Paused" });
-const sandbox = await neev.sandboxes.get(id);
+const sandbox = await neev.sandboxes.get(id); // by id, or by name: neev.sandboxes.get("my-sandbox")
 await neev.sandboxes.pause(id);
 await neev.sandboxes.resume(id);
 await neev.sandboxes.delete(id);
@@ -86,6 +86,11 @@ const metrics = await neev.sandboxes.metrics(id, { step: "60s" });
 // (at least one required; disk is not resizable in place; egress needs no restart).
 await neev.sandboxes.update(id, { resources: { cpu: 2, memory_gb: 4 } });
 await neev.sandboxes.update(id, { allowEgress: ["api.github.com"] });
+// Or edit the allow-list in place without restating it (removals apply first).
+await neev.sandboxes.update(id, { egress_add: { allow: [{ host: "pypi.org", ports: [443] }] } });
+
+// What ran inside the sandbox, newest first (see "Audit trail" below).
+const trail = await neev.sandboxes.audit(id, { limit: 50 });
 
 // Lifecycle windows (all in seconds). keepalive resets the idle timer; updateTimeout
 // changes only the windows passed (send 0 to turn one off, omit to leave unchanged).
@@ -114,6 +119,7 @@ const sandbox = await neev.sandboxes.create({
 // Or discover what's available first.
 const { items } = await neev.templates.list();
 const template = await neev.templates.get("sb-ubuntu-26-04-minimal"); // inspect one
+template.icon; // display icon (e.g. an SVG document) or null
 ```
 
 ### Custom images (BYOI)
@@ -166,7 +172,7 @@ await neev.sandboxes.create({ name: "ci", allowEgress: ["github.com", "*.npmjs.o
 await neev.agents.create({ name: "coder", agent_template: "claude-code", allowInternet: true });
 ```
 
-`allowInternet: true` opens `0.0.0.0/0` and `::/0`. For finer control (ports, protocols, a mix of rules) pass a full `egress` object instead — it takes precedence over the convenience fields:
+`allowInternet: true` allows all outbound traffic (`0.0.0.0/0` and `::/0`). For finer control (ports, protocols, a mix of rules) pass a full `egress` object instead — it takes precedence over the convenience fields. A rule's `ports` limit it to those destination ports (omit for every port), and `protocol` defaults to `TCP` when `ports` is set:
 
 ```ts
 await neev.sandboxes.create({
@@ -179,6 +185,15 @@ await neev.sandboxes.create({
 });
 ```
 
+On a running sandbox or agent, `update` either replaces the policy in full with `egress`, or edits the existing allow-list in place with `egress_add` / `egress_remove` (removals apply first, so one call can swap a host). The two styles can't be combined in one call, and `egress_add` needs the sandbox to already be in `allow_list` mode:
+
+```ts
+await sandbox.update({
+  egress_remove: { allow: [{ host: "old-api.example.com" }] },
+  egress_add: { allow: [{ host: "api.example.com", ports: [443] }] },
+});
+```
+
 ### Sandbox handles
 
 `create`, `get`, and `list` return `Sandbox` handles with lifecycle methods on the object itself:
@@ -187,7 +202,9 @@ await neev.sandboxes.create({
 const sandbox = await neev.sandboxes.get(id);
 await sandbox.refresh();          // re-fetch latest state
 sandbox.lastCrash;                // null, or { reason, at, storage_reset } for the last unexpected stop
-await sandbox.waitUntilReady();   // poll until phase === "Ready"
+const trail = await sandbox.audit(); // one page of the audit trail
+await sandbox.waitUntilReady();   // poll until phase === "Ready" and the sandbox is addressable
+sandbox.addressable;              // false for a moment after create; runtime calls wait for it
 await sandbox.update({ resources: { cpu: 2, memory_gb: 4 } }); // resize (or re-scope egress) in place
 await sandbox.pause();
 const snap = await sandbox.snapshot({ waitUntilReady: true }); // capture and wait until Ready
@@ -217,10 +234,12 @@ try {
   if (err instanceof NotFoundError) {
     // 404 — handle missing sandbox
   } else if (err instanceof APIError) {
-    console.error(err.status, err.code, err.requestId);
+    console.error(err.status, err.code, err.message, err.requestId);
   }
 }
 ```
+
+`err.code` is a machine-readable classification (`not_found`, `validation_error`, `sandbox_quota_exceeded`, …; see the `ErrorCode` type) — branch on it rather than on the message text. Quota refusals also carry `err.scope` (`organization` or `project`). A `503` surfaces as `ServiceUnavailableError`, a subclass of `InternalServerError`.
 
 Transient failures (network errors, `429`, `5xx`) are retried automatically with exponential backoff (configurable via `maxRetries`).
 
@@ -241,7 +260,7 @@ These graduate to fully-typed resource methods as specs land in the SDK.
 
 Operations that act inside a running sandbox are reached directly on the sandbox handle. The handle resolves the sandbox's `connect_url` (returned by `create`/`get`/`list`) on first use and caches it; if the sandbox isn't Ready yet, the first `files`/`exec` call waits until it is:
 
-File paths are workspace-relative (the sandbox rejects absolute paths):
+File paths are relative to the workspace, or absolute inside it (a path outside the workspace is refused):
 
 ```ts
 const sandbox = await neev.sandboxes.get(id);
@@ -255,6 +274,16 @@ const there = await sandbox.files.exists("main.py"); // → boolean
 await sandbox.files.mkdir("out/logs"); // → FileEntry (creates parents)
 await sandbox.files.move("main.py", "app.py"); // → FileEntry (moved)
 await sandbox.files.remove("out", { recursive: true }); // → void
+
+// Large files: write() sends anything over 1 MiB in resumable chunks automatically.
+// upload() does the same for a string, Uint8Array, ArrayBuffer or Blob, with progress.
+await sandbox.files.upload("data.bin", bigBlob, {
+  onProgress: (sent, total) => console.log(`${sent}/${total}`),
+}); // → { bytesWritten }
+
+// Node only: move files between the local disk and the sandbox without buffering them.
+await sandbox.files.uploadFile("./model.bin", "model.bin"); // → { bytesWritten }
+await sandbox.files.downloadFile("results.tar", "./results.tar"); // → { bytesWritten }
 
 // Stream filesystem changes as they happen (until the timeout or an abort signal).
 for await (const ev of sandbox.files.watch(".", { recursive: true })) {
@@ -278,7 +307,9 @@ for await (const event of sandbox.exec(["sh", "-c", "for i in 1 2 3; do echo $i;
 }
 ```
 
-These calls are **not** retried automatically (a retried `write` could run twice) — handle retries yourself if needed.
+These calls are **not** retried automatically (a retried `write` could run twice) — handle retries yourself if needed. The exception is a chunked upload: a chunk that fails in transit resumes from the last byte the sandbox received rather than starting over, and an upload that cannot finish is cancelled before the error is thrown.
+
+`upload` and `uploadFile` take `{ chunkSize?, cwd?, onProgress?, signal? }`; `chunkSize` is 64 KiB to 1 MiB (the default, and the most one request can carry); a smaller chunk loses less to a dropped connection. `downloadFile` writes to a temporary file next to the destination and renames it into place once the whole file has arrived, so a failed download leaves nothing behind. The full example is [`examples/upload-download.ts`](./examples/upload-download.ts).
 
 ### Long-running processes
 
@@ -368,20 +399,43 @@ Node only — it opens a local TCP listener. It needs the [`ws`](https://www.npm
 
 ### Preview URLs
 
-Run a server inside the sandbox and get a public, credential-free preview URL for one of its ports. Ports are private until you expose them; `getUrl` exposes the port and waits until the gateway has provisioned the route before returning the URL.
+Run a server inside the sandbox and get a public, credential-free preview URL for one of its ports. Ports are private until you expose them; `getUrl` exposes the port and waits until the URL is reachable before returning it.
 
 ```ts
 // Start a web server on port 3000, then get its preview URL.
 await sandbox.processes.start(["busybox", "httpd", "-f", "-p", "3000"]);
-const url = await sandbox.getUrl({ port: 3000 }); // → "https://3000-….neevsandbox.app"
+const url = await sandbox.getUrl({ port: 3000 });
 
 // Pass { waitUntilReady: false } to skip the readiness wait, and tune it with
 // timeoutMs / pollIntervalMs.
 
 // Lower-level control if you need it:
-const ports = await sandbox.listPorts(); // → SandboxPort[] ({ port, preview_url })
+const ports = await sandbox.listPorts(); // → SandboxPort[] ({ port, slug, preview_url })
 await sandbox.revokePort(3000); // stop serving the port
 ```
+
+The URL needs no credential: a random slug in it is the only thing gating the port, so treat the URL as a secret. If one leaks, rotate it by exposing the port again with a different slug — the old URL stops working:
+
+```ts
+const rotated = await sandbox.exposePort(3000, { slug: "k3x9q2ab" }); // 8 lowercase letters/digits
+console.log(rotated.preview_url);
+```
+
+A slug you choose is a name, not a secret — leave it out to get a random one for anything you wouldn't publish. The full example is [`examples/preview-url.ts`](./examples/preview-url.ts).
+
+### Audit trail
+
+Read what ran inside a sandbox — terminal commands, SSH, process and file operations — newest first, with the credential each was made under and how it ended. Only the program name is recorded, never its arguments, and nothing typed at a hidden password prompt is captured:
+
+```ts
+let page = await sandbox.audit({ limit: 50 }); // optional from / to (RFC3339), cursor, limit
+for (const r of page.records) console.log(r.at, r.tool, r.command ?? r.target ?? "", r.outcome);
+
+// Page back through the window with next_cursor.
+while (page.next_cursor) page = await sandbox.audit({ cursor: page.next_cursor });
+```
+
+The trail covers the last `retention_days` days; `window_truncated` is true when `from` reaches further back than that. The full example is [`examples/audit-trail.ts`](./examples/audit-trail.ts).
 
 ### Snapshots, fork & rollback
 
@@ -433,8 +487,21 @@ const sandbox = await agent.sandbox();
 await sandbox.files.write("notes.md", "# scratch\n");
 const { stdout } = await sandbox.exec(["ls", "-la"]);
 
-// Resize cpu/memory or change egress in place (no recreate); disk is not resizable.
+// Resize cpu/memory, change egress, or set the idle window in place (no recreate);
+// disk is not resizable.
 await agent.update({ resources: { cpu: 2, memory_gb: 4 } });
+await agent.update({ idle_timeout_seconds: 900 }); // 0 = no idle limit
+agent.idleTimeoutSeconds; // null when the account default applies
+
+// Keep a busy agent from idling out, e.g. once per agent turn.
+await agent.keepalive();
+
+// Preview URLs and the audit trail work just like they do on a sandbox.
+const url = await agent.getUrl({ port: 3000 });
+const trail = await agent.audit({ limit: 50 }); // trail.sandbox_id is the backing sandbox
+
+// Roll the agent back in place to a snapshot of its backing sandbox.
+await agent.rollback(snapshotId);
 
 // Pause to release compute, resume on demand, delete when done.
 await agent.pause();
@@ -442,7 +509,7 @@ await agent.resume();
 await agent.delete();
 ```
 
-Resource methods mirror the handle: `neev.agents.list/create/get/update/pause/resume/delete`, and `neev.agentTemplates.list/get`. The full example is [`examples/create-agent.ts`](./examples/create-agent.ts).
+Resource methods mirror the handle: `neev.agents.list/create/get/update/keepalive/rollback/pause/resume/delete`, `neev.agents.exposePort/listPorts/revokePort/getPortUrl/audit`, and `neev.agentTemplates.list/get`. `get` and every other method take an agent id or its name. The full examples are [`examples/create-agent.ts`](./examples/create-agent.ts) and [`examples/agent-ports-audit.ts`](./examples/agent-ports-audit.ts).
 
 ## Documentation
 

@@ -2,9 +2,13 @@
  * Serve something from inside a sandbox and get a preview URL for its port.
  *
  * `sandbox.getUrl({ port })` exposes the port and returns its public,
- * credential-free preview URL, waiting until the gateway has provisioned the
- * route before it resolves. Ports are private until you expose them; `listPorts`
+ * credential-free preview URL, waiting until the URL is reachable before it
+ * resolves. Ports are private until you expose them; `listPorts`
  * shows what's exposed and `revokePort` stops serving one.
+ *
+ * The URL needs no credential — a random slug in it is the only thing gating the
+ * port — so treat it as a secret. `exposePort(port, { slug })` with a different
+ * slug rotates it: the old URL stops working and a new one is returned.
  *
  * This starts a tiny web server on port 3000 and prints its preview URL — open
  * that URL to reach the server.
@@ -42,6 +46,10 @@ async function main(): Promise<void> {
 
     log(`exposed ports: ${JSON.stringify(await sandbox.listPorts())}`);
 
+    // Rotate the URL as you would after a leak: a new slug replaces the old one.
+    const rotated = await sandbox.exposePort(3000, { slug: randomSlug() });
+    log(`rotated preview URL: ${rotated.preview_url} (the previous URL no longer works)`);
+
     // Stop serving the port when you're done with it.
     await sandbox.revokePort(3000);
     log(`revoked; exposed ports: ${JSON.stringify(await sandbox.listPorts())}`);
@@ -49,6 +57,13 @@ async function main(): Promise<void> {
     log("deleting sandbox…");
     await sandbox.delete();
   }
+}
+
+// Returns a random 8-character slug of lowercase letters and digits.
+function randomSlug(): string {
+  const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
 
 main().catch((err) => {

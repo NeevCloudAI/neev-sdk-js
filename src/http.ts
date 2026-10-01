@@ -195,7 +195,11 @@ async function parseBody(response: Response): Promise<unknown> {
 
 // Coerces an unknown error payload into the API error body shape when possible.
 function toErrorBody(value: unknown): ApiErrorBody | undefined {
-  if (value && typeof value === "object" && ("error" in value || "details" in value)) {
+  if (
+    value &&
+    typeof value === "object" &&
+    ("message" in value || "code" in value || "error" in value || "details" in value)
+  ) {
     return value as ApiErrorBody;
   }
   return undefined;

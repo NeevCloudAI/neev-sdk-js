@@ -3,6 +3,8 @@ import { NeevError } from "./errors.js";
 import { SandboxProcesses } from "./processes.js";
 import { SandboxPty } from "./pty.js";
 import type {
+  AuditQuery,
+  ExposePortOptions,
   GetPortUrlOptions,
   ListSnapshotsParams,
   MetricsQuery,
@@ -14,6 +16,7 @@ import type { ExecOptions, ExecResult, ExecStreamEvent, SandboxConnection } from
 import { openSshTunnel } from "./ssh.js";
 import type { SshTunnel, SshTunnelOptions } from "./ssh.js";
 import type {
+  AuditTrail,
   CreateSnapshotParams,
   SandboxData,
   SandboxLastCrash,
@@ -90,7 +93,7 @@ export class Sandbox {
     return this.state.phase;
   }
 
-  // Desired replica count (0 when paused, 1 when running).
+  // 1 while the sandbox is running, 0 while it is paused.
   get replicas(): number {
     return this.state.replicas;
   }
@@ -115,12 +118,20 @@ export class Sandbox {
     return this.state.resources;
   }
 
+  // Whether the sandbox can be reached yet. Briefly false right after create; a
+  // runtime call made before it turns true is refused. True when not reported.
+  get addressable(): boolean {
+    return this.state.addressable !== false;
+  }
+
   // Most recent unexpected stop as last seen from the server, or null if this
   // sandbox has never had one. Historical: it is not cleared when the sandbox
   // recovers, so compare `at` against when you last trusted the filesystem
   // rather than reading non-null as "broken right now". `storage_reset` true
   // means the sandbox came back with an empty filesystem: files under
-  // /workspace, and anything installed since create, are gone.
+  // /workspace, and anything installed since create, are gone. Restoring from a
+  // snapshot taken before that stop brings the files back and clears this once
+  // the restore completes.
   get lastCrash(): SandboxLastCrash | null {
     return this.state.last_crash ?? null;
   }
@@ -223,14 +234,14 @@ export class Sandbox {
     return this;
   }
 
-  // Pauses the sandbox (scales to zero replicas) and updates this handle.
+  // Pauses the sandbox (it stops running and keeps its state) and updates this handle.
   async pause(): Promise<this> {
     const next = await this.sandboxes.pause(this.id, this.scope);
     this.state = next.data;
     return this;
   }
 
-  // Resumes the sandbox (scales to one replica) and updates this handle.
+  // Resumes the sandbox from its kept state and updates this handle.
   async resume(): Promise<this> {
     const next = await this.sandboxes.resume(this.id, this.scope);
     this.state = next.data;
@@ -255,7 +266,9 @@ export class Sandbox {
 
   // Updates this sandbox in place (cpu/memory and/or egress) and updates this
   // handle — the id, name, and preview URLs are unchanged. At least one of
-  // `resources` or `egress` must be provided; `disk_gb` is not resizable in place.
+  // `resources`, `egress`, `egress_add` or `egress_remove` must be provided;
+  // `egress_add` / `egress_remove` edit the allow-list in place and cannot be
+  // combined with `egress`. `disk_gb` is not resizable in place.
   async update(params: UpdateSandboxParams): Promise<this> {
     const next = await this.sandboxes.update(this.id, params, this.scope);
     this.state = next.data;
@@ -272,20 +285,27 @@ export class Sandbox {
     return this.sandboxes.metrics(this.id, { ...params, ...this.scope });
   }
 
+  // Reads one page of this sandbox's audit trail, newest first. Pass the returned
+  // `next_cursor` as `cursor` to read the next page.
+  async audit(params: AuditQuery = {}): Promise<AuditTrail> {
+    return this.sandboxes.audit(this.id, { ...params, ...this.scope });
+  }
+
   // Exposes a port for credential-free preview URLs and returns its public URL.
   // The route is not live the instant the port is exposed, so by default this
   // waits until the URL is reachable before returning; pass
   // `{ waitUntilReady: false }` to return immediately, and timeoutMs/pollIntervalMs
-  // to tune the wait.
+  // to tune the wait. Pass `slug` to choose or rotate the URL's slug.
   async getUrl(options: { port: number } & GetPortUrlOptions): Promise<string> {
     const { port, ...wait } = options;
     return this.sandboxes.getPortUrl(this.id, port, wait, this.scope);
   }
 
-  // Exposes a port for preview URLs and returns it with its URL (no readiness
-  // wait; use getUrl to wait until the URL is routable).
-  async exposePort(port: number): Promise<SandboxPort> {
-    return this.sandboxes.exposePort(this.id, port, this.scope);
+  // Exposes a port for preview URLs and returns it with its slug and URL (no
+  // readiness wait; use getUrl to wait until the URL is routable). Pass `slug` to
+  // choose one, or a different one to rotate a leaked URL.
+  async exposePort(port: number, options: ExposePortOptions = {}): Promise<SandboxPort> {
+    return this.sandboxes.exposePort(this.id, port, { ...this.scope, ...options });
   }
 
   // Lists the ports currently exposed for this sandbox's preview URLs.
@@ -305,7 +325,7 @@ export class Sandbox {
   // pollIntervalMs tune that wait.
   async snapshot(options: CreateSnapshotParams & SnapshotWaitOptions = {}): Promise<SnapshotData> {
     // Split the client-side wait controls from the snapshot request body fields
-    // (name, retain_for) so only the latter reach the create call.
+    // (name) so only the latter reaches the create call.
     const { waitUntilReady, timeoutMs, pollIntervalMs, ...params } = options;
     const snapshot = await this.sandboxes.createSnapshot(this.id, params, this.scope);
     if (!waitUntilReady) return snapshot;
@@ -351,11 +371,11 @@ export class Sandbox {
 
   // Caches the sandbox connection by connect_url. Waits until the sandbox is Ready
   // when it has no usable endpoint yet (a freshly-created or just-resumed sandbox
-  // reports no connect_url, or a stale non-Ready phase). The cached connection is
-  // rebuilt if the connect_url changes (e.g. across a resume). Throws if the
-  // sandbox is Ready but still exposes no connect_url.
+  // reports no connect_url, a stale non-Ready phase, or is not yet addressable).
+  // The cached connection is rebuilt if the connect_url changes (e.g. across a
+  // resume). Throws if the sandbox is Ready but still exposes no connect_url.
   private async resolveConnection(): Promise<SandboxConnection> {
-    if (!this.state.connect_url || this.phase !== "Ready") {
+    if (!this.state.connect_url || this.phase !== "Ready" || !this.addressable) {
       await this.waitUntilReady();
     }
     const connectUrl = this.state.connect_url;
@@ -371,9 +391,9 @@ export class Sandbox {
     return this.conn;
   }
 
-  // Polls until the sandbox reaches the Ready phase, then resolves with this
-  // handle. Fails fast if the sandbox is Paused (it will never become Ready on
-  // its own) and throws a NeevError if the timeout elapses first.
+  // Polls until the sandbox reaches the Ready phase and is addressable, then
+  // resolves with this handle. Fails fast if the sandbox is Paused (it will never
+  // become Ready on its own) and throws a NeevError if the timeout elapses first.
   async waitUntilReady(options: WaitOptions = {}): Promise<this> {
     const timeoutMs = options.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS;
     const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
@@ -393,7 +413,7 @@ export class Sandbox {
 
     // Poll the live phase until Ready, a terminal Paused state, or the deadline.
     while (true) {
-      if (this.phase === "Ready") return this;
+      if (this.phase === "Ready" && this.addressable) return this;
       if (this.phase === "Paused") {
         throw new NeevError(
           `Sandbox ${this.id} is Paused and will not become Ready; call resume() first.`,
@@ -401,8 +421,10 @@ export class Sandbox {
       }
       const remaining = deadline - Date.now();
       if (remaining <= 0) {
+        const state =
+          this.phase === "Ready" ? "phase: Ready, not yet addressable" : `phase: ${this.phase}`;
         throw new NeevError(
-          `Sandbox ${this.id} did not become Ready within ${timeoutMs}ms (phase: ${this.phase}).`,
+          `Sandbox ${this.id} did not become Ready within ${timeoutMs}ms (${state}).`,
         );
       }
       await sleep(Math.min(pollIntervalMs, remaining));
