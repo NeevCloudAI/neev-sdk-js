@@ -95,11 +95,11 @@
 
   - `neev.templates` — new read-only resource: `list()` and `get(id)` over `/api/v1beta1/sandbox-templates`.
   - `sandboxes.create` takes an optional `sandbox_template_id`; when omitted the server uses its default template (and resolves the image and default command from the chosen template). `image`/`command` are optional and ignored when a template is set. **Breaking** for callers that passed only `image`.
-  - `CreateSandboxRequest` and `Sandbox` gain `resources` (cpu/memory_gb/disk_gb) and `egress` (mode + allow rules); `Sandbox` also gains `sandbox_template_id` and `created_by`. The removed `namespace`/`fqdn`/`k8s_uid` fields are no longer returned.
+  - `CreateSandboxRequest` and `Sandbox` gain `resources` (cpu/memory_gb/disk_gb) and `egress` (mode + allow rules); `Sandbox` also gains `sandbox_template_id` and `created_by`. Three internal identifier fields are no longer returned.
   - `Sandbox` handle exposes `region`, `templateId`, and `resources`.
-  - `Sandbox` handle now resolves the daemon `connect_url` automatically: `files`/`exec` wait until the sandbox is Ready on first use to obtain it, cache the connection, and rebuild it if the `connect_url` changes (e.g. across a resume).
+  - `Sandbox` handle now resolves the sandbox `connect_url` automatically: `files`/`exec` wait until the sandbox is Ready on first use to obtain it, cache the connection, and rebuild it if the `connect_url` changes (e.g. across a resume).
 
-- d1d510f: Add streaming command execution. `sandbox.execStream(command, options)` (also on `SandboxConnection`) is an async generator that yields `stdout`/`stderr` text chunks as the daemon flushes them and a terminal `exit` event, so callers can consume output live instead of waiting for the whole command. Buffered `sandbox.exec` is now implemented on top of it (unchanged behavior). Exports the `ExecStreamEvent` type.
+- d1d510f: Add streaming command execution. `sandbox.execStream(command, options)` (also on `SandboxConnection`) is an async generator that yields `stdout`/`stderr` text chunks as the command produces them and a terminal `exit` event, so callers can consume output live instead of waiting for the whole command. Buffered `sandbox.exec` is now implemented on top of it (unchanged behavior). Exports the `ExecStreamEvent` type.
 
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres

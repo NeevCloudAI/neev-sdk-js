@@ -32,7 +32,10 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 | [`byoi-create.ts`](./byoi-create.ts) | Bring Your Own Image: `create({ image, command })` from a public OCI image → wait for Ready → exec | `npx tsx examples/byoi-create.ts` |
 | [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
 | [`snapshot-fork-rollback.ts`](./snapshot-fork-rollback.ts) | Snapshot a sandbox → fork a new one from it → roll the original back in place | `npx tsx examples/snapshot-fork-rollback.ts` |
-| [`update-resize-egress.ts`](./update-resize-egress.ts) | Update a running sandbox in place: resize cpu/memory + re-scope egress in one `update()` call (single PATCH) | `npx tsx examples/update-resize-egress.ts` |
+| [`update-resize-egress.ts`](./update-resize-egress.ts) | Update a running sandbox in place: resize cpu/memory + re-scope egress in one `update()` call (single PATCH), then edit the allow-list with `egress_add` / `egress_remove` | `npx tsx examples/update-resize-egress.ts` |
+| [`upload-download.ts`](./upload-download.ts) | `files.uploadFile` a large local file in resumable chunks with progress, then `files.downloadFile` it back | `npx tsx examples/upload-download.ts` |
+| [`audit-trail.ts`](./audit-trail.ts) | `sandbox.audit()` — page through what ran inside a sandbox, newest first | `npx tsx examples/audit-trail.ts` |
+| [`agent-ports-audit.ts`](./agent-ports-audit.ts) | Agent preview port with a slug → list → audit page → `keepalive()` → revoke | `npx tsx examples/agent-ports-audit.ts` |
 | [`last-crash.ts`](./last-crash.ts) | `sandbox.lastCrash` — seed a file, force an OOM kill, then use `storage_reset` to tell a wiped `/workspace` from one that survived | `npx tsx examples/last-crash.ts` |
 | [`streaming-exec.ts`](./streaming-exec.ts) | `sandbox.exec(cmd, { stream: true })` — output streamed line-by-line as it is produced | `npx tsx examples/streaming-exec.ts` |
 | [`files.ts`](./files.ts) | `sandbox.files` — write, read, stat/exists, mkdir, move, list, remove, and a live `watch` of changes | `npx tsx examples/files.ts` |
@@ -41,7 +44,7 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 | [`processes.ts`](./processes.ts) | `sandbox.processes` — start a detached process, follow/poll its output, list, kill, wait | `npx tsx examples/processes.ts` |
 | [`process-pool.ts`](./process-pool.ts) | Manage several detached processes: start a pool, `list()`/`status()`, then `killAll()` | `npx tsx examples/process-pool.ts` |
 | [`pty.ts`](./pty.ts) | `sandbox.pty` — interactive terminal over a WebSocket (needs `pnpm add -D ws @types/ws`) | `npx tsx examples/pty.ts` |
-| [`preview-url.ts`](./preview-url.ts) | `sandbox.getUrl({ port })` — serve on a port, get its preview URL, list and revoke ports | `npx tsx examples/preview-url.ts` |
+| [`preview-url.ts`](./preview-url.ts) | `sandbox.getUrl({ port })` — serve on a port, get its preview URL, rotate its slug, list and revoke ports | `npx tsx examples/preview-url.ts` |
 | [`ssh-tunnel.ts`](./ssh-tunnel.ts) | `sandbox.ssh()` over a BYOI image — exec, `rsync` upload, and `ssh -L` port-forward through one tunnel (needs `pnpm add -D ws`) | `npx tsx examples/ssh-tunnel.ts` |
 
 ## Examples — with an AI model
@@ -177,7 +180,7 @@ npx tsx examples/agents/genkit.ts
 
 ## Notes
 
-- Sandbox file paths are **workspace-relative** — the sandbox rejects absolute paths.
+- Sandbox file paths are relative to the workspace, or absolute inside it — a path outside the workspace is refused.
 - The standard templates ship `sh` only (no `bash`, no `python3`); `sh -c` works
   on every template. `runPython` needs a python-capable template.
 - Progress/transcript output goes to **stderr**; an example's result goes to **stdout**.

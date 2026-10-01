@@ -1,13 +1,15 @@
 import type { Client } from "openapi-fetch";
 import type { RequestContext, Scope } from "../client.js";
-import { withEgressConvenience } from "../egress.js";
+import { assertUpdateBody, withEgressConvenience } from "../egress.js";
 import { NeevError } from "../errors.js";
 import type { paths } from "../generated/aiagent.js";
 import { ensureOk, unwrap } from "../http.js";
-import type { FetchLike } from "../http.js";
+import { exposePortBody, waitForPreviewUrl } from "../preview.js";
+import type { ExposePortParams, GetPortUrlOptions } from "../preview.js";
 import type { SandboxConnection } from "../runtime.js";
 import { Sandbox } from "../sandbox.js";
 import type {
+  AuditTrail,
   CreateSandboxParams,
   CreateSnapshotParams,
   OnIdleAction,
@@ -39,6 +41,10 @@ const PORT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbo
 const KEEPALIVE =
   "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/keepalive";
 const TIMEOUT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/timeout";
+const AUDIT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/audit";
+
+// The fields an in-place sandbox update can carry; at least one must be set.
+const SANDBOX_UPDATE_FIELDS = ["resources", "egress", "egress_add", "egress_remove"] as const;
 
 // The on_idle values the API accepts. Kept in sync with the generated OnIdleAction
 // enum; used to reject a bad value locally before a request goes out.
@@ -54,20 +60,7 @@ function assertOnIdle(value: OnIdleAction | undefined): void {
   }
 }
 
-// Defaults for getPortUrl's preview-URL readiness poll.
-const DEFAULT_PORT_WAIT_TIMEOUT_MS = 60_000;
-const DEFAULT_PORT_POLL_INTERVAL_MS = 2_000;
-
-// Options for getPortUrl / sandbox.getUrl: whether to wait for the preview URL to
-// become routable, and the poll timing while waiting.
-export interface GetPortUrlOptions {
-  // Poll the preview URL until it is routable before returning. Defaults to true.
-  waitUntilReady?: boolean;
-  // Overall wait budget in milliseconds. Defaults to 60000.
-  timeoutMs?: number;
-  // Delay between probes in milliseconds. Defaults to 2000.
-  pollIntervalMs?: number;
-}
+export type { ExposePortOptions, ExposePortParams, GetPortUrlOptions } from "../preview.js";
 
 // Parameters for listing sandboxes: pagination and optional filters, plus an
 // optional scope override. Filters combine with AND; omit one to leave it off.
@@ -134,6 +127,22 @@ export interface MetricsQuery {
 // Query window for a metrics read, plus an optional scope override.
 export interface MetricsParams extends Scope, MetricsQuery {}
 
+// The window and paging fields of an audit-trail read; shared by the resource
+// method and the Sandbox handle. All optional.
+export interface AuditQuery {
+  // Start of the window (RFC3339). Defaults to 24 hours before `to`.
+  from?: string;
+  // End of the window (RFC3339). Defaults to now.
+  to?: string;
+  // The previous page's `next_cursor`, to read the next (older) page.
+  cursor?: string;
+  // Records per page (1-200, default 50).
+  limit?: number;
+}
+
+// Audit-trail query plus an optional scope override.
+export interface AuditParams extends Scope, AuditQuery {}
+
 // Sandbox lifecycle operations. Exposed as `client.sandboxes`. Every method
 // returns a Sandbox handle (or page of handles) so callers can chain lifecycle
 // actions on the result.
@@ -186,7 +195,8 @@ export class Sandboxes {
     };
   }
 
-  // Fetches a single sandbox by id.
+  // Fetches a single sandbox by id or by name (names are unique within a project).
+  // Every other method that takes a sandbox id accepts its name too.
   async get(id: string, scope?: Scope): Promise<Sandbox> {
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.GET(ITEM, {
@@ -223,16 +233,15 @@ export class Sandboxes {
   // Updates a running sandbox in place (cpu/memory and/or egress) and returns the
   // updated handle — same id, name, and preview URLs. `resources` are resized in
   // place; `egress` replaces the policy in full and takes effect for new
-  // connections with no restart. `disk_gb` is not resizable in place and is
+  // connections with no restart. `egress_add` / `egress_remove` edit the existing
+  // allow-list in place (removals apply first, so one call can swap a host) and
+  // cannot be combined with `egress`. `disk_gb` is not resizable in place and is
   // rejected by the server if changed. The `allowInternet` / `allowEgress`
-  // convenience maps to `egress` exactly as it does on create. Rejects a patch
-  // carrying neither `resources` nor `egress` locally rather than letting the
-  // server 400 on it.
+  // convenience maps to `egress` exactly as it does on create. Rejects an empty
+  // or conflicting patch locally rather than letting the server 400 on it.
   async update(id: string, params: UpdateSandboxParams, scope?: Scope): Promise<Sandbox> {
     const body = withEgressConvenience(params);
-    if (body.resources === undefined && body.egress === undefined) {
-      throw new NeevError("sandboxes.update requires at least one of `resources` or `egress`.");
-    }
+    assertUpdateBody(body, "sandboxes.update", SANDBOX_UPDATE_FIELDS);
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.PATCH(ITEM, {
       params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
@@ -241,7 +250,7 @@ export class Sandboxes {
     return new Sandbox(this, unwrap<SandboxData>(res), scope);
   }
 
-  // Pauses a sandbox (scales it to zero replicas) and returns the updated handle.
+  // Pauses a sandbox (it stops running and keeps its state) and returns the updated handle.
   async pause(id: string, scope?: Scope): Promise<Sandbox> {
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.POST(PAUSE, {
@@ -250,7 +259,7 @@ export class Sandboxes {
     return new Sandbox(this, unwrap<SandboxData>(res), scope);
   }
 
-  // Resumes a paused sandbox (scales it to one replica) and returns the updated handle.
+  // Resumes a paused sandbox from its kept state and returns the updated handle.
   async resume(id: string, scope?: Scope): Promise<Sandbox> {
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.POST(RESUME, {
@@ -281,13 +290,29 @@ export class Sandboxes {
     return unwrap<SandboxMetricsResponse>(res);
   }
 
-  // Exposes a port for credential-free preview URLs and returns it with its URL.
-  // Idempotent: exposing an already-exposed port returns the same URL.
-  async exposePort(id: string, port: number, scope?: Scope): Promise<SandboxPort> {
+  // Reads one page of the sandbox's audit trail, newest first: what ran inside it
+  // (program names only, never arguments) and the file and process operations made.
+  async audit(id: string, params: AuditParams = {}): Promise<AuditTrail> {
+    const { from, to, cursor, limit, ...scope } = params;
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.GET(AUDIT, {
+      params: {
+        path: { org_id: orgId, project_id: projectId, sandbox_id: id },
+        query: { from, to, cursor, limit },
+      },
+    });
+    return unwrap<AuditTrail>(res);
+  }
+
+  // Exposes a port for credential-free preview URLs and returns it with its slug and
+  // URL. Idempotent: exposing an already-exposed port returns the same URL, unless a
+  // different `slug` is supplied — that rotates the slug and breaks the old URL.
+  async exposePort(id: string, port: number, params: ExposePortParams = {}): Promise<SandboxPort> {
+    const { slug, ...scope } = params;
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.POST(PORTS, {
       params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id } },
-      body: { port },
+      body: exposePortBody(port, { slug }),
     });
     return unwrap<SandboxPort>(res);
   }
@@ -311,8 +336,8 @@ export class Sandboxes {
     ensureOk(res);
   }
 
-  // Exposes a port and returns its public preview URL. The gateway route is not
-  // live the instant a port is exposed, so by default this polls the URL until it
+  // Exposes a port and returns its public preview URL. The URL is not reachable
+  // the instant a port is exposed, so by default this polls the URL until it
   // is reachable before returning; pass `{ waitUntilReady: false }` to skip the
   // wait and return immediately.
   async getPortUrl(
@@ -321,40 +346,10 @@ export class Sandboxes {
     options: GetPortUrlOptions = {},
     scope?: Scope,
   ): Promise<string> {
-    const { preview_url } = await this.exposePort(id, port, scope);
+    const { preview_url } = await this.exposePort(id, port, { ...scope, slug: options.slug });
     if (options.waitUntilReady === false) return preview_url;
-    await this.waitForPreviewUrl(preview_url, options);
+    await waitForPreviewUrl(this.ctx.fetch, preview_url, options);
     return preview_url;
-  }
-
-  // Polls a preview URL until the gateway routes it (it stops returning the
-  // not-yet-provisioned 403/404, and any connection error clears). Throws on
-  // timeout. Note: a successful probe means the URL is routable — the server
-  // behind the port must still be listening to answer a real request.
-  private async waitForPreviewUrl(url: string, options: GetPortUrlOptions): Promise<void> {
-    const timeoutMs = options.timeoutMs ?? DEFAULT_PORT_WAIT_TIMEOUT_MS;
-    const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_PORT_POLL_INTERVAL_MS;
-    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-      throw new NeevError(
-        `getUrl: timeoutMs must be a positive, finite number (got ${timeoutMs}).`,
-      );
-    }
-    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
-      throw new NeevError(
-        `getUrl: pollIntervalMs must be a positive, finite number (got ${pollIntervalMs}).`,
-      );
-    }
-    const deadline = Date.now() + timeoutMs;
-    while (true) {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) {
-        throw new NeevError(`Preview URL ${url} was not routable within ${timeoutMs}ms.`);
-      }
-      // Bound each probe to the remaining budget so a stalled request can't outlast the deadline.
-      if (await previewUrlReachable(this.ctx.fetch, url, remaining)) return;
-      const wait = Math.min(pollIntervalMs, deadline - Date.now());
-      if (wait > 0) await sleep(wait);
-    }
   }
 
   // Captures a snapshot of a sandbox. The returned snapshot starts Pending; poll
@@ -482,27 +477,4 @@ export class Sandboxes {
 // Resolves after the given number of milliseconds.
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Probes a preview URL to decide whether the gateway has finished routing it.
-// Right after a port is exposed the route is not yet live: the request either
-// fails to connect or the gateway returns 403/404 for the unprovisioned route.
-// Once routed, the gateway forwards to the sandbox (any other status, including a
-// 502 when nothing is listening yet), which counts as reachable.
-async function previewUrlReachable(
-  fetch: FetchLike,
-  url: string,
-  timeoutMs: number,
-): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { method: "GET", redirect: "manual", signal: controller.signal });
-    return res.status !== 403 && res.status !== 404;
-  } catch {
-    // A connection error, DNS failure, or an abort when the budget ran out — not reachable yet.
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
 }

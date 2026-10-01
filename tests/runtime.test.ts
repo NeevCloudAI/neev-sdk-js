@@ -160,7 +160,7 @@ describe("runtime", () => {
       const err = await sandbox.files.write("/missing", "x").catch((e) => e);
       expect(err).toBeInstanceOf(NotFoundError);
       expect((err as NotFoundError).code).toBe("not_found");
-      expect((err as NotFoundError).details).toBe("no such path");
+      expect((err as NotFoundError).message).toBe("HTTP 404 not_found: no such path");
     });
 
     it("does not retry on a 5xx", async () => {
@@ -473,7 +473,8 @@ describe("runtime", () => {
       ]);
       const err = await sandbox.exec("sleep", { args: ["999"] }).catch((e) => e);
       expect(err).toBeInstanceOf(DeadlineExceededError);
-      expect((err as DeadlineExceededError).details).toBe("timed out");
+      expect((err as DeadlineExceededError).code).toBe("deadline_exceeded");
+      expect((err as DeadlineExceededError).message).toBe("HTTP 504 deadline_exceeded: timed out");
     });
 
     it("maps a non-5xx error frame to its typed error", async () => {

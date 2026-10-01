@@ -6,3 +6,11 @@ export function decodeBase64(value: string): Uint8Array {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
+
+// Encodes a UTF-8 string as base64 using the runtime's global btoa. Used for the
+// resumable upload's Upload-Metadata header values.
+export function encodeBase64(value: string): string {
+  let binary = "";
+  for (const byte of new TextEncoder().encode(value)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}

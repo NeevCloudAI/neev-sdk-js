@@ -4,9 +4,12 @@ import {
   APIConnectionError,
   APITimeoutError,
   BadRequestError,
+  ConflictError,
+  InternalServerError,
   type NeevError,
   NotFoundError,
   RateLimitError,
+  ServiceUnavailableError,
 } from "../src/index.js";
 import { json, mockFetch } from "./helpers.js";
 
@@ -145,7 +148,16 @@ describe("RawClient (spec-less escape hatch)", () => {
 
   it("maps a 404 to NotFoundError with code, details, and request id", async () => {
     const { raw } = rawClient([
-      json(404, { error: "not_found", details: "no widget" }, { "x-request-id": "req-9" }),
+      json(
+        404,
+        {
+          code: "not_found",
+          message: "widget not found",
+          error: "widget not found",
+          details: "no widget",
+        },
+        { "x-request-id": "req-9" },
+      ),
     ]);
     const err = (await raw
       .request({ method: "GET", path: "/v1/widgets/1" })
@@ -155,6 +167,43 @@ describe("RawClient (spec-less escape hatch)", () => {
     expect((err as NotFoundError).code).toBe("not_found");
     expect((err as NotFoundError).details).toBe("no widget");
     expect((err as NotFoundError).requestId).toBe("req-9");
+    expect(err.message).toBe(
+      "HTTP 404 not_found: widget not found (no widget) [request-id: req-9]",
+    );
+  });
+
+  it("carries the quota scope on a refusal", async () => {
+    const { raw } = rawClient([
+      json(409, {
+        code: "sandbox_quota_exceeded",
+        message: "sandbox quota reached",
+        scope: "project",
+      }),
+    ]);
+    const err = (await raw
+      .request({ method: "POST", path: "/x" })
+      .catch((e) => e)) as ConflictError;
+    expect(err).toBeInstanceOf(ConflictError);
+    expect(err.code).toBe("sandbox_quota_exceeded");
+    expect(err.scope).toBe("project");
+  });
+
+  it("falls back to the legacy error text when the body has no message or code", async () => {
+    const { raw } = rawClient([json(400, { error: "name is required" })]);
+    const err = (await raw
+      .request({ method: "GET", path: "/x" })
+      .catch((e) => e)) as BadRequestError;
+    expect(err).toBeInstanceOf(BadRequestError);
+    expect(err.code).toBeUndefined();
+    expect(err.message).toBe("HTTP 400 name is required");
+  });
+
+  it("maps a 503 to ServiceUnavailableError, still an InternalServerError", async () => {
+    const { raw } = rawClient([json(503, { code: "service_unavailable", message: "try again" })]);
+    const err = await raw.request({ method: "GET", path: "/x" }).catch((e) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableError);
+    expect(err).toBeInstanceOf(InternalServerError);
+    expect((err as ServiceUnavailableError).code).toBe("service_unavailable");
   });
 
   it("maps status codes to the matching error subclass", async () => {

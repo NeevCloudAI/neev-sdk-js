@@ -105,6 +105,37 @@ describe("Sandbox handle", () => {
     expect(ready.phase).toBe("Ready");
   });
 
+  it("waitUntilReady keeps polling while a Ready sandbox is not yet addressable", async () => {
+    const neev = client([
+      json(201, sandboxData({ phase: "Pending" })),
+      json(200, sandboxData({ phase: "Ready", addressable: false })),
+      json(200, sandboxData({ phase: "Ready", addressable: true })),
+    ]);
+    const sb = await neev.sandboxes.create({
+      name: "demo",
+      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+    });
+    const ready = await sb.waitUntilReady({ pollIntervalMs: 1, timeoutMs: 1000 });
+    expect(ready.phase).toBe("Ready");
+    expect(ready.addressable).toBe(true);
+  });
+
+  it("waitUntilReady names addressability when that is what it timed out on", async () => {
+    const fetch: FetchLike = async () =>
+      json(200, sandboxData({ phase: "Ready", addressable: false }));
+    const neev = new Neev({ apiKey: "k", orgId: "o", projectId: "p", maxRetries: 0, fetch });
+    const sb = await neev.sandboxes.get("demo");
+    await expect(sb.waitUntilReady({ pollIntervalMs: 1, timeoutMs: 10 })).rejects.toThrow(
+      /not yet addressable/,
+    );
+  });
+
+  it("addressable defaults to true when the field is not reported", async () => {
+    const neev = client([json(200, sandboxData({ phase: "Ready" }))]);
+    const sb = await neev.sandboxes.get("demo");
+    expect(sb.addressable).toBe(true);
+  });
+
   it("waitUntilReady throws when the timeout elapses", async () => {
     const neev = alwaysPhaseClient("Pending");
     const sb = await neev.sandboxes.create({

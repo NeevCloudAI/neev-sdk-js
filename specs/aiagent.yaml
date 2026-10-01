@@ -4,8 +4,8 @@ info:
   description: |
     Manages sandboxes for the AI Supercloud platform. v1beta1 scope covers
     sandbox lifecycle (create, list, get, delete, pause/resume), live-health
-    metrics, and memory snapshots (create, list, get, delete, rollback, fork,
-    restore create).
+    metrics, and memory snapshots (create, list, get, delete,
+    rollback, fork, restore create).
   version: 0.2.0
 servers:
   - url: https://api.{env}.ai.neevcloud.com/agent
@@ -110,7 +110,6 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}:
     get:
       tags: [Sandboxes]
@@ -189,10 +188,7 @@ paths:
     patch:
       tags: [Sandboxes]
       summary: Update a sandbox in place
-      description: |
-        Updates mutable fields of a sandbox without restarting it. `resources` (cpu/memory) are resized
-        in place on the running sandbox. Disk is not resizable in place.
-        Fields omitted from the body are left unchanged.
+      description: "Updates mutable fields of a sandbox without restarting it. `resources` (cpu/memory) are resized\nin place on the running sandbox. Disk is not resizable in place. \nFields omitted from the body are left unchanged.\n"
       operationId: updateSandbox
       x-codeSamples:
         - lang: cURL
@@ -229,7 +225,6 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/pause:
     post:
       tags: [Sandboxes]
@@ -281,7 +276,6 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/keepalive:
     post:
       tags: [Sandboxes]
@@ -305,7 +299,6 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/timeout:
     put:
       tags: [Sandboxes]
@@ -331,7 +324,6 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/connect-token:
     post:
       tags: [Sandboxes]
@@ -351,7 +343,6 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/resume:
     post:
       tags: [Sandboxes]
@@ -397,15 +388,14 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports:
     get:
       tags: [Sandboxes]
       summary: List the ports exposed for preview URLs
       description: |
         Returns the ports currently exposed for this sandbox's preview URLs,
-        each with its public preview URL. Ports are private by default — a port
-        is only reachable through a preview URL after you expose it.
+        each with its slug and public preview URL. Ports are private by default —
+        a port is only reachable through a preview URL after you expose it.
       operationId: listSandboxPorts
       x-codeSamples:
         - lang: TypeScript
@@ -441,6 +431,7 @@ paths:
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
+        "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
     post:
       tags: [Sandboxes]
@@ -448,7 +439,12 @@ paths:
       description: |
         Exposes a port so it can be reached through a public preview URL, and
         returns that URL. Exposing a port that is already exposed returns the
-        same URL and makes no other change.
+        same URL and makes no other change, unless you supply a different slug —
+        that replaces the slug and breaks the previous URL.
+
+        The preview URL carries a slug that is the only thing gating it: the URL
+        needs no credential, so treat it as a secret. Omit `slug` and a random one
+        is generated for you.
 
         The port must be between 1 and 65535. Some ports are reserved by the
         platform and cannot be exposed; requests for those are rejected.
@@ -495,7 +491,6 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/ports/{port}:
     delete:
       tags: [Sandboxes]
@@ -541,7 +536,6 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   # --- Sandbox Memory Snapshots ---
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/snapshots:
     get:
@@ -634,7 +628,6 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/snapshots/{snapshot_id}:
     get:
       tags: [Snapshots]
@@ -717,7 +710,6 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/restore:
     post:
       deprecated: true
@@ -749,7 +741,6 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/rollback:
     post:
       tags: [Snapshots]
@@ -810,7 +801,6 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/fork:
     post:
       tags: [Snapshots]
@@ -862,16 +852,15 @@ paths:
         "404": {$ref: '#/components/responses/NotFound'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/metrics:
     get:
       tags: [Sandboxes]
       summary: Read live health metrics for a sandbox
       description: |
-        Returns the bounded metric set for one sandbox (CPU / memory / disk plus
-        lifecycle and rate series). `from` / `to` / `step` are optional and
-        default to the last hour; the full v1 metric set is always returned (no
-        metric selector).
+        Returns the bounded metric set for one sandbox (CPU / memory / disk
+        plus lifecycle and rate series). `from` / `to` / `step` are optional
+        and default to the last hour; the full v1 metric set is always
+        returned (no metric selector).
       operationId: getSandboxMetrics
       x-codeSamples:
         - lang: TypeScript
@@ -924,15 +913,75 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/audit:
+    get:
+      tags: [Sandboxes]
+      summary: Read the command audit trail for a sandbox
+      description: |
+        What ran inside the sandbox — terminal commands, SSH, process and file
+        operations — newest first, with the credential each was made under and how
+        it ended.
 
+        Only the program name is recorded, never its arguments, and input typed at
+        a hidden password prompt is not captured at all. A trail shows that `psql`
+        ran; it cannot show the connection string it ran against.
+
+        The trail covers the last `retention_days` days. `window_truncated` is true
+        when `from` reaches further back than that.
+
+        Page with `cursor`: pass the previous response's `next_cursor`. No
+        `next_cursor` means there is nothing older in the window.
+      operationId: getSandboxAudit
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const sandbox = await neev.sandboxes.get(sandboxId);
+            const trail = await sandbox.audit({ limit: 50 });
+            for (const r of trail.records) {
+              console.log(r.at, r.tool, r.command ?? "", r.outcome);
+            }
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            sandbox = neev.sandboxes.get(sandbox_id)
+            trail = sandbox.audit(limit=50)
+            for r in trail.records:
+                print(r.at, r.tool, r.command or "", r.outcome)
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/SandboxID'}
+        - {$ref: '#/components/parameters/AuditFrom'}
+        - {$ref: '#/components/parameters/AuditTo'}
+        - {$ref: '#/components/parameters/AuditCursor'}
+        - {$ref: '#/components/parameters/AuditLimit'}
+      responses:
+        "200":
+          description: One page of the sandbox's audit trail
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuditTrailResponse'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
   /api/v1beta1/sandbox-templates:
     get:
       tags: [Sandbox Templates]
       summary: List sandbox templates
       description: |
-        Returns platform-managed sandbox runtime templates available for sandbox
-        create. Only templates with status `active` or `deprecated` are
-        returned. Internal template details are not exposed.
+        Returns platform-managed sandbox runtime templates available for
+        sandbox create. Only templates with status `active` or `deprecated`
+        are returned. Internal template details are not exposed.
       operationId: listSandboxTemplates
       x-codeSamples:
         - lang: TypeScript
@@ -963,7 +1012,6 @@ paths:
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/sandbox-templates/{template_id}:
     get:
       tags: [Sandbox Templates]
@@ -1001,7 +1049,6 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   # --- Agents ---
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents:
     get:
@@ -1084,7 +1131,6 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "409": {$ref: '#/components/responses/Conflict'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}:
     get:
       tags: [Agents]
@@ -1200,7 +1246,6 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/pause:
     post:
       tags: [Agents]
@@ -1242,7 +1287,6 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/resume:
     post:
       tags: [Agents]
@@ -1284,7 +1328,29 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/keepalive:
+    post:
+      tags: [Agents]
+      summary: Reset an agent's idle timer
+      description: |
+        Extends the idle window of the agent's backing sandbox so a busy agent
+        stays running without an open connection. Call it periodically while
+        work is in progress, for example once per agent turn.
+      operationId: keepaliveAgent
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/AgentID'}
+      responses:
+        "200":
+          description: Idle timer reset
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Agent'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/connect:
     post:
       tags: [Agents]
@@ -1319,14 +1385,13 @@ paths:
         "409": {$ref: '#/components/responses/Conflict'}
         "425": {$ref: '#/components/responses/TooEarly'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/snapshots:
     post:
       tags: [Agents]
       summary: Create an agent snapshot
       description: |
-        Snapshots the sandbox backing this agent. Behaves the same as creating a
-        sandbox snapshot directly, scoped through the agent's ID instead.
+        Snapshots the sandbox backing this agent. Behaves the same as creating
+        a sandbox snapshot directly, scoped through the agent's ID instead.
       operationId: createAgentSnapshot
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
@@ -1340,6 +1405,12 @@ paths:
               properties:
                 name:
                   type: string
+                  maxLength: 63
+                  pattern: '^[a-z]([-a-z0-9]*[a-z0-9])?$'
+                  description: |
+                    Optional name for this snapshot. Must be a valid DNS name (lowercase
+                    alphanumeric or '-', starting with a letter, max 63 characters) so it
+                    can name sandboxes created on fork and restore. Omit to leave unnamed.
                 retain_for:
                   type: string
                   description: "Duration string, e.g. 720h. Omit or '0' for no expiry."
@@ -1383,7 +1454,6 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/fork:
     post:
       tags: [Snapshots]
@@ -1415,14 +1485,13 @@ paths:
         "409": {$ref: '#/components/responses/Conflict'}
         "425": {$ref: '#/components/responses/TooEarly'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
-  /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/restore:
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/rollback:
     post:
       tags: [Agents]
-      summary: Restore an agent from a snapshot
+      summary: Rollback an agent from a snapshot
       description: |
         Restarts the agent's backing sandbox from a previously taken snapshot.
-      operationId: restoreAgent
+      operationId: rollbackAgent
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -1431,13 +1500,7 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [snapshot_id]
-              properties:
-                snapshot_id:
-                  type: string
-                  format: uuid
+            schema: {$ref: '#/components/schemas/RollbackAgentRequest'}
       responses:
         "200":
           description: Agent restarting from snapshot.
@@ -1449,7 +1512,197 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/ports:
+    get:
+      tags: [Agents]
+      summary: List the ports exposed for the agent's preview URLs
+      description: |
+        Returns the ports currently exposed for this agent's preview URLs, each
+        with its slug and public preview URL. Ports are private by default — a
+        port is only reachable through a preview URL after you expose it.
+      operationId: listAgentPorts
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
 
+            const neev = new Neev();
+
+            const agent = await neev.agents.get(agentId);
+            const ports = await agent.listPorts();
+            console.log(ports.map((p) => p.port));
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            agent = neev.agents.get(agent_id)
+            ports = agent.list_ports()
+            print([p.port for p in ports])
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/AgentID'}
+      responses:
+        "200":
+          description: Exposed ports
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxPortList'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+    post:
+      tags: [Agents]
+      summary: Expose an agent port for credential-free preview URLs
+      description: |
+        Exposes a port on the agent so it can be reached through a public preview
+        URL, and returns that URL. Exposing a port that is already exposed returns
+        the same URL and makes no other change, unless you supply a different
+        slug — that replaces the slug and breaks the previous URL.
+
+        The preview URL carries a slug that is the only thing gating it: the URL
+        needs no credential, so treat it as a secret. Omit `slug` and a random one
+        is generated for you.
+
+        The port must be between 1 and 65535. Some ports are reserved by the
+        platform and cannot be exposed; requests for those are rejected.
+      operationId: exposeAgentPort
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const agent = await neev.agents.get(agentId);
+            const port = await agent.exposePort(3000);
+            console.log(port.preview_url);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            agent = neev.agents.get(agent_id)
+            port = agent.expose_port(3000)
+            print(port.preview_url)
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/AgentID'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ExposePortRequest'}
+      responses:
+        "200":
+          description: Port exposed
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxPort'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/ports/{port}:
+    delete:
+      tags: [Agents]
+      summary: Revoke a previously exposed agent preview port
+      description: |
+        Stops serving an agent port through its preview URL. Revoking a port that
+        is not currently exposed succeeds and changes nothing.
+      operationId: revokeAgentPort
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const agent = await neev.agents.get(agentId);
+            await agent.revokePort(3000);
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            agent = neev.agents.get(agent_id)
+            agent.revoke_port(3000)
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/AgentID'}
+        - name: port
+          in: path
+          required: true
+          schema: {type: integer, minimum: 1, maximum: 65535}
+      responses:
+        "204": {description: Port revoked}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+  /api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/audit:
+    get:
+      tags: [Agents]
+      summary: Read the command audit trail for an agent
+      description: |
+        What the agent ran inside its sandbox, newest first. Same shape and same
+        recording rules as the sandbox trail: program names without arguments, and
+        nothing typed at a hidden password prompt.
+
+        An agent works through process and file operations rather than a terminal,
+        so that is most of what its trail contains.
+      operationId: getAgentAudit
+      x-codeSamples:
+        - lang: TypeScript
+          source: |
+            import { Neev } from "@neevcloud/sdk";
+
+            const neev = new Neev();
+
+            const agent = await neev.agents.get(agentId);
+            const trail = await agent.audit({ limit: 50 });
+            for (const r of trail.records) {
+              console.log(r.at, r.tool, r.command ?? "", r.outcome);
+            }
+        - lang: Python
+          source: |
+            from neevai import NeevAI
+
+            neev = NeevAI()
+
+            agent = neev.agents.get(agent_id)
+            trail = agent.audit(limit=50)
+            for r in trail.records:
+                print(r.at, r.tool, r.command or "", r.outcome)
+      parameters:
+        - {$ref: '#/components/parameters/OrgID'}
+        - {$ref: '#/components/parameters/ProjectID'}
+        - {$ref: '#/components/parameters/AgentID'}
+        - {$ref: '#/components/parameters/AuditFrom'}
+        - {$ref: '#/components/parameters/AuditTo'}
+        - {$ref: '#/components/parameters/AuditCursor'}
+        - {$ref: '#/components/parameters/AuditLimit'}
+      responses:
+        "200":
+          description: One page of the agent's audit trail
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuditTrailResponse'}
+        "400": {$ref: '#/components/responses/BadRequest'}
+        "401": {$ref: '#/components/responses/Unauthorized'}
+        "403": {$ref: '#/components/responses/Forbidden'}
+        "404": {$ref: '#/components/responses/NotFound'}
+        "500": {$ref: '#/components/responses/InternalServerError'}
+        "503": {$ref: '#/components/responses/ServiceUnavailable'}
   # --- Agent Templates ---
   /api/v1beta1/agent-templates:
     get:
@@ -1489,7 +1742,6 @@ paths:
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
   /api/v1beta1/agent-templates/{template_id}:
     get:
       tags: [Agent Templates]
@@ -1527,7 +1779,6 @@ paths:
         "403": {$ref: '#/components/responses/Forbidden'}
         "404": {$ref: '#/components/responses/NotFound'}
         "500": {$ref: '#/components/responses/InternalServerError'}
-
 components:
   securitySchemes:
     BearerAuth:
@@ -1551,8 +1802,9 @@ components:
       name: sandbox_id
       in: path
       required: true
-      description: Sandbox UUID.
-      schema: {type: string, format: uuid}
+      description: >-
+        The sandbox's id, or its name. A name identifies a single sandbox because names are unique within a project. A name formatted as a UUID is read as an id, so sandbox names may not be formatted that way.
+      schema: {type: string}
     SnapshotID:
       name: snapshot_id
       in: path
@@ -1592,8 +1844,34 @@ components:
       name: agent_id
       in: path
       required: true
-      description: Agent UUID.
-      schema: {type: string, format: uuid}
+      description: >-
+        The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way.
+      schema: {type: string}
+    AuditFrom:
+      name: from
+      in: query
+      required: false
+      description: Start of the window (RFC3339). Defaults to 24 hours before `to`.
+      schema: {type: string, format: date-time}
+    AuditTo:
+      name: to
+      in: query
+      required: false
+      description: End of the window (RFC3339). Defaults to now.
+      schema: {type: string, format: date-time}
+    AuditCursor:
+      name: cursor
+      in: query
+      required: false
+      description: >-
+        Continuation token from the previous response's `next_cursor`. A token that is not valid is rejected rather than ignored.
+      schema: {type: string}
+    AuditLimit:
+      name: limit
+      in: query
+      required: false
+      description: Records per page. Clamped server-side.
+      schema: {type: integer, minimum: 1, maximum: 200, default: 50}
     AgentTemplateID:
       name: template_id
       in: path
@@ -1637,13 +1915,54 @@ components:
       content:
         application/json:
           schema: {$ref: '#/components/schemas/ErrorResponse'}
+    ServiceUnavailable:
+      description: Temporarily unavailable; retry shortly.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
   schemas:
     ErrorResponse:
       type: object
       required: [error]
       properties:
-        error: {type: string}
+        error:
+          type: string
+          description: |
+            Deprecated: read `message` instead. Carries the same text and is kept
+            so existing clients keep working.
+          deprecated: true
+        message:
+          type: string
+          description: |
+            A human-readable description of what went wrong, suitable for showing
+            to the caller.
         details: {type: string}
+        code:
+          type: string
+          description: |
+            A machine-readable classification of the failure. Branch on this rather
+            than on the message text, which may be reworded at any time.
+          enum:
+            - unauthorized
+            - forbidden
+            - not_found
+            - method_not_allowed
+            - unsupported_media_type
+            - validation_error
+            - bad_request
+            - conflict
+            - too_early
+            - service_unavailable
+            - internal_server_error
+            - phone_verification_required
+            - kyc_verification_required
+            - kyc_verification_required_by_owner
+            - sandbox_quota_exceeded
+            - agent_quota_exceeded
+        scope:
+          type: string
+          description: |
+            Optional scope indicating which limit was hit, e.g., `organization` or `project`.
     EnvVar:
       type: object
       required: [name, value]
@@ -1684,8 +2003,8 @@ components:
           maximum: 99
           example: 4
           description: |
-            Portion of disk_gb reserved for the container filesystem; the rest
-            is available to /workspace. Raise it when installs write outside
+            Portion of disk_gb reserved for the container filesystem; the rest is
+            available to /workspace. Raise it when installs write outside
             /workspace. Must be less than disk_gb. Defaults to 20% of disk_gb,
             minimum 4. Can only be set when the sandbox is created.
     Sandbox:
@@ -1701,8 +2020,8 @@ components:
         command: {type: array, items: {type: string}}
         resources: {$ref: '#/components/schemas/SandboxResources'}
         phase: {$ref: '#/components/schemas/SandboxPhase'}
+        addressable: {type: boolean, description: "Whether the sandbox can be reached by name yet. Briefly false after a sandbox is created; a call made before it turns true is refused and is worth retrying."}
         connect_url: {type: string, nullable: true, description: "Public URL the SDK calls (API key + X-Sandbox-Id). null when not configured."}
-        preview_url_template: {type: string, nullable: true, description: "Template for a public preview URL with {port} left for getUrl({port}) to fill client-side. null when not configured."}
         replicas: {type: integer, minimum: 0, maximum: 1, description: "0 = paused, 1 = running."}
         egress:
           allOf:
@@ -1733,9 +2052,9 @@ components:
       enum: [pause, delete]
       default: pause
       description: |
-        What happens when a sandbox becomes idle or reaches its maximum
-        lifetime. pause stops it but keeps its state so it can be resumed;
-        delete removes the sandbox and its data.
+        What happens when a sandbox becomes idle or reaches its maximum lifetime.
+        pause stops it but keeps its state so it can be resumed; delete removes
+        the sandbox and its data.
     SandboxLifecycle:
       type: object
       description: Optional idle and lifetime controls set at create time.
@@ -1759,9 +2078,7 @@ components:
     UpdateSandboxTimeoutRequest:
       type: object
       description: >-
-        Change the idle and lifetime windows on a running sandbox. Omitted
-        fields are left unchanged. Send 0 to turn a window off, so the sandbox
-        is not subject to that limit at all.
+        Change the idle and lifetime windows on a running sandbox. Omitted fields are left unchanged. Send 0 to turn a window off, so the sandbox is not subject to that limit at all.
       properties:
         idle_timeout_seconds: {type: integer, minimum: 0, nullable: true}
         max_lifetime_seconds: {type: integer, minimum: 0, nullable: true}
@@ -1770,10 +2087,11 @@ components:
     SandboxLastCrash:
       type: object
       description: |
-        The most recent unexpected stop of the sandbox, or null if it has never
-        had one. It records a past event and is not cleared when the sandbox
-        recovers or is restored, so read `at` before acting on it; storage_reset
-        says whether the sandbox's files survived that stop.
+        The most recent unexpected stop of the sandbox, or null if it has never had one.
+        It records a past event and is not cleared when the sandbox recovers, so read
+        `at` before acting on it; storage_reset says whether the sandbox's files survived
+        that stop. Restoring the sandbox from a snapshot taken before a stop that reset
+        storage returns those files, and clears this once the restore has completed.
       required: [reason, at, storage_reset]
       properties:
         reason: {type: string, description: "Why the sandbox stopped.", example: "OOMKilled"}
@@ -1781,9 +2099,9 @@ components:
         storage_reset:
           type: boolean
           description: |
-            True when the sandbox restarted with an empty filesystem: files
-            under /workspace, and anything installed since create, are gone.
-            False when it restarted with its files intact.
+            True when the sandbox restarted with an empty filesystem: files under
+            /workspace, and anything installed since create, are gone. False when it
+            restarted with its files intact.
     CreateSandboxRequest:
       type: object
       properties:
@@ -1797,7 +2115,9 @@ components:
             Sandbox name. Optional — when omitted, the server generates one (a
             "sandbox-" prefix plus a short random suffix). When provided, must be
             a valid DNS name: lowercase alphanumeric characters or '-', starting
-            with a letter, ending with an alphanumeric, max 63 characters.
+            with a letter, ending with an alphanumeric, max 63 characters. It may
+            not be formatted as a UUID, because a sandbox can also be addressed by
+            name and such a name would be read as an id.
           example: my-sandbox
         region: {type: string, description: "Region to provision in; omit to use the platform default.", example: "dev"}
         env: {type: array, items: {$ref: '#/components/schemas/EnvVar'}}
@@ -1827,8 +2147,8 @@ components:
           description: |
             When set, the new sandbox is restored from this snapshot instead of
             cold-starting from the image. Snapshot must belong to the same
-            project. Sizing and region must match the snapshot's origin. Must
-            not be combined with `image`.
+            project. Sizing and region must match the snapshot's origin. Must not
+            be combined with `image`.
         from_snapshot:
           type: string
           format: uuid
@@ -1854,11 +2174,24 @@ components:
       required: [port]
       properties:
         port: {type: integer, minimum: 1, maximum: 65535, description: "User port to expose for preview URLs."}
+        slug:
+          type: string
+          pattern: '^[a-z0-9]{8}$'
+          description: |
+            Optional slug for this port's preview URL: exactly 8 lowercase letters
+            and digits. Omit it and a random one is generated, which is what makes
+            the URL unguessable. Supplying one on a port that is already exposed
+            replaces its slug and breaks the previous URL — that is how you rotate a
+            preview URL that has leaked.
+
+            A slug you choose is a name, not a secret. Anyone who guesses it reaches
+            the port, so pick a random slug for anything you would not publish.
     SandboxPort:
       type: object
-      required: [port, preview_url]
+      required: [port, slug, preview_url]
       properties:
         port: {type: integer, description: "The exposed user port."}
+        slug: {type: string, description: "The slug gating this port's preview URL."}
         preview_url: {type: string, description: "Public credential-free preview URL for this port."}
     SandboxPortList:
       type: object
@@ -1872,22 +2205,39 @@ components:
       additionalProperties: false
       description: |
         Request to update a running sandbox's CPU/memory and/or egress rules.
-        At least one of `resources` or `egress` must be provided.
+        At least one of `resources`, `egress`, `egress_add` or `egress_remove`
+        must be provided. `egress` replaces the policy in full; `egress_add` and
+        `egress_remove` edit the allow-list in place and cannot be combined with it.
       properties:
         resources:
           allOf:
             - $ref: '#/components/schemas/SandboxResources'
           description: |
-            New cpu/memory sizing, resized in place on the running sandbox. Only
-            the fields provided change. disk_gb is not resizable in place and is
+            New cpu/memory sizing, resized in place on the running sandbox. Only the
+            fields provided change. disk_gb is not resizable in place and is
             rejected if supplied with a different value.
         egress:
           allOf:
             - $ref: '#/components/schemas/SandboxEgressConfig'
           description: |
-            New egress policy for the sandbox. Replaces the existing policy in
-            full and takes effect immediately for new connections — no sandbox
+            New egress policy for the sandbox. Replaces the existing policy
+            in full and takes effect immediately for new connections — no sandbox
             restart is required.
+        egress_add:
+          allOf:
+            - $ref: '#/components/schemas/SandboxEgressRules'
+          description: |
+            Destinations to add to the existing allow-list, leaving every other
+            rule in place. Adding a host already allowed replaces its ports and
+            protocol. Rejected with `egress`, and rejected when the current mode
+            is deny_all — switch the mode with `egress` first.
+        egress_remove:
+          allOf:
+            - $ref: '#/components/schemas/SandboxEgressRules'
+          description: |
+            Destinations to drop from the existing allow-list, leaving every
+            other rule in place. Removing a host that is not allowed is a no-op.
+            Applied before `egress_add`, so one call can swap a destination.
     PauseSandboxRequest:
       type: object
       description: Optional body for the pause endpoint.
@@ -1948,8 +2298,8 @@ components:
           nullable: true
           description: |
             The configuration this snapshot was captured with, recorded so the
-            snapshot can be restored consistently. Null for snapshots taken
-            before it was recorded.
+            snapshot can be restored consistently. Null for snapshots taken before
+            it was recorded.
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
     SnapshotListResponse:
@@ -1971,8 +2321,7 @@ components:
           description: |
             Optional name for this snapshot. Must be a valid DNS name (lowercase
             alphanumeric or '-', starting with a letter, max 63 characters) so it
-            can name sandboxes created on fork and restore. Omit to leave
-            unnamed.
+            can name sandboxes created on fork and restore. Omit to leave unnamed.
     RollbackSandboxRequest:
       type: object
       required: [snapshot_id]
@@ -1982,8 +2331,8 @@ components:
           type: string
           format: uuid
           description: |
-            UUID of the snapshot to restore from. Must belong to this sandbox or
-            another sandbox in the same project.
+            UUID of the snapshot to restore from. Must belong to this sandbox
+            or another sandbox in the same project.
     RestoreSandboxRequest:
       type: object
       required: [snapshot_id]
@@ -1994,8 +2343,8 @@ components:
           type: string
           format: uuid
           description: |
-            UUID of the snapshot to restore from. Must belong to this sandbox or
-            another sandbox in the same project.
+            UUID of the snapshot to restore from. Must belong to this sandbox
+            or another sandbox in the same project.
     ForkSandboxRequest:
       type: object
       required: [name]
@@ -2009,8 +2358,9 @@ components:
           description: |
             Name for the new forked sandbox. Must be unique within the project,
             and a valid DNS name: lowercase alphanumeric characters or '-',
-            starting with a letter, ending with an alphanumeric, max 63
-            characters.
+            starting with a letter, ending with an alphanumeric, max 63 characters.
+            It may not be formatted as a UUID, because a sandbox can also be
+            addressed by name and such a name would be read as an id.
     SandboxEgressConfig:
       type: object
       description: Network egress configuration rules for the sandbox.
@@ -2023,7 +2373,7 @@ components:
           description: The egress mode. deny_all blocks all egress. allow_list restricts egress to the specified allowed destinations.
         allow_internet:
           type: boolean
-          description: "Escape hatch: if true, allows 0.0.0.0/0 (the entire internet). Strictly audit-logged."
+          description: "Escape hatch: if true, allows all outbound traffic (0.0.0.0/0 and ::/0). Applies only in allow_list mode; deny_all ignores it."
           default: false
         allow:
           type: array
@@ -2036,8 +2386,32 @@ components:
       required: [host]
       properties:
         host: {type: string, description: "IP address, CIDR block, or domain name"}
-        ports: {type: array, items: {type: integer}}
-        protocol: {type: string, enum: [TCP, UDP]}
+        ports:
+          type: array
+          items: {type: integer, minimum: 1, maximum: 65535}
+          description: |
+            Destination ports allowed on this host. Omit to allow every port.
+        protocol:
+          type: string
+          enum: [TCP, UDP]
+          description: |
+            Transport protocol allowed on this host. Defaults to TCP when
+            `ports` is set. Given without `ports`, every port of this protocol
+            is allowed. Omit both to allow every port and protocol.
+    SandboxEgressRules:
+      type: object
+      description: |
+        A set of egress allow-rules on their own, used to add or remove
+        destinations without restating the whole policy. Carries no mode or
+        allow_internet: those are policy-wide and only settable via `egress`.
+      additionalProperties: false
+      required: [allow]
+      properties:
+        allow:
+          type: array
+          minItems: 1
+          description: Egress rules to add to, or remove from, the existing allow-list.
+          items: {$ref: '#/components/schemas/SandboxEgressRule'}
     SandboxListResponse:
       type: object
       required: [items, total, page, limit]
@@ -2063,6 +2437,10 @@ components:
           type: string
         description:
           type: string
+        icon:
+          type: string
+          nullable: true
+          description: "Display icon for the template (e.g. an SVG document) served as a string; null when the template has no icon."
         category:
           $ref: '#/components/schemas/SandboxTemplateCategory'
         status:
@@ -2105,6 +2483,59 @@ components:
       properties:
         token: {type: string, description: "Signed connect token, presented as a bearer credential when calling the sandbox directly."}
         expires_in: {type: integer, description: "Token lifetime in seconds."}
+    AuditRecord:
+      type: object
+      required: [at, id, tool, outcome]
+      properties:
+        at: {type: string, format: date-time, description: When the operation was recorded.}
+        id: {type: string, description: "Stable id of this record, unique within the trail."}
+        tool:
+          type: string
+          description: "The operation, such as `pty_command`, `ssh`, `exec`, `process.start` or `fs.read`."
+        command:
+          type: string
+          description: >-
+            The program that ran, without its arguments. Absent on operations that run no program, such as a file read. Reads `[redacted]` where the program name could not be established. A terminal command interrupted with Ctrl-C is prefixed `[Ctrl-C]`.
+        target:
+          type: string
+          description: >-
+            What the operation acted on — the file path it read or wrote, or the process it named. A move carries both paths as `source -> destination`. Absent where the operation names nothing, and truncated with a trailing `...` if unusually long.
+        outcome: {type: string, enum: [success, error]}
+        reason_code:
+          type: string
+          description: "Why it ended that way: `ok`, `permission_denied`, `internal`."
+        request_id: {type: string, description: Correlates the record to the request that caused it.}
+        caller_source:
+          type: string
+          description: >-
+            The credential the operation was made under. It identifies a credential, not a person.
+        pty_id: {type: string, description: The terminal a `pty_command` belongs to. Absent otherwise.}
+        seq: {type: integer, description: Ordinal within that terminal. Absent outside a `pty_command`.}
+        duration_ms: {type: integer, format: int64}
+    AuditTrailResponse:
+      type: object
+      required: [sandbox_id, from, to, retention_days, window_truncated, records]
+      properties:
+        sandbox_id:
+          type: string
+          format: uuid
+          description: >-
+            The sandbox the records came from. For an agent trail this is the sandbox backing the agent, not the agent id.
+        from: {type: string, format: date-time}
+        to: {type: string, format: date-time}
+        retention_days:
+          type: integer
+          description: How many days of trail are available.
+        window_truncated:
+          type: boolean
+          description: >-
+            True when the requested window reaches further back than the available trail, so it begins later than asked.
+        next_cursor:
+          type: string
+          description: Pass as `cursor` for the next page. Absent when the window is exhausted.
+        records:
+          type: array
+          items: {$ref: '#/components/schemas/AuditRecord'}
     SandboxMetricsResponse:
       type: object
       required: [sandbox_id, from, to, step, series]
@@ -2123,6 +2554,12 @@ components:
       type: object
       required: [id, org_id, project_id, name, agent_template_id, sandbox_id, status, drive_mode, metrics_url, created_at, updated_at]
       properties:
+        idle_timeout_seconds:
+          type: integer
+          nullable: true
+          description: |
+            Idle window in seconds for the agent's backing sandbox; 0 when the
+            agent has no idle limit, null when it uses the account default.
         id: {type: string, format: uuid}
         org_id: {type: string}
         project_id: {type: string}
@@ -2150,8 +2587,8 @@ components:
         metrics_url:
           type: string
           description: |
-            API path for the sandbox's live health metrics (the
-            getSandboxMetrics endpoint), relative to this API's base URL.
+            API path for the sandbox's live health metrics (the getSandboxMetrics
+            endpoint), relative to this API's base URL.
         gateway_token:
           type: string
           nullable: true
@@ -2168,10 +2605,11 @@ components:
     AgentLastCrash:
       type: object
       description: |
-        The most recent unexpected stop of the agent, or null if it has never
-        had one. It records a past event and is not cleared when the agent
-        recovers or is restored, so read `at` before acting on it; storage_reset
-        says whether the agent's files survived that stop.
+        The most recent unexpected stop of the agent, or null if it has never had one.
+        It records a past event and is not cleared when the agent recovers, so read
+        `at` before acting on it; storage_reset says whether the agent's files survived
+        that stop. Restoring the agent from a snapshot taken before a stop that reset
+        storage returns those files, and clears this once the restore has completed.
       required: [reason, at, storage_reset]
       properties:
         reason: {type: string, description: "Why the agent stopped.", example: "OOMKilled"}
@@ -2180,8 +2618,8 @@ components:
           type: boolean
           description: |
             True when the agent restarted with an empty filesystem: files under
-            /workspace, and anything installed since create, are gone. False
-            when it restarted with its files intact.
+            /workspace, and anything installed since create, are gone. False when it
+            restarted with its files intact.
     DriveMode:
       type: string
       description: |
@@ -2200,8 +2638,8 @@ components:
         token:
           type: string
           description: |
-            Short-lived connect token, bound to this project and agent,
-            presented as a bearer credential when calling the agent directly.
+            Short-lived connect token, bound to this project and agent, presented
+            as a bearer credential when calling the agent directly.
         expires_at:
           type: string
           format: date-time
@@ -2218,7 +2656,9 @@ components:
           description: |
             Agent name. Must be a valid DNS name: lowercase alphanumeric
             characters or '-', starting with a letter, ending with an
-            alphanumeric, max 63 characters.
+            alphanumeric, max 63 characters. It may not be formatted as a UUID,
+            because an agent can also be addressed by name and such a name would
+            be read as an id.
           example: my-agent
         agent_template:
           type: string
@@ -2227,6 +2667,14 @@ components:
             Catalogue template name (e.g. claude-code). The server validates the
             template exists and is active, then provisions the agent from it.
           example: claude-code
+        idle_timeout_seconds:
+          type: integer
+          minimum: 0
+          description: |
+            Act on the agent after this many seconds without activity, which by
+            default pauses it. Omit to use the account default, or send 0 for no
+            idle limit, which keeps the agent consuming quota until it is deleted.
+          example: 900
         region:
           type: string
           description: Region to provision the backing sandbox in; omit to use the platform default.
@@ -2236,8 +2684,7 @@ components:
           additionalProperties: true
           description: |
             Agent configuration overrides, shallow-merged over the template's
-            default_config. Shape is template-specific (see template
-            config_schema).
+            default_config. Shape is template-specific (see template config_schema).
         env:
           type: array
           items: {$ref: '#/components/schemas/EnvVar'}
@@ -2254,21 +2701,57 @@ components:
       type: object
       additionalProperties: false
       description: |
-        Request to update a running agent's CPU/memory sizing and/or network
-        egress rules. At least one of `resources` or `egress` must be provided.
+        Request to update a running agent's CPU/memory sizing, network egress rules
+        and/or idle window. At least one of `resources`, `egress`, `egress_add`,
+        `egress_remove` or `idle_timeout_seconds` must be provided. `egress`
+        replaces the policy in full; `egress_add` and `egress_remove` edit the
+        allow-list in place and cannot be combined with it.
       properties:
+        idle_timeout_seconds:
+          type: integer
+          minimum: 0
+          description: |
+            New idle window in seconds, applied to the agent's backing sandbox.
+            0 removes the idle limit, so the agent runs until it is deleted.
+          example: 900
         resources:
           allOf:
             - $ref: '#/components/schemas/SandboxResources'
           description: |
-            New cpu/memory sizing, resized in place on the running sandbox. Only
-            the fields provided change. disk_gb is not resizable in place and is
+            New cpu/memory sizing, resized in place on the running sandbox. Only the
+            fields provided change. disk_gb is not resizable in place and is
             rejected if supplied with a different value.
         egress:
           allOf:
             - $ref: '#/components/schemas/SandboxEgressConfig'
           description: |
-            Network egress policy update for the agent's backing sandbox.
+            Network egress policy for the agent's backing sandbox. Replaces the
+            existing policy in full.
+        egress_add:
+          allOf:
+            - $ref: '#/components/schemas/SandboxEgressRules'
+          description: |
+            Destinations to add to the existing allow-list, leaving every other
+            rule in place. Adding a host already allowed replaces its ports and
+            protocol. Rejected with `egress`, and rejected when the current mode
+            is deny_all — switch the mode with `egress` first.
+        egress_remove:
+          allOf:
+            - $ref: '#/components/schemas/SandboxEgressRules'
+          description: |
+            Destinations to drop from the existing allow-list, leaving every
+            other rule in place. Removing a host that is not allowed is a no-op.
+            Applied before `egress_add`, so one call can swap a destination.
+    RollbackAgentRequest:
+      type: object
+      required: [snapshot_id]
+      description: Body for POST .../agents/{id}/rollback.
+      properties:
+        snapshot_id:
+          type: string
+          format: uuid
+          description: |
+            UUID of the snapshot to restore the agent's backing sandbox from.
     AgentListResponse:
       type: object
       required: [items, total, page, limit]
@@ -2307,9 +2790,9 @@ components:
           nullable: true
           description: |
             Recommended default sizing for agents of this template. An agent
-            inherits these when the create request omits the corresponding
-            field; caller-supplied resources take precedence. Null/omitted fields
-            fall back to the platform default.
+            inherits these when the create request omits the corresponding field;
+            caller-supplied resources take precedence. Null/omitted fields fall
+            back to the platform default.
         default_egress:
           allOf:
             - $ref: '#/components/schemas/SandboxEgressConfig'

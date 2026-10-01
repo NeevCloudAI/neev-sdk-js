@@ -1,14 +1,25 @@
 import { decodeBase64 } from "./base64.js";
-import { type APIError, type ApiErrorBody, NeevError, errorFromStatus } from "./errors.js";
+import { type APIError, NeevError, errorFromSandboxBody, errorFromStatus } from "./errors.js";
 import type { Dispatch } from "./http.js";
+import { openLocalFile, writeBodyToFile } from "./local-files.js";
 import { SandboxProcesses } from "./processes.js";
 import { SandboxPty, type SandboxWebSocket, type WebSocketFactory } from "./pty.js";
+import {
+  type ChunkSource,
+  MAX_SINGLE_WRITE_BYTES,
+  UPLOAD_UNSUPPORTED,
+  type UploadOptions,
+  blobSource,
+  bytesSource,
+  resolveChunkSize,
+  resumableUpload,
+} from "./upload.js";
 
 // Inputs needed to open a connection to a sandbox's runtime.
 export interface SandboxConnectionOptions {
   // The sandbox's runtime base URL (Sandbox.connect_url).
   connectUrl: string;
-  // Bearer API key; the gateway derives x-sandbox-id from the connect_url host.
+  // Bearer API key; the connect_url host identifies the sandbox.
   apiKey: string;
   // Shared transport; the no-retry dispatch, since sandbox calls are not idempotent.
   dispatch: Dispatch;
@@ -19,7 +30,7 @@ export interface SandboxConnectionOptions {
 
 // A low-level request against the sandbox runtime, before body encoding/decoding.
 interface SandboxRequest {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PATCH" | "HEAD" | "DELETE";
   path: string;
   query?: Record<string, string | number | boolean | undefined>;
   headers?: Record<string, string>;
@@ -37,6 +48,19 @@ export interface WriteFileOptions {
 
 // Result of a successful file write.
 export interface WriteFileResult {
+  bytesWritten: number;
+}
+
+// Options for downloading a sandbox file to the local disk.
+export interface DownloadFileOptions {
+  // Working directory the remote path is resolved against, if relative.
+  cwd?: string;
+  // Caller cancellation signal.
+  signal?: AbortSignal;
+}
+
+// Result of a successful download to the local disk.
+export interface DownloadFileResult {
   bytesWritten: number;
 }
 
@@ -215,6 +239,14 @@ export class SandboxConnection {
   // Issues a request to the sandbox runtime and returns the raw Response, throwing a typed
   // APIError (mapped from the sandbox's {reason_code, message}) on a non-2xx status.
   async request(req: SandboxRequest): Promise<Response> {
+    const response = await this.send(req);
+    if (!response.ok) throw await sandboxError(response);
+    return response;
+  }
+
+  // Issues a request to the sandbox runtime and returns the Response whatever its
+  // status. Used by the resumable upload, which reads non-2xx statuses itself.
+  async send(req: SandboxRequest): Promise<Response> {
     const url = new URL(`${this.base}${req.path}`);
     if (req.query) {
       for (const [key, value] of Object.entries(req.query)) {
@@ -229,9 +261,7 @@ export class SandboxConnection {
       body: req.body,
       signal: req.signal,
     });
-    const response = await this.dispatch(request);
-    if (!response.ok) throw await sandboxError(response);
-    return response;
+    return this.dispatch(request);
   }
 
   // Runs a command in the sandbox and returns its buffered output. `command` may
@@ -319,10 +349,87 @@ export class SandboxFiles {
   }
 
   // Writes content to a path in the sandbox, returning the number of bytes written.
+  // Content larger than 1 MiB — more than the sandbox accepts in one request — is
+  // sent with the resumable upload (see `upload`); smaller content is one request.
   async write(
     path: string,
     content: string | Uint8Array,
     options: WriteFileOptions = {},
+  ): Promise<WriteFileResult> {
+    const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
+    if (bytes.byteLength > MAX_SINGLE_WRITE_BYTES) return this.upload(path, bytes, options);
+    return this.writeOnce(path, bytes, options);
+  }
+
+  // Uploads data to a path in chunks, so a file of any size can be written, and
+  // returns the bytes written. A chunk that fails in transit resumes from the last
+  // byte the sandbox received. Empty data, or a sandbox without resumable uploads,
+  // is written in a single request instead.
+  async upload(
+    path: string,
+    data: string | Uint8Array | ArrayBuffer | Blob,
+    options: UploadOptions = {},
+  ): Promise<WriteFileResult> {
+    return this.uploadSource(path, toChunkSource(data), options);
+  }
+
+  // Uploads a local file to a path in the sandbox, reading it from disk one chunk
+  // at a time so it is never held in memory whole. Node only.
+  async uploadFile(
+    localPath: string,
+    remotePath: string,
+    options: UploadOptions = {},
+  ): Promise<WriteFileResult> {
+    resolveChunkSize(options.chunkSize);
+    const source = await openLocalFile(localPath);
+    try {
+      return await this.uploadSource(remotePath, source, options);
+    } finally {
+      await source.close();
+    }
+  }
+
+  // Downloads a sandbox file to a local path, streaming it to disk. The file appears
+  // at localPath only once it has fully arrived; a failure leaves nothing behind.
+  // Node only.
+  async downloadFile(
+    remotePath: string,
+    localPath: string,
+    options: DownloadFileOptions = {},
+  ): Promise<DownloadFileResult> {
+    const conn = await this.resolve();
+    const response = await conn.request({
+      method: "POST",
+      path: "/v1/files/read",
+      headers: { "content-type": "application/json", accept: "application/octet-stream" },
+      body: JSON.stringify({ path: remotePath, cwd: options.cwd }),
+      signal: options.signal,
+    });
+    return { bytesWritten: await writeBodyToFile(response, localPath) };
+  }
+
+  // Runs the resumable upload for a source, falling back to a single write when the
+  // source is empty or the sandbox has no resumable-upload route.
+  private async uploadSource(
+    path: string,
+    source: ChunkSource,
+    options: UploadOptions,
+  ): Promise<WriteFileResult> {
+    resolveChunkSize(options.chunkSize);
+    if (source.size === 0) return this.writeOnce(path, new Uint8Array(), options);
+    const conn = await this.resolve();
+    const written = await resumableUpload(conn, path, source, options);
+    if (written === UPLOAD_UNSUPPORTED) {
+      return this.writeOnce(path, await source.read(0, source.size), options);
+    }
+    return { bytesWritten: written };
+  }
+
+  // Writes bytes to a path in a single request.
+  private async writeOnce(
+    path: string,
+    content: Uint8Array,
+    options: WriteFileOptions,
   ): Promise<WriteFileResult> {
     const conn = await this.resolve();
     const response = await conn.request({
@@ -463,6 +570,14 @@ export class SandboxFiles {
   }
 }
 
+// Wraps upload data as a ChunkSource, encoding a string as UTF-8.
+function toChunkSource(data: string | Uint8Array | ArrayBuffer | Blob): ChunkSource {
+  if (typeof data === "string") return bytesSource(new TextEncoder().encode(data));
+  if (data instanceof Uint8Array) return bytesSource(data);
+  if (data instanceof ArrayBuffer) return bytesSource(new Uint8Array(data));
+  return blobSource(data);
+}
+
 // The wire shape of a directory entry as emitted by the sandbox.
 interface RawEntry {
   name: string;
@@ -539,7 +654,7 @@ async function* streamExec(response: Response): AsyncGenerator<ExecStreamEvent> 
       case "error":
         throw errorFromStatus(
           (frame.reason_code && REASON_STATUS[frame.reason_code]) || 500,
-          { error: frame.reason_code ?? "", details: frame.message },
+          { code: frame.reason_code, message: frame.message },
           undefined,
         );
     }
@@ -647,18 +762,8 @@ function toFileEntry(entry: RawEntry): FileEntry {
   };
 }
 
-// Builds a typed APIError from a sandbox error response. The sandbox's body is
-// {reason_code, message}; this maps it onto the SDK's {error, details} shape.
+// Builds a typed APIError from a sandbox error response.
 async function sandboxError(response: Response): Promise<APIError> {
-  const text = await response.text();
-  let body: ApiErrorBody | undefined;
-  if (text.length > 0) {
-    try {
-      const parsed = JSON.parse(text) as { reason_code?: string; message?: string };
-      body = { error: parsed.reason_code ?? "", details: parsed.message };
-    } catch {
-      body = { error: "", details: text };
-    }
-  }
-  return errorFromStatus(response.status, body, response.headers.get("x-request-id") ?? undefined);
+  const requestId = response.headers.get("x-request-id") ?? undefined;
+  return errorFromSandboxBody(response.status, await response.text(), requestId);
 }

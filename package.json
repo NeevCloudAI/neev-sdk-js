@@ -12,7 +12,7 @@
   "bugs": {
     "url": "https://github.com/NeevCloudAI/neev-sdk-js/issues"
   },
-  "keywords": ["neev", "neevcloud", "sdk", "agent", "sandbox", "ai", "gpu", "gvisor"],
+  "keywords": ["neev", "neevcloud", "sdk", "agent", "sandbox", "ai", "gpu"],
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

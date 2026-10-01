@@ -311,7 +311,6 @@ describe("sandbox update (in-place resize + egress)", () => {
   it("resizes a running sandbox in place, keeping id/name/preview URLs", async () => {
     const updated = sandboxData({
       resources: { cpu: 2, memory_gb: 4 },
-      preview_url_template: "https://{port}--sb-1.preview.example",
     });
     const { neev, calls } = client([json(200, updated)]);
     const sb = await neev.sandboxes.update("11111111-1111-1111-1111-111111111111", {
@@ -325,6 +324,44 @@ describe("sandbox update (in-place resize + egress)", () => {
     // PATCH targets the item path itself — no /update sub-path.
     expect(calls[0]?.url).toMatch(/\/sandboxes\/11111111-1111-1111-1111-111111111111$/);
     expect(calls[0]?.body).toEqual({ resources: { cpu: 2, memory_gb: 4 } });
+  });
+
+  it("edits the allow-list in place with egress_add / egress_remove", async () => {
+    const { neev, calls } = client([json(200, sandboxData())]);
+    await neev.sandboxes.update("sb-1", {
+      egress_remove: { allow: [{ host: "old.example.com" }] },
+      egress_add: { allow: [{ host: "api.github.com", ports: [443] }] },
+    });
+    expect(calls[0]?.method).toBe("PATCH");
+    expect(calls[0]?.body).toEqual({
+      egress_remove: { allow: [{ host: "old.example.com" }] },
+      egress_add: { allow: [{ host: "api.github.com", ports: [443] }] },
+    });
+  });
+
+  it("rejects egress combined with egress_add/egress_remove locally", async () => {
+    const { neev, calls } = client([]);
+    await expect(
+      neev.sandboxes.update("sb-1", {
+        egress: { mode: "allow_list", allow_internet: false },
+        egress_add: { allow: [{ host: "a.example.com" }] },
+      }),
+    ).rejects.toThrow(/cannot be combined/);
+    await expect(
+      neev.sandboxes.update("sb-1", {
+        allowEgress: ["a.example.com"],
+        egress_remove: { allow: [{ host: "b.example.com" }] },
+      }),
+    ).rejects.toThrow(/cannot be combined/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects an empty update locally, naming every accepted field", async () => {
+    const { neev, calls } = client([]);
+    await expect(neev.sandboxes.update("sb-1", {})).rejects.toThrow(
+      /`resources`, `egress`, `egress_add` or `egress_remove`/,
+    );
+    expect(calls).toHaveLength(0);
   });
 
   it("replaces the egress policy in full via a PATCH", async () => {
@@ -592,6 +629,40 @@ describe("preview ports", () => {
     expect(calls[0]?.body).toEqual({ port: 3000 });
   });
 
+  it("forwards a chosen slug on expose, which rotates the preview URL", async () => {
+    const { neev, calls } = client([
+      json(200, { port: 3000, slug: "k3x9q2ab", preview_url: "https://k3x9q2ab.p.example" }),
+    ]);
+    const p = await neev.sandboxes.exposePort("sb-1", 3000, { slug: "k3x9q2ab" });
+    expect(p.slug).toBe("k3x9q2ab");
+    expect(calls[0]?.body).toEqual({ port: 3000, slug: "k3x9q2ab" });
+  });
+
+  it("still accepts a scope as the third argument, alone or with a slug", async () => {
+    const { neev, calls } = client([
+      json(200, { port: 3000, slug: "k3x9q2ab", preview_url: "https://k3x9q2ab.p.example" }),
+      json(200, { port: 3000, slug: "zz11yy22", preview_url: "https://zz11yy22.p.example" }),
+    ]);
+    await neev.sandboxes.exposePort("sb-1", 3000, { orgId: "org-x", projectId: "prj-y" });
+    await neev.sandboxes.exposePort("sb-1", 3000, { projectId: "prj-y", slug: "zz11yy22" });
+    expect(calls[0]?.url).toMatch(/\/orgs\/org-x\/projects\/prj-y\/sandboxes\/sb-1\/ports$/);
+    expect(calls[0]?.body).toEqual({ port: 3000 });
+    expect(calls[1]?.url).toMatch(/\/projects\/prj-y\/sandboxes\/sb-1\/ports$/);
+    expect(calls[1]?.body).toEqual({ port: 3000, slug: "zz11yy22" });
+  });
+
+  it("getPortUrl forwards the slug to the expose call", async () => {
+    const { neev, calls } = client([
+      json(200, { port: 3000, slug: "abcd1234", preview_url: "https://abcd1234.p.example" }),
+    ]);
+    const url = await neev.sandboxes.getPortUrl("sb-1", 3000, {
+      slug: "abcd1234",
+      waitUntilReady: false,
+    });
+    expect(url).toBe("https://abcd1234.p.example");
+    expect(calls[0]?.body).toEqual({ port: 3000, slug: "abcd1234" });
+  });
+
   it("lists exposed ports", async () => {
     const { neev, calls } = client([
       json(200, { ports: [{ port: 3000, preview_url: "https://p.example/a" }] }),
@@ -685,5 +756,70 @@ describe("preview ports", () => {
     const url = await sandbox.getUrl({ port: 8080, waitUntilReady: false });
     expect(url).toBe("https://p.example/ui");
     expect(calls[1]?.body).toEqual({ port: 8080 });
+  });
+
+  it("sandbox.getUrl and sandbox.exposePort forward a slug", async () => {
+    const { neev, calls } = client([
+      json(200, sandboxData({ id: "sb-1", phase: "Ready" })),
+      json(200, { port: 8080, slug: "zz11yy22", preview_url: "https://zz11yy22.p.example" }),
+      json(200, { port: 8080, slug: "qq33rr44", preview_url: "https://qq33rr44.p.example" }),
+    ]);
+    const sandbox: Sandbox = await neev.sandboxes.get("sb-1");
+    await sandbox.getUrl({ port: 8080, slug: "zz11yy22", waitUntilReady: false });
+    const rotated = await sandbox.exposePort(8080, { slug: "qq33rr44" });
+    expect(calls[1]?.body).toEqual({ port: 8080, slug: "zz11yy22" });
+    expect(calls[2]?.body).toEqual({ port: 8080, slug: "qq33rr44" });
+    expect(rotated.preview_url).toBe("https://qq33rr44.p.example");
+  });
+});
+
+describe("audit trail", () => {
+  const trail = {
+    sandbox_id: "11111111-1111-1111-1111-111111111111",
+    from: "2026-10-01T00:00:00Z",
+    to: "2026-10-02T00:00:00Z",
+    retention_days: 30,
+    window_truncated: false,
+    next_cursor: "c2",
+    records: [
+      {
+        at: "2026-10-01T12:00:00Z",
+        id: "r1",
+        tool: "pty_command",
+        command: "psql",
+        outcome: "success",
+      },
+    ],
+  };
+
+  it("reads one page with the window and paging query", async () => {
+    const { neev, calls } = client([json(200, trail)]);
+    const page = await neev.sandboxes.audit("sb-1", {
+      from: "2026-10-01T00:00:00Z",
+      to: "2026-10-02T00:00:00Z",
+      cursor: "c1",
+      limit: 50,
+    });
+    expect(page.records[0]?.command).toBe("psql");
+    expect(page.next_cursor).toBe("c2");
+    const url = new URL(calls[0]?.url ?? "");
+    expect(calls[0]?.method).toBe("GET");
+    expect(url.pathname).toMatch(/\/sandboxes\/sb-1\/audit$/);
+    expect(url.searchParams.get("from")).toBe("2026-10-01T00:00:00Z");
+    expect(url.searchParams.get("to")).toBe("2026-10-02T00:00:00Z");
+    expect(url.searchParams.get("cursor")).toBe("c1");
+    expect(url.searchParams.get("limit")).toBe("50");
+  });
+
+  it("sends no query when called with no params, and the handle delegates", async () => {
+    const { neev, calls } = client([
+      json(200, sandboxData({ id: "sb-1" })),
+      json(200, { ...trail, next_cursor: undefined }),
+    ]);
+    const sb = await neev.sandboxes.get("sb-1");
+    const page = await sb.audit();
+    expect(page.next_cursor).toBeUndefined();
+    expect(new URL(calls[1]?.url ?? "").search).toBe("");
+    expect(calls[1]?.url).toMatch(/\/sandboxes\/sb-1\/audit$/);
   });
 });

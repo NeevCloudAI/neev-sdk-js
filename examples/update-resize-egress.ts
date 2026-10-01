@@ -1,7 +1,8 @@
 /**
  * Create a sandbox scoped to GitHub egress, then update it in place: resize its
  * cpu/memory and re-scope egress to Google in a single update() call (one PATCH
- * carrying both), without recreating the sandbox or losing its id.
+ * carrying both), without recreating the sandbox or losing its id. Then edit the
+ * allow-list in place with egress_add / egress_remove instead of restating it.
  *
  * Run with (targets the Neev production API by default):
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
@@ -36,12 +37,20 @@ async function main(): Promise<void> {
       `updated ${sandbox.id} in one PATCH — resources: ${JSON.stringify(sandbox.resources)}, egress: github.com → google.com`,
     );
 
-    // A fresh get confirms the resize landed and the new egress policy is intact —
-    // the exact combined-PATCH path AIPLATFORM-1896 concerns (egress must not revert).
+    // A fresh get confirms the resize landed and the new egress policy is intact.
     const fresh = await neev.sandboxes.get(sandbox.id);
     console.log(
       `confirmed resources: ${JSON.stringify(fresh.resources)}, egress: ${JSON.stringify(fresh.data.egress)}`,
     );
+
+    // Edit the allow-list in place: add PyPI on 443 only and drop Google, leaving
+    // every other rule alone. Removals apply first, so one call can swap a host.
+    // These can't be combined with a full `egress` (or allowEgress) in one call.
+    await sandbox.update({
+      egress_remove: { allow: [{ host: "google.com" }] },
+      egress_add: { allow: [{ host: "pypi.org", ports: [443] }] },
+    });
+    console.log(`edited in place — egress: ${JSON.stringify(sandbox.data.egress)}`);
   } finally {
     // Always clean up the remote sandbox, even if a step above failed.
     await sandbox.delete();
