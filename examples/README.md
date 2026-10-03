@@ -42,6 +42,7 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 | [`parallel-fanout.ts`](./parallel-fanout.ts) | Several isolated sandboxes run a map/reduce concurrently; reads `metrics()` | `npx tsx examples/parallel-fanout.ts` |
 | [`sandbox-metrics.ts`](./sandbox-metrics.ts) | `sandbox.metrics()` polled under CPU load | `npx tsx examples/sandbox-metrics.ts` |
 | [`processes.ts`](./processes.ts) | `sandbox.processes` — start a detached process, follow/poll its output, list, kill, wait | `npx tsx examples/processes.ts` |
+| [`code-interpreter.ts`](./code-interpreter.ts) | `sandbox.code` — run Python with state kept between runs, catch an exception, use a second context | `npx tsx examples/code-interpreter.ts` |
 | [`process-pool.ts`](./process-pool.ts) | Manage several detached processes: start a pool, `list()`/`status()`, then `killAll()` | `npx tsx examples/process-pool.ts` |
 | [`pty.ts`](./pty.ts) | `sandbox.pty` — interactive terminal over a WebSocket (needs `pnpm add -D ws @types/ws`) | `npx tsx examples/pty.ts` |
 | [`preview-url.ts`](./preview-url.ts) | `sandbox.getUrl({ port })` — serve on a port, get its preview URL, rotate its slug, list and revoke ports | `npx tsx examples/preview-url.ts` |
