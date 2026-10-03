@@ -16,6 +16,8 @@ export interface ApiErrorBody {
   code?: string;
   // Which limit was hit, e.g. `organization` or `project`, when one applies.
   scope?: string;
+  // Refines `code` where one code covers several cases, e.g. `context_busy`.
+  reason?: string;
   details?: string;
   /** @deprecated Carries the same text as `message`; read `message` instead. */
   error?: string;
@@ -58,6 +60,7 @@ function cleanBody(body: ApiErrorBody | undefined): ApiErrorBody | undefined {
     message: text(body.message),
     code: text(body.code),
     scope: text(body.scope),
+    reason: text(body.reason),
     details: text(body.details),
     error: text(body.error),
   };
@@ -81,6 +84,9 @@ export class APIError extends NeevError {
   readonly code?: ErrorCode | (string & {});
   // Which limit was hit (e.g. `organization` or `project`), when the body says.
   readonly scope?: string;
+  // Refines `code` where one code covers several cases (e.g. `context_busy` or
+  // `interpreter_not_enabled` from the code interpreter), when the body says.
+  readonly reason?: string;
   // Human-readable detail from the API body (`details` field), when present.
   readonly details?: string;
   // Value of the `x-request-id` response header, for support correlation.
@@ -92,6 +98,7 @@ export class APIError extends NeevError {
     this.status = status;
     this.code = body?.code;
     this.scope = body?.scope;
+    this.reason = body?.reason;
     this.details = body?.details;
     this.requestId = requestId;
     bodyMessages.set(this, firstText(body?.message, body?.error, body?.details));
