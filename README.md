@@ -347,6 +347,44 @@ Output is captured in a bounded ring: `logs` returns plain-text `entries` plus a
 
 The full example is [`examples/processes.ts`](./examples/processes.ts).
 
+### Code interpreter
+
+A sandbox created from the interpreter template runs Python in persistent kernels. Variables, imports and loaded data stay between runs in the same context, so each run builds on the last:
+
+```ts
+const sandbox = await neev.sandboxes.create({ sandbox_template_id: "sb-ubuntu-26-04-interpreter" });
+
+await sandbox.code.run("import pandas as pd\ndf = pd.DataFrame({'x': [1, 2, 3]})");
+const run = await sandbox.code.run("print(df.x.sum())\ndf.describe()", {
+  onStdout: (out) => process.stdout.write(out.line), // { line, timestamp, error } as it arrives
+});
+run.stdout;          // "6\n"
+run.text;            // the last expression's text, here the describe() table
+run.results[0].html; // typed accessors: text, html, markdown, svg, png, jpeg, pdf, latex, json; formats()
+run.executionCount;  // 2
+run.endReason;       // "ok"
+```
+
+Code that raises is returned, not thrown: `endReason` is `"error"` and `run.error` holds `{ name, value, traceback }`. A run that outlives `timeoutMs` is interrupted with `endReason: "deadline_exceeded"` and the context keeps its state; `"kernel_restarted"` and `"memory_exceeded"` mean the state was lost, which `run.generation` changing also tells you. A run on a context that is still busy throws an `APIError` with `reason: "context_busy"`.
+
+Run options: `context` (a context or its id), `language` (`"python"`, the default context's language), `envs` (environment variables for this run only, seen by subprocesses too), `timeoutMs` (the cell's timeout; the sandbox's ceiling is the default), `requestTimeoutMs` (a bound on the whole request), `signal`, and the `onStdout` / `onStderr` / `onResult` / `onError` callbacks. `run.logs` holds the output pieces as they arrived.
+
+```ts
+await sandbox.code.run("import os, subprocess\nprint(os.environ['STAGE'])", { envs: { STAGE: "test" } });
+```
+
+Each context is a separate kernel with its own state, started in its own working directory; a run sent while its kernel is still starting waits for it. Runs without a `context` use the `default` context:
+
+```ts
+const ctx = await sandbox.code.createContext({ cwd: "project" }); // → { contextId, generation, language, cwd }
+await sandbox.code.run("import os\nprint(os.getcwd())", { context: ctx });
+await sandbox.code.listContexts();       // → [{ contextId, state, generation, language, cwd, rssMib }]
+await sandbox.code.restartContext(ctx);  // drops its state, returns the new generation
+await sandbox.code.deleteContext(ctx);
+```
+
+The full example is [`examples/code-interpreter.ts`](./examples/code-interpreter.ts).
+
 ### Interactive terminal (PTY)
 
 For a fully interactive session — a shell, a REPL, anything that needs a TTY — `sandbox.pty` opens a pseudo-terminal over a WebSocket. Output streams to your `onData` callback; you send keystrokes, forward window resizes, and await the exit code:

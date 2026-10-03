@@ -1,4 +1,5 @@
 import { decodeBase64 } from "./base64.js";
+import { SandboxCode } from "./code.js";
 import { type APIError, NeevError, errorFromSandboxBody, errorFromStatus } from "./errors.js";
 import type { Dispatch } from "./http.js";
 import { openLocalFile, writeBodyToFile } from "./local-files.js";
@@ -191,6 +192,8 @@ export class SandboxConnection {
   readonly files: SandboxFiles;
   // Process supervisor operations on the sandbox.
   readonly processes: SandboxProcesses;
+  // Code interpreter, in sandboxes created from the interpreter template.
+  readonly code: SandboxCode;
   // Interactive PTY sessions on the sandbox.
   readonly pty: SandboxPty;
 
@@ -201,6 +204,7 @@ export class SandboxConnection {
     this.webSocket = opts.webSocket;
     this.files = new SandboxFiles(this);
     this.processes = new SandboxProcesses(this);
+    this.code = new SandboxCode(this);
     this.pty = new SandboxPty(this);
   }
 

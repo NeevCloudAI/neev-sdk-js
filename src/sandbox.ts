@@ -1,4 +1,5 @@
 import type { Scope } from "./client.js";
+import { SandboxCode } from "./code.js";
 import { NeevError } from "./errors.js";
 import { SandboxProcesses } from "./processes.js";
 import { SandboxPty } from "./pty.js";
@@ -69,6 +70,8 @@ export class Sandbox {
   private filesProxy?: SandboxFiles;
   // Cached processes facade; its connection is resolved lazily on first use.
   private processesProxy?: SandboxProcesses;
+  // Cached code-interpreter facade; its connection is resolved lazily on first use.
+  private codeProxy?: SandboxCode;
   // Cached pty facade; its connection is resolved lazily on first use.
   private ptyProxy?: SandboxPty;
 
@@ -154,6 +157,15 @@ export class Sandbox {
       this.processesProxy = new SandboxProcesses(() => this.ensureConnection());
     }
     return this.processesProxy;
+  }
+
+  // Runs code in persistent kernels. Needs a sandbox created from the interpreter
+  // template; elsewhere every call fails with reason `interpreter_not_enabled`.
+  get code(): SandboxCode {
+    if (!this.codeProxy) {
+      this.codeProxy = new SandboxCode(() => this.ensureConnection());
+    }
+    return this.codeProxy;
   }
 
   // Interactive PTY sessions on this sandbox's runtime. Like `files`, the connection
