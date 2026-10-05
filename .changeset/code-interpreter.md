@@ -1,0 +1,5 @@
+---
+"@neevcloud/sdk": minor
+---
+
+Code interpreter: `sandbox.code.run(code, options)` runs Python in a persistent kernel in sandboxes created from the interpreter template. It returns `stdout`, `stderr`, `logs`, display `results` with typed accessors (`text`, `html`, `markdown`, `svg`, `png`, `jpeg`, `pdf`, `latex`, `json`, `formats()`), the last expression's `text`, any raised `error`, `executionCount`, and how the run ended (`endReason`). Options: `context` (a context or its id), `language`, `envs` for this run only, `timeoutMs`, `requestTimeoutMs`, `signal`, and `onStdout` / `onStderr` (each given `{ line, timestamp, error }`), `onResult` and `onError`. `sandbox.code.createContext({ language, cwd })`, `listContexts`, `restartContext` and `deleteContext` manage separate kernels, each in its own working directory. `APIError.reason` refines `code` where one code covers several cases, such as `context_busy`. Runs and context calls on a paused sandbox wake it and wait up to two minutes, bounded by `requestTimeoutMs`.
