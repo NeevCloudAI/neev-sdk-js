@@ -1145,12 +1145,12 @@ export interface components {
              * @default deny_all
              * @enum {string}
              */
-            mode: "deny_all" | "allow_list";
+            mode?: "deny_all" | "allow_list";
             /**
              * @description Escape hatch: if true, allows all outbound traffic (0.0.0.0/0 and ::/0). Applies only in allow_list mode; deny_all ignores it.
              * @default false
              */
-            allow_internet: boolean;
+            allow_internet?: boolean;
             /** @description List of egress rules for host/IP destinations to allow. */
             allow?: components["schemas"]["SandboxEgressRule"][];
         };

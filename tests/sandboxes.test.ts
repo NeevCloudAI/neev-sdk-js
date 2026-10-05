@@ -83,6 +83,19 @@ describe("sandboxes resource", () => {
     });
   });
 
+  // Fields the API defaults are optional in the types; this fails typecheck if they turn required.
+  it("accepts an egress policy that leaves out allow_internet, on create and update", async () => {
+    const { neev, calls } = client([json(201, sandboxData()), json(200, sandboxData())]);
+    const egress = {
+      mode: "allow_list" as const,
+      allow: [{ host: "registry.npmjs.org", ports: [443] }],
+    };
+    await neev.sandboxes.create({ egress });
+    await neev.sandboxes.update("sb-1", { egress });
+    expect(calls[0]?.body).toEqual({ egress });
+    expect(calls[1]?.body).toEqual({ egress });
+  });
+
   it("lists sandboxes with pagination and wraps items as handles", async () => {
     const { neev, calls } = client([
       json(200, {
