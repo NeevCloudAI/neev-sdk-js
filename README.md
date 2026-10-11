@@ -76,6 +76,9 @@ To run the examples from a clone (including against dev), see [`examples/README.
 ```ts
 const page = await neev.sandboxes.list({ limit: 50 });
 const paused = await neev.sandboxes.list({ name: "web", status: "Paused" });
+// Label at create time, then find by label (every label given must match).
+await neev.sandboxes.create({ labels: { team: "payments", "ci-run": "4821" } });
+const payments = await neev.sandboxes.list({ labels: { team: "payments" } });
 const sandbox = await neev.sandboxes.get(id); // by id, or by name: neev.sandboxes.get("my-sandbox")
 await neev.sandboxes.pause(id);
 await neev.sandboxes.resume(id);
@@ -202,6 +205,7 @@ await sandbox.update({
 const sandbox = await neev.sandboxes.get(id);
 await sandbox.refresh();          // re-fetch latest state
 sandbox.lastCrash;                // null, or { reason, at, storage_reset } for the last unexpected stop
+sandbox.labels;                   // labels set at create time, {} when none
 const trail = await sandbox.audit(); // one page of the audit trail
 await sandbox.waitUntilReady();   // poll until phase === "Ready" and the sandbox is addressable
 sandbox.addressable;              // false for a moment after create; runtime calls wait for it

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { type FetchLike, Neev, NeevError, type SandboxLastCrash } from "../src/index.js";
+import {
+  type FetchLike,
+  Neev,
+  NeevError,
+  type SandboxLabels,
+  type SandboxLastCrash,
+} from "../src/index.js";
 import { json, mockFetch, sandboxData } from "./helpers.js";
 
 // Builds a client backed by the given queued responses.
@@ -75,6 +81,18 @@ describe("Sandbox handle", () => {
     const wiped = await neev.sandboxes.create({ name: "wiped" });
     expect(wiped.lastCrash?.storage_reset).toBe(true);
     expect(JSON.parse(JSON.stringify(wiped)).last_crash.reason).toBe("NodeLost");
+  });
+
+  it("exposes labels, reading a missing field as an empty object", async () => {
+    const neev = client([
+      json(201, sandboxData({ labels: { team: "payments" } })),
+      json(201, sandboxData()),
+    ]);
+    const labelled = await neev.sandboxes.create({ name: "labelled" });
+    expect(labelled.labels).toEqual({ team: "payments" });
+    // Compile-time check: the getter's type is exported from the barrel.
+    const none: SandboxLabels = (await neev.sandboxes.create({ name: "none" })).labels;
+    expect(none).toEqual({});
   });
 
   it("updates its state in place after pause", async () => {

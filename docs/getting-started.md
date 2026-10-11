@@ -139,8 +139,9 @@ This section walks the full path from a clean project to a running sandbox.
    ```
 
 4. **Create your first sandbox.** Every field is optional — the platform generates
-   a name and defaults the template when you omit them. (Pass `name` to label it,
-   or `sandbox_template_id` to pin a template.)
+   a name and defaults the template when you omit them. (Pass `name` to name it,
+   `sandbox_template_id` to pin a template, or `labels` to tag it for
+   `neev.sandboxes.list({ labels })` later.)
 
    ```ts
    const sandbox = await neev.sandboxes.create({});

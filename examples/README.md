@@ -29,6 +29,7 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 |------|---------------|-----|
 | [`create-sandbox.ts`](./create-sandbox.ts) | Lifecycle: create → wait for Ready → metrics → resize → pause → delete | `npx tsx examples/create-sandbox.ts` |
 | [`lifecycle-keepalive.ts`](./lifecycle-keepalive.ts) | Capped-lifetime sandbox (`lifecycle` windows) held past its idle deadline with a `keepalive()` loop, then `updateTimeout()` | `npx tsx examples/lifecycle-keepalive.ts` |
+| [`labels.ts`](./labels.ts) | Label two sandboxes at create, `list({ labels })` by one label and by two, print `sandbox.labels`, delete both | `npx tsx examples/labels.ts` |
 | [`byoi-create.ts`](./byoi-create.ts) | Bring Your Own Image: `create({ image, command })` from a public OCI image → wait for Ready → exec | `npx tsx examples/byoi-create.ts` |
 | [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
 | [`snapshot-fork-rollback.ts`](./snapshot-fork-rollback.ts) | Snapshot a sandbox → fork a new one from it → roll the original back in place | `npx tsx examples/snapshot-fork-rollback.ts` |
@@ -83,6 +84,12 @@ example provisions a real sandbox, so the project needs available credits
 npx tsx examples/create-sandbox.ts
 ```
 → `created … (phase: Pending)` → `ready at https://….sandboxes.<region>…` → `metric series: …` → `paused …` → `deleted`.
+
+**1a. Labels**
+```sh
+npx tsx examples/labels.ts
+```
+→ `created … labels: {"run":"run-…","role":"api"}` (and `worker`) → `label run=run-… → 2 sandbox(es)` → `run=run-…, role=worker → … {"run":"run-…","role":"worker"}` → `cleaned up`.
 
 **1b. Snapshot, fork & rollback**
 ```sh

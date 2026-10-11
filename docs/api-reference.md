@@ -97,7 +97,7 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `rollback(id, snapshotId, scope?)` | `Promise<Sandbox>` | Rolls a sandbox back **in place** to one of its snapshots. |
 | `fork(id, name, scope?)` | `Promise<Sandbox>` | Forks a sandbox into a new named sandbox from its **current live state**. |
 
-**`create(params, scope?)`** — every field is optional; the platform generates a name and defaults the template when omitted. Compute size is set with `resources` (`cpu` / `memory_gb` / `disk_gb`); omit it (or any field) to take the platform default — see [`SandboxResources`](./api-inventory.md#sandboxresources) for defaults and ranges. Egress is deny-all by default; open it with the `allowInternet` / `allowEgress` convenience fields (same on `agents.create`), or a full `egress` object for finer control (which takes precedence). Set at most one of `sandbox_template_id` (catalogue) or `image` (BYOI — a public OCI image with a tag/digest, plus an optional `command`); omit both to use the platform default template. Pass `lifecycle` to set idle/lifetime windows at create time; omit it and account defaults apply (no `lifecycle` key is sent), and an out-of-enum `on_idle` throws before the request.
+**`create(params, scope?)`** — every field is optional; the platform generates a name and defaults the template when omitted. Compute size is set with `resources` (`cpu` / `memory_gb` / `disk_gb`); omit it (or any field) to take the platform default — see [`SandboxResources`](./api-inventory.md#sandboxresources) for defaults and ranges. Egress is deny-all by default; open it with the `allowInternet` / `allowEgress` convenience fields (same on `agents.create`), or a full `egress` object for finer control (which takes precedence). Set at most one of `sandbox_template_id` (catalogue) or `image` (BYOI — a public OCI image with a tag/digest, plus an optional `command`); omit both to use the platform default template. Pass `lifecycle` to set idle/lifetime windows at create time; omit it and account defaults apply (no `lifecycle` key is sent), and an out-of-enum `on_idle` throws before the request. `labels` (`SandboxLabels`, up to 16 key-value pairs) tag the sandbox so `list` can find it later; the server validates their format and rejects a bad one with `BadRequestError`.
 
 ```ts
 const sandbox = await neev.sandboxes.create({});
@@ -112,6 +112,8 @@ await neev.sandboxes.create({ name: "ci", allowEgress: ["github.com", "*.npmjs.o
 await neev.sandboxes.create({ image: "docker.io/library/python:3.12-slim", command: ["sleep", "infinity"] });
 // lifecycle windows (seconds): pause after 10 min idle, hard-stop after 2 h
 await neev.sandboxes.create({ lifecycle: { idle_timeout_seconds: 600, max_lifetime_seconds: 7200, on_idle: "pause" } });
+// labels for finding it later with list({ labels })
+await neev.sandboxes.create({ labels: { team: "payments", "ci-run": "4821" } });
 ```
 
 **`update(id, params, scope?)`** — updates a **running** sandbox in place and returns the updated handle; the id, name, and preview URLs are unchanged. `params` is `UpdateSandboxParams`: `resources` (cpu/memory, resized in place) and/or `egress` (replaces the policy in full; takes effect for new connections with **no restart**). It also accepts the same `allowInternet` / `allowEgress` convenience as `create` (byte-identical `egress` JSON). `egress_add` / `egress_remove` (each `{ allow: SandboxEgressRule[] }`) edit the existing allow-list in place instead — removals apply first, so one call can swap a host; they can't be combined with `egress` (or the convenience fields) and `egress_add` needs the sandbox to already be in `allow_list` mode. **At least one of `resources`, `egress`, `egress_add` or `egress_remove` is required** — an empty or conflicting patch throws `NeevError` before any request is sent. `disk_gb` is **not** resizable in place; if you change it the server rejects the patch (surfaced as a typed error, not silently dropped). Passing `resources` and `egress` together sends a single `PATCH` and both take effect.
@@ -127,10 +129,11 @@ await neev.sandboxes.update(id, { resources: { cpu: 4 }, allowInternet: true });
 await neev.sandboxes.update(id, { egress_add: { allow: [{ host: "pypi.org", ports: [443] }] } });
 ```
 
-**`list(params?)`** — `params` is `{ page?, limit?, orgId?, projectId? }`; returns `SandboxPage` = `{ items: Sandbox[]; total; page; limit }`.
+**`list(params?)`** — `params` is `{ page?, limit?, name?, status?, sandboxId?, labels?, orgId?, projectId? }`; returns `SandboxPage` = `{ items: Sandbox[]; total; page; limit }`. `labels` keeps only sandboxes carrying every given label; each is sent as a repeated `label=key=value` query param, and a malformed one is rejected with `BadRequestError`.
 
 ```ts
 const { items, total } = await neev.sandboxes.list({ limit: 50 });
+const payments = await neev.sandboxes.list({ labels: { team: "payments" } });
 ```
 
 **`get` / `pause` / `resume` / `delete`**
@@ -328,6 +331,7 @@ await sandbox.files.write("notes.md", "# hello\n");
 | `region` | `string` | Region slug the sandbox runs in. |
 | `templateId` | `string \| null` | Template id it was created from, or `null`. |
 | `resources` | `SandboxResources \| undefined` | Provisioned compute size, or `undefined` when defaulted. |
+| `labels` | `SandboxLabels` | Labels set at create time; `{}` when the sandbox has none. |
 | `connectUrl` | `string \| null` | Runtime address, or `null` when not yet configured. |
 | `addressable` | `boolean` | Whether the sandbox can be reached yet; briefly `false` after create. `waitUntilReady` and runtime calls wait for it. |
 | `lastCrash` | `SandboxLastCrash \| null` | Most recent unexpected stop, or `null` if the sandbox has never had one. `storage_reset: true` means it restarted with an empty filesystem — files under `/workspace`, and anything installed since create, are gone. Historical: not cleared when the sandbox recovers; restoring from a snapshot taken before that stop brings the files back and clears it. |

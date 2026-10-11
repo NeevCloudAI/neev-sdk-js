@@ -240,6 +240,9 @@ const configured = await client.sandboxes.create({
   sandbox_template_id: "sb-ubuntu-26-04-minimal",
   env: [{ name: "LOG_LEVEL", value: "debug" }],
 });
+
+// Labels for finding it later with list({ labels }).
+const labelled = await client.sandboxes.create({ labels: { team: "payments", "ci-run": "4821" } });
 ```
 
 ### `client.sandboxes.list(params?)`
@@ -259,13 +262,14 @@ Lists sandboxes in the resolved org/project with server-side pagination, returni
 | `name` | `string` (optional) | Case-insensitive substring match on the sandbox name. |
 | `status` | `SandboxPhase` (optional) | Exact lifecycle-phase match. |
 | `sandboxId` | `string` (optional) | Narrow to a single sandbox by its id. |
+| `labels` | `SandboxLabels` (optional) | Keep only sandboxes carrying every one of these labels. Sent as a repeated `label=key=value` query param. |
 | `orgId` / `projectId` | `string` (optional) | Per-call scope override. |
 
 The filters combine with AND; each is omitted from the request when unset.
 
 **Returns:** `Promise<SandboxPage>` with `{ items: Sandbox[]; total; page; limit }`. Each item is a `Sandbox` handle bound to the client.
 
-**Raises:** `NeevError`, `AuthenticationError`, `PermissionDeniedError`, `RateLimitError`, `InternalServerError`, transport errors.
+**Raises:** `NeevError`, `BadRequestError` (400, e.g. a malformed label filter), `AuthenticationError`, `PermissionDeniedError`, `RateLimitError`, `InternalServerError`, transport errors.
 
 ```ts
 const page = await client.sandboxes.list({ page: 1, limit: 20 });
@@ -276,6 +280,9 @@ console.log(`Showing ${page.items.length} of ${page.total}`);
 
 // Filter by name substring and lifecycle phase.
 const pausedWeb = await client.sandboxes.list({ name: "web", status: "Paused" });
+
+// Filter by labels; every label given must match.
+const payments = await client.sandboxes.list({ labels: { team: "payments" } });
 ```
 
 ### `client.sandboxes.get(id, scope?)`
@@ -858,6 +865,7 @@ Returned by `create()`, `get()`, `list().items`, `pause()`, `resume()`, `rollbac
 | `region` | `string` | Region slug the sandbox runs in. |
 | `templateId` | `string \| null` | Catalogue template id it was created from, or `null` when unknown. |
 | `resources` | `SandboxResources \| undefined` | Compute size, or `undefined` when defaulted. |
+| `labels` | `SandboxLabels` | Labels set at create time; `{}` when the sandbox has none. |
 | `addressable` | `boolean` | Whether the sandbox can be reached yet. Briefly `false` after create; `waitUntilReady` and runtime calls wait for it. `true` when not reported. |
 | `lastCrash` | `SandboxLastCrash \| null` | Most recent unexpected stop as last seen from the server, or `null` if the sandbox has never had one. `storage_reset: true` means it restarted with an empty filesystem. Historical — not cleared when the sandbox recovers; restoring from a snapshot taken before that stop brings the files back and clears it. |
 | `files` | `SandboxFiles` | Filesystem facade; resolves its connection lazily on first use (waits for Ready). |
@@ -1502,6 +1510,7 @@ The generated `CreateSandboxRequest` plus the SDK-only `EgressConvenience` field
 | `env` | `EnvVar[]` | no |
 | `resources` | `SandboxResources` | no |
 | `egress` | `SandboxEgressConfig` | no |
+| `labels` | `SandboxLabels` | no (up to 16 key-value pairs; format checked by the server) |
 | `allowInternet` | `boolean` | no (SDK convenience — opens all egress) |
 | `allowEgress` | `string[]` | no (SDK convenience — allow specific hosts) |
 
@@ -1554,7 +1563,11 @@ Alias for the generated `Sandbox` schema — the full lifecycle sandbox record w
 | `created_at` | `string` | yes |
 | `updated_at` | `string` | yes |
 
-> The handle reads `id`, `name`, `phase`, `addressable`, `replicas`, `connect_url`, `region`, `sandbox_template_id`, `resources`, and `last_crash` from this shape.
+> The handle reads `id`, `name`, `phase`, `addressable`, `replicas`, `connect_url`, `region`, `sandbox_template_id`, `resources`, `labels`, and `last_crash` from this shape.
+
+### `SandboxLabels`
+
+Alias for the generated `SandboxLabels` — `Record<string, string>`, at most 16 entries. Set on `sandboxes.create({ labels })`, read as `sandbox.labels`, and filtered with `sandboxes.list({ labels })`. Keys are 1-63 characters of lowercase letters, digits, `.`, `_` or `-`, starting and ending with a letter or digit; values are up to 63 characters of letters, digits, `.`, `_` or `-`. The SDK does not check the format; the server rejects a bad label with `BadRequestError`.
 
 ### `SandboxLastCrash`
 
@@ -2063,7 +2076,7 @@ Compact reviewer index.
 
 | Symbol | Kind | Notes |
 | ------ | ---- | ----- |
-| `id`, `name`, `phase`, `replicas`, `connectUrl`, `addressable`, `region`, `templateId`, `resources`, `lastCrash`, `data` | getters | `connectUrl` is `string \| null`; `addressable` is `boolean`; `lastCrash` is `SandboxLastCrash \| null`. |
+| `id`, `name`, `phase`, `replicas`, `connectUrl`, `addressable`, `region`, `templateId`, `resources`, `labels`, `lastCrash`, `data` | getters | `connectUrl` is `string \| null`; `addressable` is `boolean`; `labels` is `SandboxLabels` (`{}` when none); `lastCrash` is `SandboxLastCrash \| null`. |
 | `files` | getter | `SandboxFiles` (lazy connection). |
 | `processes` | getter | `SandboxProcesses` (lazy connection). |
 | `refresh` | method | `Promise<this>` |
