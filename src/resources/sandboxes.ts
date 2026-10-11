@@ -14,6 +14,7 @@ import type {
   CreateSnapshotParams,
   OnIdleAction,
   SandboxData,
+  SandboxLabels,
   SandboxListResponse,
   SandboxMetricsResponse,
   SandboxPhase,
@@ -73,6 +74,8 @@ export interface ListSandboxesParams extends Scope {
   status?: SandboxPhase;
   // Narrow to a single sandbox by its id.
   sandboxId?: string;
+  // Narrow to sandboxes carrying every one of these labels.
+  labels?: SandboxLabels;
 }
 
 // A page of sandboxes, with the handles already wrapped and the paging metadata.
@@ -178,12 +181,14 @@ export class Sandboxes {
 
   // Lists sandboxes in the resolved org/project, returning wrapped handles.
   async list(params: ListSandboxesParams = {}): Promise<SandboxPage> {
-    const { page, limit, name, status, sandboxId, ...scope } = params;
+    const { page, limit, name, status, sandboxId, labels, ...scope } = params;
     const { orgId, projectId } = this.ctx.resolveScope(scope);
+    // Each label goes out as its own repeated `label=key=value` param.
+    const label = labels && Object.entries(labels).map(([key, value]) => `${key}=${value}`);
     const res = await this.api.GET(COLLECTION, {
       params: {
         path: { org_id: orgId, project_id: projectId },
-        query: { page, limit, name, status, sandbox_id: sandboxId },
+        query: { page, limit, name, status, sandbox_id: sandboxId, label },
       },
     });
     const data = unwrap<SandboxListResponse>(res);

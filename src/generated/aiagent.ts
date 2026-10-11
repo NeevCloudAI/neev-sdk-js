@@ -128,7 +128,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mint a short-lived connect token for a sandbox */
+        /**
+         * Mint a short-lived connect token for a sandbox
+         * @description Mints a short-lived token scoped to this sandbox. A token is minted for a
+         *     signed-in console user only: a request made with an API key or another
+         *     service credential returns `403`.
+         */
         post: operations["createConnectToken"];
         delete?: never;
         options?: never;
@@ -279,8 +284,9 @@ export interface paths {
          * Restore a sandbox from a snapshot (Deprecated)
          * @deprecated
          * @description Deprecated alias for POST .../sandboxes/{sandbox_id}/rollback.
-         *     Same-sandbox rollback. Stops the sandbox's processes, replaces FS+memory
-         *     with the snapshot's state, and restarts.
+         *     Same-sandbox rollback. Replaces the sandbox's files and memory with the
+         *     snapshot's, so the processes that were running when the snapshot was
+         *     taken come back from that moment and anything started after it is gone.
          */
         post: operations["restoreSandbox"];
         delete?: never;
@@ -300,10 +306,11 @@ export interface paths {
         put?: never;
         /**
          * Rollback a sandbox from a snapshot
-         * @description Same-sandbox rollback. Stops the sandbox's processes, replaces FS+memory
-         *     with the snapshot's state, and restarts. The sandbox keeps its UUID,
-         *     name, and network identity. Destructive — current state is overwritten
-         *     and not auto-archived.
+         * @description Same-sandbox rollback. Replaces the sandbox's files and memory with the
+         *     snapshot's, so the processes that were running when the snapshot was
+         *     taken come back from that moment and anything started after it is gone.
+         *     The sandbox keeps its UUID, name, and network identity. Destructive —
+         *     current state is overwritten and not auto-archived.
          */
         post: operations["rollbackSandbox"];
         delete?: never;
@@ -556,6 +563,8 @@ export interface paths {
          *     returns `409`. How to drive the agent over the ticket (`http` to its own
          *     port, or an `exec`/`pty` channel) is the agent's `drive_mode` field. The
          *     token is bound to this project and agent and validated on each request.
+         *     A ticket is minted for a signed-in console user only: a request made with
+         *     an API key or another service credential returns `403`.
          */
         post: operations["connectAgent"];
         delete?: never;
@@ -622,7 +631,9 @@ export interface paths {
         put?: never;
         /**
          * Rollback an agent from a snapshot
-         * @description Restarts the agent's backing sandbox from a previously taken snapshot.
+         * @description Returns the agent's backing sandbox to a previously taken snapshot. Its
+         *     files and memory are replaced with the snapshot's, so the processes that
+         *     were running when the snapshot was taken come back from that moment.
          */
         post: operations["rollbackAgent"];
         delete?: never;
@@ -829,6 +840,7 @@ export interface components {
             command?: string[];
             resources?: components["schemas"]["SandboxResources"];
             phase: components["schemas"]["SandboxPhase"];
+            labels?: components["schemas"]["SandboxLabels"];
             /** @description Whether the sandbox can be reached by name yet. Briefly false after a sandbox is created; a call made before it turns true is refused and is worth retrying. */
             addressable?: boolean;
             /** @description Public URL the SDK calls (API key + X-Sandbox-Id). null when not configured. */
@@ -913,6 +925,19 @@ export interface components {
              */
             storage_reset: boolean;
         };
+        /**
+         * @description Key-value labels for finding sandboxes later, for example with the `label`
+         *     list filter. At most 16. Keys are 1-63 characters of lowercase letters,
+         *     digits, '.', '_' or '-', starting and ending with a letter or digit. Values
+         *     are up to 63 characters of letters, digits, '.', '_' or '-'.
+         * @example {
+         *       "team": "payments",
+         *       "ci-run": "4821"
+         *     }
+         */
+        SandboxLabels: {
+            [key: string]: string;
+        };
         CreateSandboxRequest: {
             /**
              * @description Sandbox name. Optional — when omitted, the server generates one (a
@@ -932,6 +957,7 @@ export interface components {
             env?: components["schemas"]["EnvVar"][];
             resources?: components["schemas"]["SandboxResources"];
             egress?: components["schemas"]["SandboxEgressConfig"];
+            labels?: components["schemas"]["SandboxLabels"];
             /** @description Catalogue template id. Mutually exclusive with `image`. */
             sandbox_template_id?: string;
             /**
@@ -1609,6 +1635,8 @@ export interface components {
         Limit: number;
         /** @description Case-insensitive substring match on the sandbox name. */
         SandboxNameSearch: string;
+        /** @description Filter by label, written as `key=value`. Repeat it to require several labels. */
+        SandboxLabelFilter: string[];
         /** @description Filter to a single sandbox by its id. */
         SandboxIDFilter: string;
         /** @description The agent's id, or its name. A name identifies a single agent because names are unique within a project. A name formatted as a UUID is read as an id, so agent names may not be formatted that way. */
@@ -1640,6 +1668,8 @@ export interface operations {
                 status?: "Pending" | "Ready" | "NotReady" | "Unknown" | "Pausing" | "Paused" | "RestoreFailed";
                 /** @description Filter to a single sandbox by its id. */
                 sandbox_id?: components["parameters"]["SandboxIDFilter"];
+                /** @description Filter by label, written as `key=value`. Repeat it to require several labels. */
+                label?: components["parameters"]["SandboxLabelFilter"];
             };
             header?: never;
             path: {
@@ -1661,6 +1691,7 @@ export interface operations {
                     "application/json": components["schemas"]["SandboxListResponse"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalServerError"];

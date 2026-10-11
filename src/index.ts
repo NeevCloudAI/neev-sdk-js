@@ -103,6 +103,7 @@ export type {
   SandboxEgressConfig,
   SandboxEgressRule,
   SandboxEgressRules,
+  SandboxLabels,
   SandboxLastCrash,
   SandboxLifecycle,
   SandboxListResponse,

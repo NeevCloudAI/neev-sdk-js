@@ -19,6 +19,7 @@ import type {
   AuditTrail,
   CreateSnapshotParams,
   SandboxData,
+  SandboxLabels,
   SandboxLastCrash,
   SandboxMetricsResponse,
   SandboxPhase,
@@ -116,6 +117,11 @@ export class Sandbox {
   // Compute size the sandbox was provisioned with, or undefined when defaulted.
   get resources(): SandboxResources | undefined {
     return this.state.resources;
+  }
+
+  // Labels set at create time; an empty object when the sandbox has none.
+  get labels(): SandboxLabels {
+    return this.state.labels ?? {};
   }
 
   // Whether the sandbox can be reached yet. Briefly false right after create; a

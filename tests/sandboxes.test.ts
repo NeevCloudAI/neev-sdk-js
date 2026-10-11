@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Neev, NeevError, NotFoundError, Sandbox } from "../src/index.js";
+import { BadRequestError, Neev, NeevError, NotFoundError, Sandbox } from "../src/index.js";
 import { json, mockFetch, sandboxData, snapshotData } from "./helpers.js";
 
 // Builds a client backed by the given queued responses.
@@ -129,6 +129,41 @@ describe("sandboxes resource", () => {
     expect(url).not.toContain("name=");
     expect(url).not.toContain("status=");
     expect(url).not.toContain("sandbox_id=");
+  });
+
+  it("sends labels in the create body unchanged", async () => {
+    const labels = { team: "payments", "ci-run": "4821" };
+    const { neev, calls } = client([json(201, sandboxData({ labels }))]);
+    const sb = await neev.sandboxes.create({ name: "demo", labels });
+    expect(calls[0]?.body).toEqual({ name: "demo", labels });
+    expect(sb.labels).toEqual(labels);
+  });
+
+  it("serializes each label filter as a repeated label=key=value param", async () => {
+    const { neev, calls } = client([json(200, { items: [], total: 0, page: 1, limit: 20 })]);
+    await neev.sandboxes.list({ labels: { team: "payments", "ci-run": "4821" } });
+    const query = new URL(calls[0]?.url ?? "").searchParams;
+    expect(query.getAll("label")).toEqual(["team=payments", "ci-run=4821"]);
+  });
+
+  it("sends no label param when labels are unset or empty", async () => {
+    const { neev, calls } = client([
+      json(200, { items: [], total: 0, page: 1, limit: 20 }),
+      json(200, { items: [], total: 0, page: 1, limit: 20 }),
+    ]);
+    await neev.sandboxes.list();
+    await neev.sandboxes.list({ labels: {} });
+    expect(calls[0]?.url).not.toContain("label");
+    expect(calls[1]?.url).not.toContain("label");
+  });
+
+  it("surfaces a rejected label filter as a BadRequestError", async () => {
+    const { neev } = client([
+      json(400, { error: "invalid_request", details: 'invalid label filter "Team=x"' }),
+    ]);
+    const err = await neev.sandboxes.list({ labels: { Team: "x" } }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BadRequestError);
+    expect((err as BadRequestError).status).toBe(400);
   });
 
   it("targets the pause and resume sub-paths", async () => {

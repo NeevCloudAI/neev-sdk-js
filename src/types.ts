@@ -6,6 +6,9 @@ import type { components } from "./generated/aiagent.js";
 // A sandbox as returned by the API. The Sandbox handle class wraps this shape.
 export type SandboxData = components["schemas"]["Sandbox"];
 
+// Key-value labels on a sandbox (at most 16); the server validates key and value format.
+export type SandboxLabels = components["schemas"]["SandboxLabels"];
+
 // Lifecycle phase reported by the service.
 export type SandboxPhase = components["schemas"]["SandboxPhase"];
 

@@ -60,12 +60,14 @@ paths:
             type: string
             enum: [Pending, Ready, NotReady, Unknown, Pausing, Paused, RestoreFailed]
         - {$ref: '#/components/parameters/SandboxIDFilter'}
+        - {$ref: '#/components/parameters/SandboxLabelFilter'}
       responses:
         "200":
           description: Paginated list of sandboxes
           content:
             application/json:
               schema: {$ref: '#/components/schemas/SandboxListResponse'}
+        "400": {$ref: '#/components/responses/BadRequest'}
         "401": {$ref: '#/components/responses/Unauthorized'}
         "403": {$ref: '#/components/responses/Forbidden'}
         "500": {$ref: '#/components/responses/InternalServerError'}
@@ -328,6 +330,10 @@ paths:
     post:
       tags: [Sandboxes]
       summary: Mint a short-lived connect token for a sandbox
+      description: |
+        Mints a short-lived token scoped to this sandbox. A token is minted for a
+        signed-in console user only: a request made with an API key or another
+        service credential returns `403`.
       operationId: createConnectToken
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
@@ -717,8 +723,9 @@ paths:
       summary: Restore a sandbox from a snapshot (Deprecated)
       description: |
         Deprecated alias for POST .../sandboxes/{sandbox_id}/rollback.
-        Same-sandbox rollback. Stops the sandbox's processes, replaces FS+memory
-        with the snapshot's state, and restarts.
+        Same-sandbox rollback. Replaces the sandbox's files and memory with the
+        snapshot's, so the processes that were running when the snapshot was
+        taken come back from that moment and anything started after it is gone.
       operationId: restoreSandbox
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
@@ -746,10 +753,11 @@ paths:
       tags: [Snapshots]
       summary: Rollback a sandbox from a snapshot
       description: |
-        Same-sandbox rollback. Stops the sandbox's processes, replaces FS+memory
-        with the snapshot's state, and restarts. The sandbox keeps its UUID,
-        name, and network identity. Destructive — current state is overwritten
-        and not auto-archived.
+        Same-sandbox rollback. Replaces the sandbox's files and memory with the
+        snapshot's, so the processes that were running when the snapshot was
+        taken come back from that moment and anything started after it is gone.
+        The sandbox keeps its UUID, name, and network identity. Destructive —
+        current state is overwritten and not auto-archived.
       operationId: rollbackSandbox
       x-codeSamples:
         - lang: TypeScript
@@ -1363,12 +1371,9 @@ paths:
         returns `409`. How to drive the agent over the ticket (`http` to its own
         port, or an `exec`/`pty` channel) is the agent's `drive_mode` field. The
         token is bound to this project and agent and validated on each request.
+        A ticket is minted for a signed-in console user only: a request made with
+        an API key or another service credential returns `403`.
       operationId: connectAgent
-      x-codeSamples:
-        - lang: cURL
-          source: |
-            curl -X POST "$BASE_URL/api/v1beta1/orgs/$NEEV_ORG_ID/projects/$NEEV_PROJECT_ID/agents/$AGENT_ID/connect" \
-              -H "Authorization: Bearer $NEEV_API_KEY"
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -1490,7 +1495,9 @@ paths:
       tags: [Agents]
       summary: Rollback an agent from a snapshot
       description: |
-        Restarts the agent's backing sandbox from a previously taken snapshot.
+        Returns the agent's backing sandbox to a previously taken snapshot. Its
+        files and memory are replaced with the snapshot's, so the processes that
+        were running when the snapshot was taken come back from that moment.
       operationId: rollbackAgent
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
@@ -1834,6 +1841,14 @@ components:
       required: false
       description: Case-insensitive substring match on the sandbox name.
       schema: {type: string, maxLength: 63}
+    SandboxLabelFilter:
+      name: label
+      in: query
+      required: false
+      description: Filter by label, written as `key=value`. Repeat it to require several labels.
+      style: form
+      explode: true
+      schema: {type: array, maxItems: 16, items: {type: string, maxLength: 127}}
     SandboxIDFilter:
       name: sandbox_id
       in: query
@@ -2020,6 +2035,7 @@ components:
         command: {type: array, items: {type: string}}
         resources: {$ref: '#/components/schemas/SandboxResources'}
         phase: {$ref: '#/components/schemas/SandboxPhase'}
+        labels: {$ref: '#/components/schemas/SandboxLabels'}
         addressable: {type: boolean, description: "Whether the sandbox can be reached by name yet. Briefly false after a sandbox is created; a call made before it turns true is refused and is worth retrying."}
         connect_url: {type: string, nullable: true, description: "Public URL the SDK calls (API key + X-Sandbox-Id). null when not configured."}
         replicas: {type: integer, minimum: 0, maximum: 1, description: "0 = paused, 1 = running."}
@@ -2102,6 +2118,16 @@ components:
             True when the sandbox restarted with an empty filesystem: files under
             /workspace, and anything installed since create, are gone. False when it
             restarted with its files intact.
+    SandboxLabels:
+      type: object
+      description: |
+        Key-value labels for finding sandboxes later, for example with the `label`
+        list filter. At most 16. Keys are 1-63 characters of lowercase letters,
+        digits, '.', '_' or '-', starting and ending with a letter or digit. Values
+        are up to 63 characters of letters, digits, '.', '_' or '-'.
+      maxProperties: 16
+      additionalProperties: {type: string, maxLength: 63}
+      example: {team: payments, ci-run: "4821"}
     CreateSandboxRequest:
       type: object
       properties:
@@ -2123,6 +2149,7 @@ components:
         env: {type: array, items: {$ref: '#/components/schemas/EnvVar'}}
         resources: {$ref: '#/components/schemas/SandboxResources'}
         egress: {$ref: '#/components/schemas/SandboxEgressConfig'}
+        labels: {$ref: '#/components/schemas/SandboxLabels'}
         sandbox_template_id:
           type: string
           minLength: 1
