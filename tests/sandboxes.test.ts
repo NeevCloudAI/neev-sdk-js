@@ -638,6 +638,17 @@ describe("sandbox snapshots, rollback, and fork", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it.each([
+    ["<html>\n<body>bad gateway</body>", "<html>\n<body>bad gateway</body>"],
+    ["[1,2]", "[1,2]"],
+    ['"oops"', '"oops"'],
+  ])("keeps an error body that is not a JSON object (%j) as details", async (text, details) => {
+    const { neev } = client([new Response(text, { status: 404 })]);
+    const err = (await neev.sandboxes.get("sb-1").catch((e) => e)) as NotFoundError;
+    expect(err).toBeInstanceOf(NotFoundError);
+    expect(err.details).toBe(details);
+  });
+
   it("sandbox.snapshot({ waitUntilReady: true }) resolves with the Ready snapshot", async () => {
     const { neev, calls } = client([
       json(200, sandboxData()), // get

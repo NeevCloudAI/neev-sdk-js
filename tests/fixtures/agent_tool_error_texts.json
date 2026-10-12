@@ -1,0 +1,714 @@
+{
+  "api_errors": [
+    {
+      "name": "full body",
+      "status": 404,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":\"not_found\",\"message\":\"no such file\"}",
+      "expected": "HTTP 404 not_found: no such file"
+    },
+    {
+      "name": "sandboxd reason_code",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"reason_code\":\"invalid_argument\",\"message\":\"path \\\"/etc/passwd\\\" escapes workspace root\"}",
+      "expected": "HTTP 400 invalid_argument: path \"/etc/passwd\" escapes workspace root"
+    },
+    {
+      "name": "code wins over reason_code",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":\"bad\",\"reason_code\":\"other\",\"message\":\"m\"}",
+      "expected": "HTTP 400 bad: m"
+    },
+    {
+      "name": "empty code falls back to reason_code",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":\"\",\"reason_code\":\"invalid_argument\",\"message\":\"m\"}",
+      "expected": "HTTP 400 invalid_argument: m"
+    },
+    {
+      "name": "non-string code falls back to reason_code",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":5,\"reason_code\":\"invalid_argument\",\"message\":\"m\"}",
+      "expected": "HTTP 400 invalid_argument: m"
+    },
+    {
+      "name": "byte order mark before json",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "﻿{\"message\":\"bommed\"}",
+      "expected": "HTTP 400: bommed"
+    },
+    {
+      "name": "byte order mark before plain text",
+      "status": 400,
+      "content_type": "text/plain",
+      "body_raw": "﻿plain text",
+      "expected": "HTTP 400: plain text"
+    },
+    {
+      "name": "no code",
+      "status": 404,
+      "content_type": "application/json",
+      "body_raw": "{\"message\":\"no such file\"}",
+      "expected": "HTTP 404: no such file"
+    },
+    {
+      "name": "no message",
+      "status": 409,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":\"conflict\"}",
+      "expected": "HTTP 409 conflict"
+    },
+    {
+      "name": "neither code nor message",
+      "status": 409,
+      "content_type": "application/json",
+      "body_raw": "{}",
+      "expected": "HTTP 409"
+    },
+    {
+      "name": "unrelated fields only",
+      "status": 500,
+      "content_type": "application/json",
+      "body_raw": "{\"foo\":1}",
+      "expected": "HTTP 500"
+    },
+    {
+      "name": "message in error",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":\"bad_request\",\"error\":\"older field\"}",
+      "expected": "HTTP 400 bad_request: older field"
+    },
+    {
+      "name": "message in details",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":\"bad_request\",\"details\":\"only details\"}",
+      "expected": "HTTP 400 bad_request: only details"
+    },
+    {
+      "name": "empty message falls back to error",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"message\":\"\",\"error\":\"from error\"}",
+      "expected": "HTTP 400: from error"
+    },
+    {
+      "name": "empty message and error fall back to details",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"message\":\"\",\"error\":\"\",\"details\":\"from details\"}",
+      "expected": "HTTP 400: from details"
+    },
+    {
+      "name": "message wins over error and details",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"message\":\"m\",\"error\":\"e\",\"details\":\"d\"}",
+      "expected": "HTTP 400: m"
+    },
+    {
+      "name": "non-string message ignored",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":\"bad\",\"message\":42,\"error\":\"fallback\"}",
+      "expected": "HTTP 400 bad: fallback"
+    },
+    {
+      "name": "non-string message only",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":\"bad\",\"message\":{\"text\":\"nested\"}}",
+      "expected": "HTTP 400 bad"
+    },
+    {
+      "name": "non-string code ignored",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":7,\"message\":\"m\"}",
+      "expected": "HTTP 400: m"
+    },
+    {
+      "name": "null fields ignored",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":null,\"message\":null}",
+      "expected": "HTTP 400"
+    },
+    {
+      "name": "html body",
+      "status": 502,
+      "content_type": "text/html",
+      "body_raw": "<!DOCTYPE html>\n<html><body>Bad gateway</body></html>",
+      "expected": "HTTP 502: <!DOCTYPE html>"
+    },
+    {
+      "name": "plain text body",
+      "status": 400,
+      "content_type": "text/plain",
+      "body_raw": "bad request: missing field\nsecond line",
+      "expected": "HTTP 400: bad request: missing field"
+    },
+    {
+      "name": "json array body",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "[1,2]",
+      "expected": "HTTP 400: [1,2]"
+    },
+    {
+      "name": "json string body",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "\"oops\"",
+      "expected": "HTTP 400: \"oops\""
+    },
+    {
+      "name": "json null body",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "null",
+      "expected": "HTTP 400: null"
+    },
+    {
+      "name": "json number body",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "42",
+      "expected": "HTTP 400: 42"
+    },
+    {
+      "name": "invalid json with json content type",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"message\": ",
+      "expected": "HTTP 400: {\"message\": "
+    },
+    {
+      "name": "empty body",
+      "status": 404,
+      "content_type": "text/plain",
+      "body_raw": "",
+      "expected": "HTTP 404"
+    },
+    {
+      "name": "multi-line message",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":\"invalid_argument\",\"message\":\"first line\\nsecond line\"}",
+      "expected": "HTTP 400 invalid_argument: first line"
+    },
+    {
+      "name": "message over 500 characters",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\": \"invalid_argument\", \"message\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
+      "expected": "HTTP 400 invalid_argument: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
+    },
+    {
+      "name": "request id present",
+      "status": 404,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":\"not_found\",\"message\":\"no such file\"}",
+      "request_id": "req-123",
+      "expected": "HTTP 404 not_found: no such file"
+    },
+    {
+      "name": "json unicode escapes",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":\"bad\",\"message\":\"caf\\u00e9 \\ud83d\\ude00\"}",
+      "expected": "HTTP 400 bad: café 😀"
+    },
+    {
+      "name": "non-ascii message",
+      "status": 400,
+      "content_type": "application/json",
+      "body_raw": "{\"code\":\"bad\",\"message\":\"café 日本 😀\"}",
+      "expected": "HTTP 400 bad: café 日本 😀"
+    }
+  ],
+  "call_errors": [
+    {
+      "name": "unknown tool",
+      "tool": "nope",
+      "args": {},
+      "expected": "unknown tool: nope"
+    },
+    {
+      "name": "unknown tool toString",
+      "tool": "toString",
+      "args": {},
+      "expected": "unknown tool: toString"
+    },
+    {
+      "name": "unknown tool __proto__",
+      "tool": "__proto__",
+      "args": {},
+      "expected": "unknown tool: __proto__"
+    },
+    {
+      "name": "unknown tool constructor",
+      "tool": "constructor",
+      "args": {},
+      "expected": "unknown tool: constructor"
+    },
+    {
+      "name": "unknown tool hasOwnProperty",
+      "tool": "hasOwnProperty",
+      "args": {},
+      "expected": "unknown tool: hasOwnProperty"
+    },
+    {
+      "name": "args array",
+      "tool": "read_file",
+      "args": [
+        "a.txt"
+      ],
+      "expected": "invalid arguments for read_file: expected an object"
+    },
+    {
+      "name": "args string",
+      "tool": "read_file",
+      "args": "a.txt",
+      "expected": "invalid arguments for read_file: expected an object"
+    },
+    {
+      "name": "args number",
+      "tool": "read_file",
+      "args": 5,
+      "expected": "invalid arguments for read_file: expected an object"
+    },
+    {
+      "name": "args boolean",
+      "tool": "read_file",
+      "args": true,
+      "expected": "invalid arguments for read_file: expected an object"
+    },
+    {
+      "name": "args null treated as empty object",
+      "tool": "read_file",
+      "args": null,
+      "expected": "invalid arguments for read_file: missing a required argument: \"path\""
+    },
+    {
+      "name": "missing key",
+      "tool": "write_file",
+      "args": {
+        "path": "a.txt"
+      },
+      "expected": "invalid arguments for write_file: missing a required argument: \"content\""
+    },
+    {
+      "name": "missing first required key",
+      "tool": "write_file",
+      "args": {},
+      "expected": "invalid arguments for write_file: missing a required argument: \"path\""
+    },
+    {
+      "name": "unknown key",
+      "tool": "run_command",
+      "args": {
+        "command": "ls",
+        "shell": "bash"
+      },
+      "expected": "invalid arguments for run_command: got an unexpected keyword argument \"shell\""
+    },
+    {
+      "name": "unknown and missing together, unknown wins",
+      "tool": "write_file",
+      "args": {
+        "bogus": 1
+      },
+      "expected": "invalid arguments for write_file: got an unexpected keyword argument \"bogus\""
+    },
+    {
+      "name": "first unknown key in args order",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        "zeta": 1,
+        "alpha": 2
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"zeta\""
+    },
+    {
+      "name": "inherited name constructor",
+      "tool": "run_command",
+      "args": {
+        "command": "ls",
+        "constructor": 1
+      },
+      "expected": "invalid arguments for run_command: got an unexpected keyword argument \"constructor\""
+    },
+    {
+      "name": "inherited name toString",
+      "tool": "run_command",
+      "args": {
+        "command": "ls",
+        "toString": 1
+      },
+      "expected": "invalid arguments for run_command: got an unexpected keyword argument \"toString\""
+    },
+    {
+      "name": "inherited name __proto__",
+      "tool": "run_command",
+      "args": {
+        "command": "ls",
+        "__proto__": 1
+      },
+      "expected": "invalid arguments for run_command: got an unexpected keyword argument \"__proto__\""
+    },
+    {
+      "name": "inherited name hasOwnProperty",
+      "tool": "run_command",
+      "args": {
+        "command": "ls",
+        "hasOwnProperty": 1
+      },
+      "expected": "invalid arguments for run_command: got an unexpected keyword argument \"hasOwnProperty\""
+    },
+    {
+      "name": "inherited name valueOf",
+      "tool": "run_command",
+      "args": {
+        "command": "ls",
+        "valueOf": 1
+      },
+      "expected": "invalid arguments for run_command: got an unexpected keyword argument \"valueOf\""
+    },
+    {
+      "name": "inherited name as the only key",
+      "tool": "read_file",
+      "args": {
+        "constructor": "a.txt"
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"constructor\""
+    },
+    {
+      "name": "non-ascii key e-acute",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        "é": 1
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"é\""
+    },
+    {
+      "name": "non-ascii key cjk",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        "日本": 1
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"日本\""
+    },
+    {
+      "name": "non-ascii key emoji",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        "😀": 1
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"😀\""
+    },
+    {
+      "name": "key DEL",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        "": 1
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"\""
+    },
+    {
+      "name": "key U+0085",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        "": 1
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"\""
+    },
+    {
+      "name": "key U+2028",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        " ": 1
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \" \""
+    },
+    {
+      "name": "key BOM",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        "﻿": 1
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"﻿\""
+    },
+    {
+      "name": "key with quote",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        "a\"b": 1
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"a\\\"b\""
+    },
+    {
+      "name": "key with newline",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        "a\nb": 1
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"a\\nb\""
+    },
+    {
+      "name": "key with backslash",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        "a\\b": 1
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"a\\\\b\""
+    },
+    {
+      "name": "key with tab",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        "a\tb": 1
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"a\\tb\""
+    },
+    {
+      "name": "key over 500 characters",
+      "tool": "read_file",
+      "args": {
+        "path": "a",
+        "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk": 1
+      },
+      "expected": "invalid arguments for read_file: got an unexpected keyword argument \"kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk…"
+    },
+    {
+      "name": "run_command command not string",
+      "tool": "run_command",
+      "args": {
+        "command": 1
+      },
+      "expected": "invalid arguments for run_command: command must be string"
+    },
+    {
+      "name": "run_command command null",
+      "tool": "run_command",
+      "args": {
+        "command": null
+      },
+      "expected": "invalid arguments for run_command: command must be string"
+    },
+    {
+      "name": "run_command cwd not string",
+      "tool": "run_command",
+      "args": {
+        "command": "ls",
+        "cwd": 5
+      },
+      "expected": "invalid arguments for run_command: cwd must be string"
+    },
+    {
+      "name": "run_command timeout_s not numeric",
+      "tool": "run_command",
+      "args": {
+        "command": "ls",
+        "timeout_s": "abc"
+      },
+      "expected": "invalid arguments for run_command: timeout_s must be number"
+    },
+    {
+      "name": "run_command timeout_s boolean",
+      "tool": "run_command",
+      "args": {
+        "command": "ls",
+        "timeout_s": true
+      },
+      "expected": "invalid arguments for run_command: timeout_s must be number"
+    },
+    {
+      "name": "run_command timeout_s array",
+      "tool": "run_command",
+      "args": {
+        "command": "ls",
+        "timeout_s": [
+          5
+        ]
+      },
+      "expected": "invalid arguments for run_command: timeout_s must be number"
+    },
+    {
+      "name": "run_command timeout_s hex string",
+      "tool": "run_command",
+      "args": {
+        "command": "ls",
+        "timeout_s": "0x10"
+      },
+      "expected": "invalid arguments for run_command: timeout_s must be number"
+    },
+    {
+      "name": "write_file path not string",
+      "tool": "write_file",
+      "args": {
+        "path": [
+          "a"
+        ],
+        "content": "x"
+      },
+      "expected": "invalid arguments for write_file: path must be string"
+    },
+    {
+      "name": "write_file content number",
+      "tool": "write_file",
+      "args": {
+        "path": "a",
+        "content": 123
+      },
+      "expected": "invalid arguments for write_file: content must be string"
+    },
+    {
+      "name": "write_file content null",
+      "tool": "write_file",
+      "args": {
+        "path": "a",
+        "content": null
+      },
+      "expected": "invalid arguments for write_file: content must be string"
+    },
+    {
+      "name": "read_file path not string",
+      "tool": "read_file",
+      "args": {
+        "path": 7
+      },
+      "expected": "invalid arguments for read_file: path must be string"
+    },
+    {
+      "name": "expose_port port not numeric",
+      "tool": "expose_port",
+      "args": {
+        "port": "http"
+      },
+      "expected": "invalid arguments for expose_port: port must be integer"
+    },
+    {
+      "name": "expose_port port fractional",
+      "tool": "expose_port",
+      "args": {
+        "port": 80.5
+      },
+      "expected": "invalid arguments for expose_port: port must be integer"
+    },
+    {
+      "name": "expose_port port null",
+      "tool": "expose_port",
+      "args": {
+        "port": null
+      },
+      "expected": "invalid arguments for expose_port: port must be integer"
+    },
+    {
+      "name": "expose_port port object",
+      "tool": "expose_port",
+      "args": {
+        "port": {
+          "n": 1
+        }
+      },
+      "expected": "invalid arguments for expose_port: port must be integer"
+    },
+    {
+      "name": "checkpoint label not string",
+      "tool": "checkpoint",
+      "args": {
+        "label": 3
+      },
+      "expected": "invalid arguments for checkpoint: label must be string"
+    },
+    {
+      "name": "rollback checkpoint_id not string",
+      "tool": "rollback",
+      "args": {
+        "checkpoint_id": 1
+      },
+      "expected": "invalid arguments for rollback: checkpoint_id must be string"
+    },
+    {
+      "name": "start_process command object",
+      "tool": "start_process",
+      "args": {
+        "command": {
+          "x": 1
+        }
+      },
+      "expected": "invalid arguments for start_process: command must be string"
+    },
+    {
+      "name": "start_process cwd not string",
+      "tool": "start_process",
+      "args": {
+        "command": "ls",
+        "cwd": false
+      },
+      "expected": "invalid arguments for start_process: cwd must be string"
+    },
+    {
+      "name": "read_process_output process_id not string",
+      "tool": "read_process_output",
+      "args": {
+        "process_id": 1
+      },
+      "expected": "invalid arguments for read_process_output: process_id must be string"
+    },
+    {
+      "name": "read_process_output cursor not numeric",
+      "tool": "read_process_output",
+      "args": {
+        "process_id": "p",
+        "cursor": "next"
+      },
+      "expected": "invalid arguments for read_process_output: cursor must be integer"
+    },
+    {
+      "name": "read_process_output cursor fractional",
+      "tool": "read_process_output",
+      "args": {
+        "process_id": "p",
+        "cursor": 1.5
+      },
+      "expected": "invalid arguments for read_process_output: cursor must be integer"
+    },
+    {
+      "name": "read_process_output wait_s not numeric",
+      "tool": "read_process_output",
+      "args": {
+        "process_id": "p",
+        "wait_s": "soon"
+      },
+      "expected": "invalid arguments for read_process_output: wait_s must be number"
+    },
+    {
+      "name": "stop_process process_id null",
+      "tool": "stop_process",
+      "args": {
+        "process_id": null
+      },
+      "expected": "invalid arguments for stop_process: process_id must be string"
+    }
+  ]
+}

@@ -465,7 +465,8 @@ export class SandboxFiles {
 
   // Reads a file from the sandbox and decodes it as a UTF-8 string.
   async readText(path: string, options: ReadFileOptions = {}): Promise<string> {
-    return new TextDecoder().decode(await this.read(path, options));
+    // ignoreBOM keeps a leading U+FEFF in the file; the default would drop it.
+    return new TextDecoder("utf-8", { ignoreBOM: true }).decode(await this.read(path, options));
   }
 
   // Lists directory entries at a path in the sandbox.
@@ -625,8 +626,9 @@ const REASON_STATUS: Record<string, number> = {
 // a multi-byte UTF-8 sequence split across frames intact. A terminal "error"
 // frame throws a typed APIError; a stream that ends without an exit status throws.
 async function* streamExec(response: Response): AsyncGenerator<ExecStreamEvent> {
-  const outDecoder = new TextDecoder();
-  const errDecoder = new TextDecoder();
+  // ignoreBOM keeps a leading U+FEFF the command printed; the default would drop it.
+  const outDecoder = new TextDecoder("utf-8", { ignoreBOM: true });
+  const errDecoder = new TextDecoder("utf-8", { ignoreBOM: true });
   let sawExit = false;
 
   // Turns one parsed frame into zero or more events; flips sawExit on the exit

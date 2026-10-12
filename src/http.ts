@@ -2,6 +2,7 @@ import {
   APIConnectionError,
   APITimeoutError,
   type ApiErrorBody,
+  errorBodyFromText,
   errorFromStatus,
 } from "./errors.js";
 
@@ -150,11 +151,11 @@ export class RawClient {
 
     const request = new Request(url, { method: req.method, headers, body, signal: req.signal });
     const response = await this.opts.dispatch(request);
-    const parsed = await parseBody(response);
+    const text = await response.text();
     if (!response.ok) {
-      throw errorFromStatus(response.status, toErrorBody(parsed), requestId(response));
+      throw errorFromStatus(response.status, errorBodyFromText(text), requestId(response));
     }
-    return parsed as T;
+    return parseBody(text) as T;
   }
 }
 
@@ -189,10 +190,10 @@ export function ensureOk(result: FetchResult): void {
   }
 }
 
-// Reads the body as JSON, returning undefined for an empty body. A non-JSON body
-// is surfaced as a details string rather than a fabricated error code.
-async function parseBody(response: Response): Promise<unknown> {
-  const text = await response.text();
+// Parses a successful response body as JSON, returning undefined for an empty
+// body. A non-JSON body is surfaced as a details string rather than a
+// fabricated error code.
+function parseBody(text: string): unknown {
   if (text.length === 0) return undefined;
   try {
     return JSON.parse(text);
@@ -201,16 +202,16 @@ async function parseBody(response: Response): Promise<unknown> {
   }
 }
 
-// Coerces an unknown error payload into the API error body shape when possible.
+// Coerces openapi-fetch's error payload (parsed JSON, or the raw text when it
+// was not JSON) into an error body. Anything but a JSON object becomes details,
+// re-serialized when openapi-fetch already parsed it.
 function toErrorBody(value: unknown): ApiErrorBody | undefined {
-  if (
-    value &&
-    typeof value === "object" &&
-    ("message" in value || "code" in value || "error" in value || "details" in value)
-  ) {
+  if (value === undefined || value === "") return undefined;
+  if (typeof value === "string") return { details: value };
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
     return value as ApiErrorBody;
   }
-  return undefined;
+  return { details: JSON.stringify(value) };
 }
 
 // Extracts the x-request-id response header for support correlation.

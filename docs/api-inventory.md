@@ -1494,10 +1494,10 @@ Opt-in tools (`expose_port`; `checkpoint`/`rollback`; `start_process`/`read_proc
 | Method | Returns | Notes |
 | ------ | ------- | ----- |
 | `names()` | `ToolName[]` | Enabled tools in contract order. |
-| `call(name, args)` | `Promise<ToolResult>` | Runs a tool by contract name. Unknown name → `{ error: "unknown tool: <name>" }`; arguments that do not fit `PARAMETERS[name]` → `{ error: "invalid arguments for <name>: <reason>" }` (missing, unexpected, or `<field> must be string|number|integer`; numbers are checked strictly here). Never throws for model input. |
+| `call(name, args)` | `Promise<ToolResult>` | Runs a tool by contract name. Unknown name → `{ error: "unknown tool: <name>" }`; arguments that do not fit `PARAMETERS[name]` → `{ error: "invalid arguments for <name>: <reason>" }`, checked in this order: an unexpected argument (`got an unexpected keyword argument "<key>"`), a missing one (`missing a required argument: "<key>"`), then `<field> must be string|number|integer` in schema order; numbers are checked strictly here. Never throws for model input. |
 | `runCommand(args)` | `Promise<RunCommandToolResult \| ToolErrorResult>` | `sh -lc`; `timeout_s` clamped to 1–600 (default 60); a deadline → `command did not finish within <n> s`. A command silent for about 2 minutes is cut off at the network edge: the edge's HTTP 524 becomes `{ error: "the command printed nothing for about 2 minutes and the connection was cut; it may still be running. Use start_process for long or quiet commands" }`, while a stream dropped after output has started still throws. Long or quiet work belongs in `start_process`. |
 | `writeFile(args)` | `Promise<WriteFileToolResult \| ToolErrorResult>` | UTF-8 text. |
-| `readFile(args)` | `Promise<ReadFileToolResult \| ToolErrorResult>` | A file that is not UTF-8 → `{ error: "not UTF-8 text: …" }`. |
+| `readFile(args)` | `Promise<ReadFileToolResult \| ToolErrorResult>` | A file that is not UTF-8 → `{ error: "not UTF-8 text" }`. |
 | `exposePort(args)` | `Promise<ExposePortToolResult \| ToolErrorResult>` | Waits until the preview URL is routable. |
 | `checkpoint(args?)` | `Promise<CheckpointToolResult \| ToolErrorResult>` | Waits up to 300 s for Ready; `checkpoint <id> failed[: reason]` / `checkpoint <id> not ready after 300 s`. |
 | `rollback(args)` | `Promise<RollbackToolResult \| ToolErrorResult>` | In place. |
@@ -1505,7 +1505,7 @@ Opt-in tools (`expose_port`; `checkpoint`/`rollback`; `start_process`/`read_proc
 | `readProcessOutput(args)` | `Promise<ReadProcessOutputToolResult \| ToolErrorResult>` | `wait_s` clamped to 0–60 (default 0) waits for a running process to exit first; `exit_code` is absent while running or once the status has expired. |
 | `stopProcess(args)` | `Promise<StopProcessToolResult \| ToolErrorResult>` | SIGTERM; `ok` is false if it had already exited. |
 
-Numeric arguments (`timeout_s`, `wait_s`, `cursor`, `port`) accept finite numbers and numeric strings. Through `call()` anything else is an invalid-arguments error; on a direct method call an optional one takes its default. Output and file content over 10 KB per stream are cut in the middle; error results keep their first line, cut to 500 characters. `BadRequestError`, `NotFoundError`, `ConflictError`, `DeadlineExceededError` and client-side `NeevError`s become error results; auth, permission, rate-limit, server and connection errors throw.
+Numeric arguments (`timeout_s`, `wait_s`, `cursor`, `port`) accept finite numbers and plain decimal strings (ASCII digits, optional ASCII whitespace around them). Through `call()` anything else is an invalid-arguments error; on a direct method call an optional one takes its default. Output and file content over 10 KB per stream are cut in the middle; an error result from an `APIError` reads `HTTP <status> <code>: <message>` (`HTTP <status>: <message>` without a code), where the message is the body's first non-empty string among `message`, `error` and `details` (a body that is not a JSON object counts as `details`), never the URL, method or request id, and every error result keeps its first line, cut to 500 characters. These texts match the Python SDK's. `BadRequestError`, `NotFoundError`, `ConflictError`, `DeadlineExceededError` and client-side `NeevError`s become error results; auth, permission, rate-limit, server and connection errors throw.
 
 ---
 

@@ -11,10 +11,13 @@ import {
   NeevError,
   NotFoundError,
   RateLimitError,
+  errorFromSandboxBody,
+  errorFromStatus,
 } from "../src/errors.js";
-import { Neev } from "../src/index.js";
+import { APIError, Neev } from "../src/index.js";
 import type { ProcessLogsPage, ProcessStatus, ProcessStatusOptions } from "../src/processes.js";
 import type { Sandbox } from "../src/sandbox.js";
+import { errorText, shortError } from "../src/tool-text.js";
 import { json, sandboxData, snapshotData } from "./helpers.js";
 
 type ApiErrorClass = typeof BadRequestError;
@@ -293,20 +296,20 @@ describe("agent-tools", () => {
       const { state, sandbox } = fakeSandbox();
       state.fail = apiError(Cls, "path is outside the workspace");
       expect(await new SandboxTools(sandbox).runCommand({ command: "ls" })).toEqual({
-        error: state.fail.message,
+        error: "HTTP 400: path is outside the workspace",
       });
     });
 
-    it("keeps a bad request message intact", async () => {
+    it("builds the text from the error's fields, without the request id", async () => {
       const { state, sandbox } = fakeSandbox();
       state.fail = new BadRequestError(
         400,
         { code: "invalid_argument", message: 'path "/etc/passwd" escapes workspace root' },
         "req-1",
       );
-      const r = await new SandboxTools(sandbox).runCommand({ command: "ls" });
-      expect(r).toEqual({ error: state.fail.message });
-      expect((r as { error: string }).error).toContain("[request-id: req-1]");
+      expect(await new SandboxTools(sandbox).runCommand({ command: "ls" })).toEqual({
+        error: 'HTTP 400 invalid_argument: path "/etc/passwd" escapes workspace root',
+      });
     });
 
     it("makes other deadlines a short timeout error", async () => {
@@ -739,7 +742,7 @@ describe("agent-tools", () => {
       const { state, sandbox } = fakeSandbox();
       const tools = new SandboxTools(sandbox, all);
       expect(await tools.call("run_command", {})).toEqual({
-        error: "invalid arguments for run_command: missing a required argument: 'command'",
+        error: 'invalid arguments for run_command: missing a required argument: "command"',
       });
       expect(await tools.call("start_process", { command: null })).toEqual({
         error: "invalid arguments for start_process: command must be string",
@@ -749,20 +752,20 @@ describe("agent-tools", () => {
 
     it.each([
       ["write_file", { path: 1, content: "x" }, "path must be string"],
-      ["write_file", { path: "a.txt" }, "missing a required argument: 'content'"],
+      ["write_file", { path: "a.txt" }, 'missing a required argument: "content"'],
       ["read_file", "a.txt", "expected an object"],
       ["read_file", ["a.txt"], "expected an object"],
       ["run_command", { command: "ls", cwd: 3 }, "cwd must be string"],
-      ["expose_port", {}, "missing a required argument: 'port'"],
+      ["expose_port", {}, 'missing a required argument: "port"'],
       ["expose_port", { port: "http" }, "port must be integer"],
       ["expose_port", { port: 80.5 }, "port must be integer"],
       ["checkpoint", { label: 7 }, "label must be string"],
-      ["rollback", {}, "missing a required argument: 'checkpoint_id'"],
+      ["rollback", {}, 'missing a required argument: "checkpoint_id"'],
       ["read_process_output", { process_id: 1 }, "process_id must be string"],
       [
         "run_command",
         { command: "ls", timeout: 5 },
-        "got an unexpected keyword argument 'timeout'",
+        'got an unexpected keyword argument "timeout"',
       ],
       ["write_file", { path: "a.txt", content: 123 }, "content must be string"],
       ["write_file", { path: "a.txt", content: null }, "content must be string"],
@@ -770,7 +773,7 @@ describe("agent-tools", () => {
       ["start_process", { command: "ls", cwd: {} }, "cwd must be string"],
       ["expose_port", { port: Number.POSITIVE_INFINITY }, "port must be integer"],
       ["expose_port", { port: "1e400" }, "port must be integer"],
-      ["stop_process", undefined, "missing a required argument: 'process_id'"],
+      ["stop_process", undefined, 'missing a required argument: "process_id"'],
     ])("rejects %s with %j", async (name, args, reason) => {
       const { state, sandbox } = fakeSandbox();
       expect(await new SandboxTools(sandbox, all).call(name, args)).toEqual({
@@ -829,7 +832,7 @@ describe("agent-tools", () => {
         error: "invalid arguments for run_command: expected an object",
       });
       expect(await tools.writeFile({ path: 1 } as never)).toEqual({
-        error: "invalid arguments for write_file: missing a required argument: 'content'",
+        error: 'invalid arguments for write_file: missing a required argument: "content"',
       });
       expect(state.calls).toEqual([]);
     });
@@ -872,7 +875,7 @@ describe("agent-tools", () => {
       const { workspace, sandbox } = fakeSandbox();
       workspace["blob.bin"] = new Uint8Array([0x89, 0x50, 0xff, 0xfe]);
       const r = await new SandboxTools(sandbox).readFile({ path: "blob.bin" });
-      expect((r as { error: string }).error).toMatch(/^not UTF-8 text: /);
+      expect(r).toEqual({ error: "not UTF-8 text" });
     });
   });
 
@@ -934,7 +937,7 @@ describe("agent-tools", () => {
       const { state, sandbox } = fakeSandbox();
       state.fail = new ConflictError(409, { message: "sandbox is paused" }, undefined);
       expect(await new SandboxTools(sandbox).runCommand({ command: "ls" })).toEqual({
-        error: "HTTP 409 sandbox is paused",
+        error: "HTTP 409: sandbox is paused",
       });
     });
 
@@ -945,6 +948,232 @@ describe("agent-tools", () => {
         error: string;
       };
       expect(r.error).toBe(`${"😀".repeat(500)}…`);
+    });
+  });
+
+  describe("parity with the Python SDK", () => {
+    const all = { allowPreview: true, allowRollback: true, allowProcesses: true };
+
+    interface ApiErrorCase {
+      name: string;
+      status: number;
+      content_type: string;
+      body_raw: string;
+      request_id?: string;
+      expected: string;
+    }
+
+    interface CallErrorCase {
+      name: string;
+      tool: string;
+      args: unknown;
+      expected: string;
+    }
+
+    const shared = fixture("agent_tool_error_texts") as {
+      api_errors: ApiErrorCase[];
+      call_errors: CallErrorCase[];
+    };
+
+    // Answers every request with the case's raw error response.
+    function errorFetch(c: ApiErrorCase): typeof globalThis.fetch {
+      return (async () =>
+        new Response(c.body_raw || null, {
+          status: c.status,
+          headers: {
+            "content-type": c.content_type,
+            ...(c.request_id ? { "x-request-id": c.request_id } : {}),
+          },
+        })) as unknown as typeof globalThis.fetch;
+    }
+
+    // The APIError each SDK path raises for the case's raw response.
+    async function errorsFor(c: ApiErrorCase): Promise<Record<string, unknown>> {
+      const neev = new Neev({
+        apiKey: "k",
+        orgId: "o",
+        projectId: "p",
+        maxRetries: 0,
+        fetch: errorFetch(c),
+      });
+      return {
+        "typed client": await neev.sandboxes.get("sb-1").catch((e) => e),
+        "raw client": await neev.raw.request({ method: "GET", path: "/x" }).catch((e) => e),
+        "sandbox runtime": await neev.sandboxes
+          .connect("https://sbx.example")
+          .files.read("a.txt")
+          .catch((e) => e),
+      };
+    }
+
+    it.each(shared.api_errors)("words the API error case $name", async (c) => {
+      for (const [path, err] of Object.entries(await errorsFor(c))) {
+        expect(err, path).toBeInstanceOf(APIError);
+        expect(shortError(errorText(err as APIError)), path).toBe(c.expected);
+      }
+    });
+
+    it("reaches the model through a tool with the shared wording", async () => {
+      const c = shared.api_errors.find((x) => x.status === 404) as ApiErrorCase;
+      const { state, sandbox } = fakeSandbox();
+      state.fail = (await errorsFor(c))["sandbox runtime"] as Error;
+      expect(await new SandboxTools(sandbox).runCommand({ command: "ls" })).toEqual({
+        error: c.expected,
+      });
+    });
+
+    it.each(shared.call_errors)("answers the call case $name", async (c) => {
+      const { state, sandbox } = fakeSandbox();
+      expect(await new SandboxTools(sandbox, all).call(c.tool, c.args)).toEqual({
+        error: c.expected,
+      });
+      expect(state.calls).toEqual([]);
+    });
+
+    it.each(["toString", "constructor", "__proto__", "hasOwnProperty", "valueOf"])(
+      "treats the inherited name %s as an unknown tool",
+      async (name) => {
+        expect(await new SandboxTools(fakeSandbox().sandbox, all).call(name, {})).toEqual({
+          error: `unknown tool: ${name}`,
+        });
+      },
+    );
+
+    it.each([
+      [new NotFoundError(404, undefined, "req-1"), "HTTP 404"],
+      [new NotFoundError(404, { code: "not_found" }, undefined), "HTTP 404 not_found"],
+      [new NotFoundError(404, { message: "no such file" }, undefined), "HTTP 404: no such file"],
+      [
+        new NotFoundError(404, { code: "not_found", message: "no such file", details: "d" }, "r"),
+        "HTTP 404 not_found: no such file",
+      ],
+      [new BadRequestError(400, { error: "legacy text" }, undefined), "HTTP 400: legacy text"],
+      [errorFromSandboxBody(400, "<html>bad</html>\n<body>", "r"), "HTTP 400: <html>bad</html>"],
+    ])("words %s as %j", async (err, error) => {
+      const { state, sandbox } = fakeSandbox();
+      state.fail = err;
+      expect(await new SandboxTools(sandbox).runCommand({ command: "ls" })).toEqual({ error });
+    });
+
+    it.each([
+      ["\u00a030", 60_000],
+      ["\ufeff30", 60_000],
+      ["\u0663\u0660", 60_000],
+      [" \t30\n\r\f\v", 30_000],
+      ["1_000", 60_000],
+      ["inf", 60_000],
+    ])("reads the numeric string %j as %s ms", async (given, ms) => {
+      const { state, sandbox } = fakeSandbox();
+      await new SandboxTools(sandbox).runCommand({ command: "ls", timeout_s: given });
+      expect(state.calls[0]?.[2]).toMatchObject({ timeoutMs: ms });
+    });
+
+    it("rounds seconds to milliseconds half up", async () => {
+      const timeout = vi.spyOn(AbortSignal, "timeout");
+      const { sandbox } = fakeSandbox();
+      const tools = new SandboxTools(sandbox, all);
+      await tools.readProcessOutput({ process_id: "proc-1", wait_s: 0.0005 });
+      expect(timeout).toHaveBeenCalledWith(1);
+      timeout.mockRestore();
+    });
+
+    it("reports an unexpected argument before a missing one", async () => {
+      expect(
+        await new SandboxTools(fakeSandbox().sandbox).call("write_file", { extra: 1 }),
+      ).toEqual({
+        error: 'invalid arguments for write_file: got an unexpected keyword argument "extra"',
+      });
+    });
+
+    it.each(["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf"])(
+      "treats an argument named %s as unexpected",
+      async (key) => {
+        const args = JSON.parse(`{"path": "a.txt", ${JSON.stringify(key)}: 1}`);
+        expect(await new SandboxTools(fakeSandbox().sandbox).call("read_file", args)).toEqual({
+          error: `invalid arguments for read_file: got an unexpected keyword argument "${key}"`,
+        });
+      },
+    );
+
+    it.each([
+      [{ message: 123 }, "HTTP 400"],
+      [{ code: 5, message: "m" }, "HTTP 400: m"],
+      [{ message: "", error: "from error" }, "HTTP 400: from error"],
+      [{ message: "", error: "", details: "from details" }, "HTTP 400: from details"],
+    ])("takes the first non-empty string field of %j", async (body, error) => {
+      const { state, sandbox } = fakeSandbox();
+      state.fail = new BadRequestError(400, body as never, undefined);
+      expect(await new SandboxTools(sandbox).runCommand({ command: "ls" })).toEqual({ error });
+    });
+
+    it.each([
+      ["[1,2]", "HTTP 400: [1,2]"],
+      ['"oops"', 'HTTP 400: "oops"'],
+      ["null", "HTTP 400: null"],
+      ["plain text\nmore", "HTTP 400: plain text"],
+      ['{"reason_code": "invalid_argument"}', "HTTP 400 invalid_argument"],
+    ])("words a sandbox body %j as %j", async (text, error) => {
+      const { state, sandbox } = fakeSandbox();
+      state.fail = errorFromSandboxBody(400, text, undefined);
+      expect(await new SandboxTools(sandbox).runCommand({ command: "ls" })).toEqual({ error });
+    });
+
+    it("keeps a leading byte order mark in output it truncates", async () => {
+      const { sandbox } = fakeSandbox({
+        execResult: { exitCode: 0, stdout: `\ufeff${"x".repeat(20_000)}`, stderr: "" },
+      });
+      const r = (await new SandboxTools(sandbox).runCommand({ command: "cat" })) as {
+        stdout: string;
+      };
+      expect(r.stdout.startsWith("\ufeffx")).toBe(true);
+    });
+
+    it.each([
+      ['\ufeff{"message":"bommed"}', "HTTP 400: bommed"],
+      ["\ufeffplain text", "HTTP 400: plain text"],
+      ['{"code":5,"reason_code":"invalid_argument","message":"m"}', "HTTP 400 invalid_argument: m"],
+    ])("parses the raw body %j without fetch's help", async (text, error) => {
+      expect(shortError(errorText(errorFromSandboxBody(400, text, undefined)))).toBe(error);
+    });
+
+    it("falls back to reason_code when code is empty", async () => {
+      const err = errorFromSandboxBody(
+        400,
+        '{"code":"","reason_code":"invalid_argument","message":"m"}',
+        undefined,
+      );
+      expect(err.code).toBe("invalid_argument");
+      const { state, sandbox } = fakeSandbox();
+      state.fail = err;
+      expect(await new SandboxTools(sandbox).runCommand({ command: "ls" })).toEqual({
+        error: "HTTP 400 invalid_argument: m",
+      });
+    });
+
+    it("keeps a leading byte order mark in a file", async () => {
+      const { workspace, sandbox } = fakeSandbox();
+      workspace["bom.txt"] = new Uint8Array([0xef, 0xbb, 0xbf, 0x68, 0x69]);
+      expect(await new SandboxTools(sandbox).readFile({ path: "bom.txt" })).toEqual({
+        content: "\ufeffhi",
+      });
+    });
+
+    it("quotes an unexpected argument name as JSON", async () => {
+      const r = await new SandboxTools(fakeSandbox().sandbox).call("read_file", {
+        path: "a",
+        'we"ird': 1,
+      });
+      expect(r).toEqual({
+        error: 'invalid arguments for read_file: got an unexpected keyword argument "we\\"ird"',
+      });
+    });
+
+    it("caps a long call() error at 500 characters", async () => {
+      const r = (await new SandboxTools(fakeSandbox().sandbox).call("x".repeat(600), {})) as {
+        error: string;
+      };
+      expect(Array.from(r.error)).toHaveLength(501);
+      expect(r.error.endsWith("…")).toBe(true);
     });
   });
 });
