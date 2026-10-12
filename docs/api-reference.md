@@ -22,6 +22,10 @@ Task-oriented API lists and copy-paste snippets for the public `@neevcloud/sdk` 
 - [Sandbox handle](#sandbox-handle)
 - [Runtime](#runtime) — exec, files (write, read, list, stat, exists, mkdir, move, remove, watch), processes, pty, ssh
 
+**Agent tools**
+
+- [Agent tools](#agent-tools) — `@neevcloud/sdk/agent-tools`: the sandbox tool contract for your own agent
+
 **Reference**
 
 - [Errors](#errors)
@@ -532,6 +536,29 @@ Listed for completeness; prefer the handle methods above.
 | `SandboxFiles` | The filesystem facade (`write`/`upload`/`read`/`readText`/`list`/…). Accessed via `sandbox.files` or `connection.files`. |
 | `SandboxProcesses` | The process-supervisor facade (`start`/`get`/`list`/`kill`/`killAll`/`logs`/`follow`). Accessed via `sandbox.processes` or `connection.processes`. |
 | `SandboxPty` | The interactive-terminal facade (`create` → `PtyHandle`). Accessed via `sandbox.pty` or `connection.pty`. |
+
+---
+
+## Agent tools
+
+`@neevcloud/sdk/agent-tools` is the sandbox tool contract for agents you build on any framework. Declare the enabled tools with `DESCRIPTIONS` and `PARAMETERS` (JSON Schema), then pass each tool call to `call(name, args)`. Full symbol list: [api-inventory.md](./api-inventory.md#agent-tools).
+
+| Tool | Method | Opt-in |
+| ---- | ------ | ------ |
+| `run_command` | `runCommand({ command, cwd?, timeout_s? })` | — |
+| `write_file` | `writeFile({ path, content })` | — |
+| `read_file` | `readFile({ path })` | — |
+| `expose_port` | `exposePort({ port })` | `allowPreview` |
+| `checkpoint` / `rollback` | `checkpoint({ label? })` / `rollback({ checkpoint_id })` | `allowRollback` |
+| `start_process` / `read_process_output` / `stop_process` | `startProcess({ command, cwd? })` / `readProcessOutput({ process_id, cursor?, wait_s? })` / `stopProcess({ process_id })` | `allowProcesses` |
+
+```ts
+import { DESCRIPTIONS, PARAMETERS, SandboxTools } from "@neevcloud/sdk/agent-tools";
+
+const tools = new SandboxTools(sandbox, { allowProcesses: true });
+const specs = tools.names().map((name) => ({ name, description: DESCRIPTIONS[name], parameters: PARAMETERS[name] }));
+const result = await tools.call("run_command", { command: "npm test", timeout_s: 120 });
+```
 
 ---
 

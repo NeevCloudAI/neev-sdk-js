@@ -33,6 +33,10 @@ import { Neev } from "@neevcloud/sdk";
 - [SSH API](#ssh-api)
 - [Runtime connection](#runtime-connection)
 
+**Agent tools** — the `@neevcloud/sdk/agent-tools` subpath
+
+- [Agent tools](#agent-tools) — SandboxTools, DESCRIPTIONS, PARAMETERS, call
+
 **Reference**
 
 - [Raw client](#raw-client)
@@ -1451,6 +1455,57 @@ await conn.files.write("notes.txt", "hello");
 ```
 
 There is no `close()` — the connection holds no persistent socket.
+
+---
+
+## Agent tools
+
+Exported from the `@neevcloud/sdk/agent-tools` subpath (`src/agent-tools.ts`), not from the package root. It is the NeevCloud sandbox tool contract for agents built on any framework, with the same surface as the Python SDK's `neevai.agent_tools`.
+
+| Symbol | Kind | Notes |
+| ------ | ---- | ----- |
+| `SandboxTools` | class | The tools bound to one `Sandbox`. |
+| `DESCRIPTIONS` | const `Readonly<Record<ToolName, string>>` | Model-facing description per tool; frozen; identical to the Python SDK's. |
+| `PARAMETERS` | const `Readonly<Record<ToolName, { readonly [key: string]: unknown }>>` | JSON Schema of each tool's arguments; deep-frozen; identical to the Python SDK's. |
+| `ToolName` | type alias (union) | `"run_command" \| "write_file" \| "read_file" \| "expose_port" \| "checkpoint" \| "rollback" \| "start_process" \| "read_process_output" \| "stop_process"`. |
+| `ToolErrorResult` | interface (type) | `{ error: string }`. |
+| `ToolResult` | type alias (union) | Every `*ToolResult` plus `ToolErrorResult`. |
+| `RunCommandToolArgs` / `RunCommandToolResult` | interface (type) | `{ command, cwd?, timeout_s? }` → `{ exit_code, stdout, stderr }`. |
+| `WriteFileToolArgs` / `WriteFileToolResult` | interface (type) | `{ path, content }` → `{ bytes_written }`. |
+| `ReadFileToolArgs` / `ReadFileToolResult` | interface (type) | `{ path }` → `{ content }`. |
+| `ExposePortToolArgs` / `ExposePortToolResult` | interface (type) | `{ port }` → `{ preview_url }`. |
+| `CheckpointToolArgs` / `CheckpointToolResult` | interface (type) | `{ label? }` → `{ checkpoint_id }`. |
+| `RollbackToolArgs` / `RollbackToolResult` | interface (type) | `{ checkpoint_id }` → `{ ok: true }`. |
+| `StartProcessToolArgs` / `StartProcessToolResult` | interface (type) | `{ command, cwd? }` → `{ process_id }`. |
+| `ReadProcessOutputToolArgs` / `ReadProcessOutputToolResult` | interface (type) | `{ process_id, cursor?, wait_s? }` → `{ stdout, stderr, cursor, state, dropped, exit_code? }`. |
+| `StopProcessToolArgs` / `StopProcessToolResult` | interface (type) | `{ process_id }` → `{ ok }`. |
+
+### `new SandboxTools(sandbox, options?)`
+
+```ts
+constructor(
+  sandbox: Sandbox,
+  options?: { allowPreview?: boolean; allowRollback?: boolean; allowProcesses?: boolean },
+)
+```
+
+Opt-in tools (`expose_port`; `checkpoint`/`rollback`; `start_process`/`read_process_output`/`stop_process`) refuse with `{ error: "<name> is not enabled for this agent" }` unless enabled. All methods are bound to the instance.
+
+| Method | Returns | Notes |
+| ------ | ------- | ----- |
+| `names()` | `ToolName[]` | Enabled tools in contract order. |
+| `call(name, args)` | `Promise<ToolResult>` | Runs a tool by contract name. Unknown name → `{ error: "unknown tool: <name>" }`; arguments that do not fit `PARAMETERS[name]` → `{ error: "invalid arguments for <name>: <reason>" }` (missing, unexpected, or `<field> must be string|number|integer`; numbers are checked strictly here). Never throws for model input. |
+| `runCommand(args)` | `Promise<RunCommandToolResult \| ToolErrorResult>` | `sh -lc`; `timeout_s` clamped to 1–600 (default 60); a deadline → `command did not finish within <n> s`. A command silent for about 2 minutes is cut off at the network edge: the edge's HTTP 524 becomes `{ error: "the command printed nothing for about 2 minutes and the connection was cut; it may still be running. Use start_process for long or quiet commands" }`, while a stream dropped after output has started still throws. Long or quiet work belongs in `start_process`. |
+| `writeFile(args)` | `Promise<WriteFileToolResult \| ToolErrorResult>` | UTF-8 text. |
+| `readFile(args)` | `Promise<ReadFileToolResult \| ToolErrorResult>` | A file that is not UTF-8 → `{ error: "not UTF-8 text: …" }`. |
+| `exposePort(args)` | `Promise<ExposePortToolResult \| ToolErrorResult>` | Waits until the preview URL is routable. |
+| `checkpoint(args?)` | `Promise<CheckpointToolResult \| ToolErrorResult>` | Waits up to 300 s for Ready; `checkpoint <id> failed[: reason]` / `checkpoint <id> not ready after 300 s`. |
+| `rollback(args)` | `Promise<RollbackToolResult \| ToolErrorResult>` | In place. |
+| `startProcess(args)` | `Promise<StartProcessToolResult \| ToolErrorResult>` | A 429 `resource_exhausted` (process cap or in-flight request cap) is an error result; other 429s throw. |
+| `readProcessOutput(args)` | `Promise<ReadProcessOutputToolResult \| ToolErrorResult>` | `wait_s` clamped to 0–60 (default 0) waits for a running process to exit first; `exit_code` is absent while running or once the status has expired. |
+| `stopProcess(args)` | `Promise<StopProcessToolResult \| ToolErrorResult>` | SIGTERM; `ok` is false if it had already exited. |
+
+Numeric arguments (`timeout_s`, `wait_s`, `cursor`, `port`) accept finite numbers and numeric strings. Through `call()` anything else is an invalid-arguments error; on a direct method call an optional one takes its default. Output and file content over 10 KB per stream are cut in the middle; error results keep their first line, cut to 500 characters. `BadRequestError`, `NotFoundError`, `ConflictError`, `DeadlineExceededError` and client-side `NeevError`s become error results; auth, permission, rate-limit, server and connection errors throw.
 
 ---
 

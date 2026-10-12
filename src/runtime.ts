@@ -36,6 +36,9 @@ interface SandboxRequest {
   headers?: Record<string, string>;
   body?: string | Uint8Array;
   signal?: AbortSignal;
+  // Extra time on top of the client timeout before the response must start, for
+  // calls the sandbox holds open (an exec's own timeout, a blocking wait).
+  extendTimeoutMs?: number;
 }
 
 // Options for a file write.
@@ -261,7 +264,7 @@ export class SandboxConnection {
       body: req.body,
       signal: req.signal,
     });
-    return this.dispatch(request);
+    return this.dispatch(request, { extendTimeoutMs: req.extendTimeoutMs });
   }
 
   // Runs a command in the sandbox and returns its buffered output. `command` may
@@ -310,6 +313,9 @@ export class SandboxConnection {
         stdin: options.stdin,
       }),
       signal: options.signal,
+      // The response may not start until the command ends, so the client timeout
+      // alone would cut off any command allowed to run longer than it.
+      extendTimeoutMs: options.timeoutMs,
     });
     yield* streamExec(response);
   }

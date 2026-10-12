@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignore": ["dist", "src/generated", "node_modules"]
+    "ignore": ["dist", "src/generated", "node_modules", "tests/fixtures"]
   },
   "organizeImports": {
     "enabled": true
