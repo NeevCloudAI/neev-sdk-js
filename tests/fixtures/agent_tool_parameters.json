@@ -1,0 +1,151 @@
+{
+  "run_command": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "Shell command, run with sh -lc."
+      },
+      "cwd": {
+        "type": "string",
+        "description": "Working directory, relative to /workspace or absolute inside /workspace. Default /workspace."
+      },
+      "timeout_s": {
+        "type": "number",
+        "description": "Seconds to wait for the command to finish, 1 to 600. Default 60.",
+        "minimum": 1,
+        "maximum": 600,
+        "default": 60
+      }
+    },
+    "required": [
+      "command"
+    ],
+    "additionalProperties": false
+  },
+  "write_file": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "File path, relative to /workspace or absolute inside /workspace."
+      },
+      "content": {
+        "type": "string",
+        "description": "UTF-8 text to write."
+      }
+    },
+    "required": [
+      "path",
+      "content"
+    ],
+    "additionalProperties": false
+  },
+  "read_file": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "File path, relative to /workspace or absolute inside /workspace."
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "additionalProperties": false
+  },
+  "expose_port": {
+    "type": "object",
+    "properties": {
+      "port": {
+        "type": "integer",
+        "description": "Port the server listens on inside the sandbox.",
+        "minimum": 1,
+        "maximum": 65535
+      }
+    },
+    "required": [
+      "port"
+    ],
+    "additionalProperties": false
+  },
+  "checkpoint": {
+    "type": "object",
+    "properties": {
+      "label": {
+        "type": "string",
+        "description": "Optional name for the checkpoint."
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  },
+  "rollback": {
+    "type": "object",
+    "properties": {
+      "checkpoint_id": {
+        "type": "string",
+        "description": "checkpoint_id returned by checkpoint."
+      }
+    },
+    "required": [
+      "checkpoint_id"
+    ],
+    "additionalProperties": false
+  },
+  "start_process": {
+    "type": "object",
+    "properties": {
+      "command": {
+        "type": "string",
+        "description": "Shell command, run with sh -lc."
+      },
+      "cwd": {
+        "type": "string",
+        "description": "Working directory, relative to /workspace or absolute inside /workspace. Default /workspace."
+      }
+    },
+    "required": [
+      "command"
+    ],
+    "additionalProperties": false
+  },
+  "read_process_output": {
+    "type": "object",
+    "properties": {
+      "process_id": {
+        "type": "string",
+        "description": "process_id returned by start_process."
+      },
+      "cursor": {
+        "type": "integer",
+        "description": "cursor returned by the previous read. Omit to read from the oldest output kept.",
+        "minimum": 0
+      },
+      "wait_s": {
+        "type": "number",
+        "description": "Seconds to wait for a running process to exit before reading, 0 to 60. Default 0.",
+        "minimum": 0,
+        "maximum": 60,
+        "default": 0
+      }
+    },
+    "required": [
+      "process_id"
+    ],
+    "additionalProperties": false
+  },
+  "stop_process": {
+    "type": "object",
+    "properties": {
+      "process_id": {
+        "type": "string",
+        "description": "process_id returned by start_process."
+      }
+    },
+    "required": [
+      "process_id"
+    ],
+    "additionalProperties": false
+  }
+}

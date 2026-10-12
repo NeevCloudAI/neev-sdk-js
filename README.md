@@ -515,6 +515,26 @@ await agent.delete();
 
 Resource methods mirror the handle: `neev.agents.list/create/get/update/keepalive/rollback/pause/resume/delete`, `neev.agents.exposePort/listPorts/revokePort/getPortUrl/audit`, and `neev.agentTemplates.list/get`. `get` and every other method take an agent id or its name. The full examples are [`examples/create-agent.ts`](./examples/create-agent.ts) and [`examples/agent-ports-audit.ts`](./examples/agent-ports-audit.ts).
 
+### Agent tools
+
+`@neevcloud/sdk/agent-tools` ships the sandbox tool contract for agents you build yourself: `run_command`, `write_file` and `read_file`, plus opt-in `expose_port`, `checkpoint`/`rollback` and background processes. It has no framework dependency: declare `names()` to your model with `DESCRIPTIONS` and `PARAMETERS` (JSON Schema), and hand each tool call to `call(name, args)`. Every call resolves to a plain object for the model; a failure the model can fix, including an unknown tool or bad arguments, resolves to `{ error }`, and auth, rate-limit, server and network failures throw.
+
+```ts
+import { DESCRIPTIONS, PARAMETERS, SandboxTools } from "@neevcloud/sdk/agent-tools";
+
+const tools = new SandboxTools(sandbox, { allowProcesses: true });
+const specs = tools.names().map((name) => ({
+  name,
+  description: DESCRIPTIONS[name],
+  parameters: PARAMETERS[name],
+}));
+
+// For each tool call the model makes, pass its name and parsed arguments through.
+const result = await tools.call(toolCall.name, toolCall.arguments);
+```
+
+The methods (`runCommand`, `readProcessOutput`, …) are bound, so they can be handed to a framework on their own, and every tool's argument and result types are exported (`RunCommandToolArgs`, `ReadProcessOutputToolResult`, …). `read_process_output` takes `wait_s` (0–60 s) to wait for a running process to exit before reading. A command that prints nothing for about 2 minutes is cut off at the network edge (`run_command` then returns an error result saying so, and the command may still be running), so give the model `allowProcesses: true` for long or quiet work. The contract, its limits and its error rules are described in [the tool contract](https://docs.ai.neevcloud.com/build-your-own-agent/tool-contract).
+
 ## Documentation
 
 SDK guides and reference live in [`docs/`](./docs):

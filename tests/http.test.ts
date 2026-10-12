@@ -72,6 +72,22 @@ describe("createDispatch", () => {
     await expect(dispatch(req())).rejects.toBeInstanceOf(APITimeoutError);
   });
 
+  it("extends one call's timeout by extendTimeoutMs", async () => {
+    const slow: FetchLike = (_input, init) =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(() => resolve(json(200, { ok: true })), 30);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          const err = new Error("aborted");
+          err.name = "AbortError";
+          reject(err);
+        });
+      });
+    const dispatch = createDispatch({ fetch: slow, timeoutMs: 10, maxRetries: 0 });
+    await expect(dispatch(req())).rejects.toBeInstanceOf(APITimeoutError);
+    expect((await dispatch(req(), { extendTimeoutMs: 100 })).status).toBe(200);
+  });
+
   it("rejects with a caller-abort APIConnectionError, not a timeout", async () => {
     const controller = new AbortController();
     const hanging: FetchLike = (_input, init) =>

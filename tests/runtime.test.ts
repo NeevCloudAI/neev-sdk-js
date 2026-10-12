@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  APITimeoutError,
   DeadlineExceededError,
   InternalServerError,
   Neev,
@@ -29,7 +30,64 @@ async function readySandbox(connectUrl: string | null, daemonQueue: Array<Respon
   return { sandbox, calls: mock.calls };
 }
 
+// A client with a 20 ms timeout whose sandbox daemon starts every response only
+// after 60 ms, like sandboxd holding an exec or a blocking wait open before its
+// first byte.
+async function slowDaemon(daemon: () => Response) {
+  let created = false;
+  const fetch = (async (input: Request, init?: RequestInit) => {
+    if (!created) {
+      created = true;
+      return json(201, sandboxData({ connect_url: "https://sbx.example", phase: "Ready" }));
+    }
+    const signal = init?.signal ?? input.signal;
+    return new Promise<Response>((resolve, reject) => {
+      const timer = setTimeout(() => resolve(daemon()), 60);
+      signal?.addEventListener("abort", () => {
+        clearTimeout(timer);
+        const err = new Error("aborted");
+        err.name = "AbortError";
+        reject(err);
+      });
+    });
+  }) as typeof globalThis.fetch;
+  const neev = new Neev({ apiKey: "k", orgId: "o", projectId: "p", fetch, timeoutMs: 20 });
+  return neev.sandboxes.create({ name: "demo" });
+}
+
+const exitFrame = () => new Response(`${JSON.stringify({ type: "exit", exit_code: 0 })}\n`);
+const exitedStatus = () =>
+  json(200, { process_id: "p1", state: "exited", exit_code: 0, started_at: 1 });
+
 describe("runtime", () => {
+  describe("calls the sandbox holds open", () => {
+    it("lets an exec run past the client timeout up to its own timeout", async () => {
+      const sandbox = await slowDaemon(exitFrame);
+      await expect(sandbox.exec("sleep", { args: ["1"], timeoutMs: 1_000 })).resolves.toEqual({
+        stdout: "",
+        stderr: "",
+        exitCode: 0,
+      });
+    });
+
+    it("keeps the client timeout for an exec with no timeout of its own", async () => {
+      const sandbox = await slowDaemon(exitFrame);
+      await expect(sandbox.exec("sleep")).rejects.toBeInstanceOf(APITimeoutError);
+    });
+
+    it("lets a blocking process get run past the client timeout", async () => {
+      const sandbox = await slowDaemon(exitedStatus);
+      await expect(sandbox.processes.get("p1", { wait: true })).resolves.toMatchObject({
+        state: "exited",
+      });
+    });
+
+    it("keeps the client timeout for a non-blocking process get", async () => {
+      const sandbox = await slowDaemon(exitedStatus);
+      await expect(sandbox.processes.get("p1")).rejects.toBeInstanceOf(APITimeoutError);
+    });
+  });
+
   it("throws when a Ready sandbox exposes no connect_url", async () => {
     const { sandbox } = await readySandbox(null, []);
     await expect(sandbox.files.write("/a", "x")).rejects.toThrow(/connect_url/);

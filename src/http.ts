@@ -13,7 +13,14 @@ export type FetchLike = typeof fetch;
 // applying a timeout and retrying transient failures. Its signature matches what
 // openapi-fetch expects for its `fetch` option, so the same instance backs both
 // the typed (spec-driven) client and the untyped RawClient.
-export type Dispatch = (request: Request) => Promise<Response>;
+export type Dispatch = (request: Request, options?: DispatchCallOptions) => Promise<Response>;
+
+// Per-call adjustments to a Dispatch.
+export interface DispatchCallOptions {
+  // Added to the per-attempt timeout, for a call the server legitimately holds
+  // open before its first byte (an exec's timeout, a blocking process wait).
+  extendTimeoutMs?: number;
+}
 
 // Inputs needed to build a Dispatch.
 export interface DispatchOptions {
@@ -31,8 +38,9 @@ const MAX_RETRY_AFTER_MS = 30_000;
 // caller's AbortSignal is honored both during a request and during retry backoff.
 export function createDispatch(opts: DispatchOptions): Dispatch {
   const { fetch: base, timeoutMs, maxRetries } = opts;
-  return async (request: Request): Promise<Response> => {
+  return async (request: Request, call: DispatchCallOptions = {}): Promise<Response> => {
     const callerSignal = request.signal;
+    const attemptTimeoutMs = timeoutMs + Math.max(call.extendTimeoutMs ?? 0, 0);
     let attempt = 0;
     // Retry transient failures up to maxRetries; each attempt gets a fresh clone
     // (a Request body can only be read once) and its own timeout controller.
@@ -44,7 +52,7 @@ export function createDispatch(opts: DispatchOptions): Dispatch {
       } else {
         callerSignal.addEventListener("abort", onAbort, { once: true });
       }
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const timer = setTimeout(() => controller.abort(), attemptTimeoutMs);
 
       let response: Response | undefined;
       let failure: unknown;

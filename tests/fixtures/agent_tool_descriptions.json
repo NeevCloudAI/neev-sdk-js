@@ -1,0 +1,11 @@
+{
+  "run_command": "Run a shell command in the sandbox with sh -lc and return exit_code, stdout and stderr. State persists between calls. Output over 10 KB is cut in the middle. A non-zero exit_code is a normal result: read stderr and try again. A command that prints nothing for about 2 minutes is cut off by the network, so run long or quiet work with start_process if you have it.",
+  "write_file": "Write a UTF-8 text file in the sandbox. path is relative to /workspace, or absolute inside /workspace.",
+  "read_file": "Read a UTF-8 text file from the sandbox. path is relative to /workspace, or absolute inside /workspace. Content over 10 KB is cut in the middle.",
+  "expose_port": "Make a server listening on this port in the sandbox reachable at a public HTTPS preview URL, and return it. Anyone with the URL can open it without logging in.",
+  "checkpoint": "Save the sandbox's full state and return a checkpoint_id. Take one before a risky step.",
+  "rollback": "Roll the sandbox back to a checkpoint_id from checkpoint. Every change since that checkpoint is lost.",
+  "start_process": "Start a shell command in the background with sh -lc and return its process_id at once. Use it for servers, builds and anything that may outlast a run_command. A process left running is killed after an hour. A resource_exhausted error means the sandbox is at its limit of processes or in-flight requests: stop a process you no longer need, or retry shortly.",
+  "read_process_output": "Read a background process's new stdout and stderr since cursor; pass the returned cursor to the next call. state is running or exited, with exit_code once exited. Output over 10 KB per stream is cut in the middle, and the returned cursor still moves past the cut part. dropped: true means output was overwritten because the buffer keeps about 1 MB, so read more often. wait_s (0 to 60, default 0) first waits up to that many seconds for a running process to exit, which saves turns while following a long command. An exited process's status is kept for about 10 minutes, after which exit_code is no longer returned.",
+  "stop_process": "Stop a background process by sending it SIGTERM. ok is false if it had already exited. An exited process's status is kept for about 10 minutes."
+}

@@ -2,6 +2,9 @@ import { decodeBase64 } from "./base64.js";
 import { NeevError } from "./errors.js";
 import type { ConnectionResolver, SandboxConnection } from "./runtime.js";
 
+// sandboxd's default ceiling on one blocking process get (--process-wait-ceiling).
+const PROCESS_WAIT_CEILING_MS = 300_000;
+
 // Lifecycle state of a supervised process, as reported by the sandbox.
 export type ProcessState = "running" | "exited";
 
@@ -176,6 +179,8 @@ export class SandboxProcesses {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ process_id: processId, wait: options.wait }),
       signal: options.signal,
+      // A blocking get answers only when the process exits or the ceiling passes.
+      extendTimeoutMs: options.wait ? PROCESS_WAIT_CEILING_MS : undefined,
     });
     return toStatus((await response.json()) as RawStatus);
   }

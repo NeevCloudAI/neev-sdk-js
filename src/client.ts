@@ -145,7 +145,8 @@ export class Neev implements RequestContext {
   createTypedClient<Paths extends {}>(): Client<Paths> {
     return createClient<Paths>({
       baseUrl: this.baseUrl,
-      fetch: this.dispatch,
+      // openapi-fetch passes its own second argument; keep it off the dispatch.
+      fetch: (request: Request) => this.dispatch(request),
       headers: { Authorization: `Bearer ${this.apiKey}` },
     });
   }
