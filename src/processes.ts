@@ -362,8 +362,9 @@ function toInfo(raw: RawInfo): ProcessInfo {
 // that ends without an exit frame is a normal abort/disconnect, not an error, so
 // this never throws on a missing exit.
 async function* streamProcessLogs(response: Response): AsyncGenerator<ProcessLogEvent> {
-  const outDecoder = new TextDecoder();
-  const errDecoder = new TextDecoder();
+  // ignoreBOM keeps a leading U+FEFF the process printed; the default would drop it.
+  const outDecoder = new TextDecoder("utf-8", { ignoreBOM: true });
+  const errDecoder = new TextDecoder("utf-8", { ignoreBOM: true });
 
   // Turns one parsed frame into zero or more events.
   function* handle(frame: FollowFrame): Generator<ProcessLogEvent> {

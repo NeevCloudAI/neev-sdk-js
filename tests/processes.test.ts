@@ -322,6 +322,18 @@ describe("processes", () => {
       expect(calls[1]?.headers.get("accept")).toBe("application/x-ndjson");
     });
 
+    it("keeps a leading byte order mark in the output", async () => {
+      const { sandbox } = await readySandbox("https://sbx.example", [
+        ndjson([
+          { type: "stdout", data: b64([0xef, 0xbb, 0xbf, 0x68, 0x69]) },
+          { type: "exit", exit_code: 0 },
+        ]),
+      ]);
+      const events = [];
+      for await (const ev of sandbox.processes.follow("proc_1")) events.push(ev);
+      expect(events[0]).toEqual({ type: "stdout", data: "\ufeffhi" });
+    });
+
     it("carries a non-zero exit code on the terminal event", async () => {
       const { sandbox } = await readySandbox("https://sbx.example", [
         ndjson([

@@ -162,6 +162,30 @@ describe("RawClient (spec-less escape hatch)", () => {
     expect(out).toBeUndefined();
   });
 
+  it.each([
+    ["<html>\n<body>bad gateway</body>", "<html>\n<body>bad gateway</body>"],
+    ["[1, 2]", "[1, 2]"],
+    ['"oops"', '"oops"'],
+    ["null", "null"],
+  ])("keeps a body that is not a JSON object (%j) as details", async (text, details) => {
+    const { raw } = rawClient([new Response(text, { status: 400 })]);
+    const err = (await raw
+      .request({ method: "GET", path: "/x" })
+      .catch((e) => e)) as BadRequestError;
+    expect(err).toBeInstanceOf(BadRequestError);
+    expect(err.details).toBe(details);
+    expect(err.code).toBeUndefined();
+  });
+
+  it("ignores error body fields that are not strings", async () => {
+    const { raw } = rawClient([json(400, { code: 5, message: 123, details: "kept" })]);
+    const err = (await raw
+      .request({ method: "GET", path: "/x" })
+      .catch((e) => e)) as BadRequestError;
+    expect(err.code).toBeUndefined();
+    expect(err.message).toBe("HTTP 400 (kept)");
+  });
+
   it("maps a 404 to NotFoundError with code, details, and request id", async () => {
     const { raw } = rawClient([
       json(

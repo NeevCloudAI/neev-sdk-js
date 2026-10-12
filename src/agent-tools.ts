@@ -17,6 +17,7 @@ import {
 } from "./errors.js";
 import type { ProcessState } from "./processes.js";
 import type { Sandbox } from "./sandbox.js";
+import { errorText, shortError } from "./tool-text.js";
 
 // Per-stream cap: keep the start (what ran) and the end (how it ended).
 const MAX_OUTPUT_BYTES = 10_000;
@@ -28,9 +29,6 @@ const MAX_TIMEOUT_S = 600;
 const MAX_WAIT_S = 60;
 const CHECKPOINT_TIMEOUT_S = 300;
 
-// Error results keep only their first line, cut to this many characters, so an
-// HTML error page from a proxy cannot flood the model's context.
-const MAX_ERROR_CHARS = 500;
 const TIMEOUT_ERROR = "timed out";
 const SILENT_CUT_ERROR =
   "the command printed nothing for about 2 minutes and the connection was cut; it may still be running. Use start_process for long or quiet commands";
@@ -410,22 +408,16 @@ function truncate(text: string): string {
   const data = new TextEncoder().encode(text);
   if (data.length <= MAX_OUTPUT_BYTES) return text;
   const dropped = data.length - HEAD_BYTES - TAIL_BYTES;
-  const decoder = new TextDecoder();
+  // ignoreBOM keeps a leading U+FEFF, as the untruncated text does.
+  const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
   const head = decoder.decode(data.subarray(0, HEAD_BYTES));
   const tail = decoder.decode(data.subarray(data.length - TAIL_BYTES));
   return `${head}\n…[${dropped} bytes truncated]…\n${tail}`;
 }
 
-// Returns the first line of text, cut to MAX_ERROR_CHARS code points with a trailing marker.
-function shortError(text: string): string {
-  const line = Array.from(text.split("\n", 1)[0] ?? "");
-  return line.length <= MAX_ERROR_CHARS
-    ? line.join("")
-    : `${line.slice(0, MAX_ERROR_CHARS).join("")}…`;
-}
-
-// Matches what Python's float() takes: no hex, no "Infinity", no empty string.
-const NUMERIC = /^\s*[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\s*$/;
+// A plain decimal with ASCII digits, optionally wrapped in ASCII whitespace,
+// as the Python SDK reads it: no hex, no "Infinity", no underscores, no BOM.
+const NUMERIC = /^[ \t\n\r\f\v]*[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?[ \t\n\r\f\v]*$/;
 
 // Returns value as a finite number, or undefined when it is not one (booleans,
 // NaN, ±Infinity, null and non-numeric strings included).
@@ -436,6 +428,11 @@ function toNumber(value: unknown): number | undefined {
     return Number.isFinite(n) ? n : undefined;
   }
   return undefined;
+}
+
+// Converts seconds to whole milliseconds, rounding half up the way the Python SDK does.
+function toMs(seconds: number): number {
+  return Math.floor(seconds * 1000 + 0.5);
 }
 
 // Clamps value to [min, max]; anything that is not a finite number takes the default.
@@ -454,11 +451,13 @@ function optionalString(args: Record<string, unknown>, key: string): string | un
 }
 
 // Returns a tool's arguments as a record after checking them against its
-// PARAMETERS, or throws InvalidArguments with the same reason the Python SDK
-// gives: an object, every required argument present, nothing unknown, strings
-// where a string is due, and null only for optional arguments. Numbers are
-// checked when required, or for every numeric argument when strict (as call()
-// does); otherwise an optional number that is not one takes its default.
+// PARAMETERS, or throws InvalidArguments with the Python SDK's reasons, in its
+// order: an object; no argument the schema does not name (own keys only, so
+// "constructor" or "__proto__" is unexpected); every required argument present;
+// then, in schema order, a string where one is due and null only for optional
+// arguments. Numbers are checked when required, or for every numeric argument
+// when strict (as call() does); otherwise an optional number that is not one
+// takes its default.
 function asRecord(name: ToolName, args: unknown, strict = false): Record<string, unknown> {
   const value = args ?? {};
   if (typeof value !== "object" || Array.isArray(value)) {
@@ -469,14 +468,14 @@ function asRecord(name: ToolName, args: unknown, strict = false): Record<string,
     properties: Record<string, { type: string }>;
     required: readonly string[];
   };
-  for (const key of schema.required) {
-    if (record[key] === undefined) {
-      throw new InvalidArguments(`missing a required argument: '${key}'`);
+  for (const key of Object.keys(record)) {
+    if (!Object.hasOwn(schema.properties, key)) {
+      throw new InvalidArguments(`got an unexpected keyword argument ${JSON.stringify(key)}`);
     }
   }
-  for (const key of Object.keys(record)) {
-    if (!(key in schema.properties)) {
-      throw new InvalidArguments(`got an unexpected keyword argument '${key}'`);
+  for (const key of schema.required) {
+    if (record[key] === undefined) {
+      throw new InvalidArguments(`missing a required argument: ${JSON.stringify(key)}`);
     }
   }
   for (const [field, prop] of Object.entries(schema.properties)) {
@@ -533,7 +532,7 @@ async function recover<T>(
     }
     // The 504 body is often a proxy's HTML page, so say what happened instead.
     if (err instanceof DeadlineExceededError) return { error: timeoutError };
-    if (recoverable(err)) return { error: shortError(err.message) };
+    if (recoverable(err)) return { error: shortError(errorText(err)) };
     throw err;
   }
 }
@@ -607,7 +606,7 @@ export class SandboxTools {
    * arguments resolve to an error result.
    */
   call(name: string, args: unknown): Promise<ToolResult> {
-    if (!(name in DESCRIPTIONS)) {
+    if (!Object.hasOwn(DESCRIPTIONS, name)) {
       return Promise.resolve({ error: shortError(`unknown tool: ${String(name)}`) });
     }
     const tool = name as ToolName;
@@ -659,7 +658,7 @@ export class SandboxTools {
           r = await this.sandbox.exec("sh", {
             args: ["-lc", command],
             cwd,
-            timeoutMs: Math.round(timeout * 1000),
+            timeoutMs: toMs(timeout),
           });
         } catch (err) {
           // The network edge answers 524 when a response stays silent for about
@@ -690,9 +689,9 @@ export class SandboxTools {
       const bytes = await this.sandbox.files.read(path);
       let text: string;
       try {
-        text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
       } catch (err) {
-        return { error: shortError(`not UTF-8 text: ${(err as Error).message}`) };
+        return { error: "not UTF-8 text" };
       }
       return { content: truncate(text) };
     });
@@ -754,7 +753,7 @@ export class SandboxTools {
         // in-flight request cap; a retry or stopping a process fixes either, so
         // the model sees it. Other 429s throw.
         if (err instanceof RateLimitError && err.code === "resource_exhausted") {
-          return { error: shortError(err.message) };
+          return { error: shortError(errorText(err)) };
         }
         throw err;
       }
@@ -821,7 +820,7 @@ export class SandboxTools {
   // or undefined if it is still running when the wait ends. sandboxd's own wait
   // ceiling is longer than MAX_WAIT_S, so the abort signal is what bounds it.
   private async waitForExit(processId: string, waitS: number): Promise<number | null | undefined> {
-    const signal = AbortSignal.timeout(Math.round(waitS * 1000));
+    const signal = AbortSignal.timeout(toMs(waitS));
     try {
       const status = await this.sandbox.processes.get(processId, { wait: true, signal });
       return status.state === "exited" ? status.exitCode : undefined;

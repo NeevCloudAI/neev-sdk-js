@@ -277,6 +277,13 @@ describe("runtime", () => {
       expect(call?.body).toEqual({ path: "/work/data.bin", cwd: "/work" });
     });
 
+    it("readText keeps a leading byte order mark", async () => {
+      const { sandbox } = await readySandbox("https://sbx.sandboxes.example", [
+        new Response(new Uint8Array([0xef, 0xbb, 0xbf, 0x68, 0x69]), { status: 200 }),
+      ]);
+      expect(await sandbox.files.readText("/work/a.txt")).toBe("\ufeffhi");
+    });
+
     it("readText decodes the bytes as UTF-8", async () => {
       const { sandbox } = await readySandbox("https://sbx.sandboxes.example", [
         new Response("héllo", { status: 200 }),
@@ -482,6 +489,16 @@ describe("runtime", () => {
       const text = frames.map((f) => JSON.stringify(f)).join("\n");
       return new Response(text, { status: 200 });
     }
+
+    it("keeps a leading byte order mark the command printed", async () => {
+      const { sandbox } = await readySandbox("https://sbx.sandboxes.example", [
+        ndjson([
+          { type: "stdout", data: btoa("\xef\xbb\xbfhi") },
+          { type: "exit", exit_code: 0 },
+        ]),
+      ]);
+      expect((await sandbox.exec("cat")).stdout).toBe("\ufeffhi");
+    });
 
     it("drains the NDJSON stream into buffered stdout/stderr/exitCode", async () => {
       const { sandbox, calls } = await readySandbox("https://sbx.sandboxes.example", [

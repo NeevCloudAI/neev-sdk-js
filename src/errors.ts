@@ -44,6 +44,33 @@ export class APIConnectionError extends NeevError {
 // Raised when the request was aborted because it exceeded the configured timeout.
 export class APITimeoutError extends APIConnectionError {}
 
+// Returns the first non-empty string among values.
+function firstText(...values: Array<string | undefined>): string | undefined {
+  return values.find((v) => typeof v === "string" && v.length > 0);
+}
+
+// Keeps only the string fields of an error body, so a server that sends
+// {"code": 5} or {"message": 123} yields no code or message rather than a number.
+function cleanBody(body: ApiErrorBody | undefined): ApiErrorBody | undefined {
+  if (!body) return undefined;
+  const text = (v: unknown) => (typeof v === "string" ? v : undefined);
+  return {
+    message: text(body.message),
+    code: text(body.code),
+    scope: text(body.scope),
+    details: text(body.details),
+    error: text(body.error),
+  };
+}
+
+// The body's own message per APIError, kept off the public surface; read via apiErrorBodyMessage.
+const bodyMessages = new WeakMap<APIError, string | undefined>();
+
+// Returns the message the error body carried, without the status, code, details or request id.
+export function apiErrorBodyMessage(err: APIError): string | undefined {
+  return bodyMessages.get(err);
+}
+
 // Raised for any non-2xx HTTP response. Subclasses pin specific status codes.
 export class APIError extends NeevError {
   // HTTP status code of the response.
@@ -59,13 +86,15 @@ export class APIError extends NeevError {
   // Value of the `x-request-id` response header, for support correlation.
   readonly requestId?: string;
 
-  constructor(status: number, body: ApiErrorBody | undefined, requestId: string | undefined) {
+  constructor(status: number, raw: ApiErrorBody | undefined, requestId: string | undefined) {
+    const body = cleanBody(raw);
     super(buildMessage(status, body, requestId));
     this.status = status;
     this.code = body?.code;
     this.scope = body?.scope;
     this.details = body?.details;
     this.requestId = requestId;
+    bodyMessages.set(this, firstText(body?.message, body?.error, body?.details));
   }
 }
 
@@ -144,14 +173,37 @@ export function errorFromSandboxBody(
   text: string,
   requestId: string | undefined,
 ): APIError {
-  let body: ApiErrorBody | undefined;
-  if (text.length > 0) {
-    try {
-      const parsed = JSON.parse(text) as { reason_code?: string; message?: string };
-      body = { code: parsed.reason_code, message: parsed.message };
-    } catch {
-      body = { details: text };
-    }
+  return errorFromStatus(status, errorBodyFromText(text), requestId);
+}
+
+// Returns the error body a raw response text carries, the same way for the
+// lifecycle API and the sandbox runtime: a JSON object's fields (sandboxd's
+// reason_code standing in for code), or the text itself as details when it is
+// not a JSON object (an HTML page, plain text, or JSON such as [1,2], "oops" or
+// null). Empty text has no body.
+export function errorBodyFromText(raw: string): ApiErrorBody | undefined {
+  // One leading byte order mark is dropped, as Response.text() and the Python SDK do.
+  const text = raw.startsWith("\ufeff") ? raw.slice(1) : raw;
+  if (text.length === 0) return undefined;
+  const parsed = parseJson(text);
+  if (!isPlainObject(parsed)) return { details: text };
+  const body = parsed as ApiErrorBody & { reason_code?: unknown };
+  // An empty code counts as absent, so reason_code can stand in for it.
+  return typeof body.code === "string" && body.code.length > 0
+    ? body
+    : { ...body, code: body.reason_code as string };
+}
+
+// Parses text as JSON, or returns undefined when it is not JSON.
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
   }
-  return errorFromStatus(status, body, requestId);
+}
+
+// True for a JSON object (not an array or null).
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

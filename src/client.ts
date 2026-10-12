@@ -1,5 +1,5 @@
 import createClient, { type Client } from "openapi-fetch";
-import { NeevError } from "./errors.js";
+import { NeevError, errorBodyFromText } from "./errors.js";
 import { type Dispatch, type FetchLike, RawClient, createDispatch } from "./http.js";
 import type { WebSocketFactory } from "./pty.js";
 import { AgentTemplates } from "./resources/agent-templates.js";
@@ -54,6 +54,20 @@ export interface RequestContext {
   // The configured fetch, for probing arbitrary URLs (e.g. a preview URL) outside
   // the API base.
   readonly fetch: FetchLike;
+}
+
+// openapi-fetch hands back an error body already parsed, which loses the raw
+// text of one that is not a JSON object ([1,2], "oops", null). Rewrites the
+// body as errorBodyFromText reads it, so typed-client errors parse exactly as
+// RawClient and sandbox errors do.
+async function wrapErrorBody(response: Response): Promise<Response> {
+  if (response.ok) return response;
+  const body = errorBodyFromText(await response.text());
+  return new Response(body ? JSON.stringify(body) : null, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
 }
 
 // Default base URL of the Neev production API.
@@ -146,7 +160,7 @@ export class Neev implements RequestContext {
     return createClient<Paths>({
       baseUrl: this.baseUrl,
       // openapi-fetch passes its own second argument; keep it off the dispatch.
-      fetch: (request: Request) => this.dispatch(request),
+      fetch: async (request: Request) => wrapErrorBody(await this.dispatch(request)),
       headers: { Authorization: `Bearer ${this.apiKey}` },
     });
   }
