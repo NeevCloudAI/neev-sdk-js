@@ -278,7 +278,7 @@ The filters combine with AND; each is omitted from the request when unset.
 ```ts
 const page = await client.sandboxes.list({ page: 1, limit: 20 });
 for (const sb of page.items) {
-  console.log(sb.id, sb.name, sb.phase, sb.replicas);
+  console.log(sb.id, sb.name, sb.phase);
 }
 console.log(`Showing ${page.items.length} of ${page.total}`);
 
@@ -348,7 +348,7 @@ Pauses a sandbox: it stops running and keeps its state so it can be resumed. The
 
 ```ts
 const paused = await client.sandboxes.pause(sandbox.id);
-console.log(paused.replicas); // 0
+console.log(paused.phase); // "Paused"
 ```
 
 A paused sandbox will not become `Ready` until `resume()` is called. Calling `waitUntilReady()` on a `Paused` handle throws `NeevError`.
@@ -864,7 +864,6 @@ Returned by `create()`, `get()`, `list().items`, `pause()`, `resume()`, `rollbac
 | `id` | `string` | Sandbox UUID. |
 | `name` | `string` | Human-readable name. |
 | `phase` | `SandboxPhase` | Current lifecycle phase as last seen from the server. |
-| `replicas` | `number` | `1` while the sandbox is running, `0` while it is paused. |
 | `connectUrl` | `string \| null` | Runtime URL, or `null` when not yet configured. |
 | `region` | `string` | Region slug the sandbox runs in. |
 | `templateId` | `string \| null` | Catalogue template id it was created from, or `null` when unknown. |
@@ -889,7 +888,7 @@ Re-fetches the sandbox from the lifecycle and updates this handle's state in pla
 
 ```ts
 await sandbox.refresh();
-console.log(sandbox.phase, sandbox.replicas);
+console.log(sandbox.phase);
 ```
 
 ### `sandbox.update(params)`
@@ -1605,7 +1604,7 @@ Alias for the generated `Sandbox` schema — the full lifecycle sandbox record w
 | `command` | `string[]` | no |
 | `phase` | `SandboxPhase` | yes |
 | `addressable` | `boolean` | no — briefly `false` right after create; a runtime call made before it turns `true` is refused. Absent reads as `true`. |
-| `replicas` | `number` | yes — `1` while running, `0` while paused |
+| `replicas` | `number` | no — deprecated; read `phase` instead |
 | `connect_url` | `string \| null` | no |
 | `sandbox_template_id` | `string \| null` | no |
 | `created_by` | `string \| null` | no |
@@ -1618,7 +1617,7 @@ Alias for the generated `Sandbox` schema — the full lifecycle sandbox record w
 | `created_at` | `string` | yes |
 | `updated_at` | `string` | yes |
 
-> The handle reads `id`, `name`, `phase`, `addressable`, `replicas`, `connect_url`, `region`, `sandbox_template_id`, `resources`, `labels`, and `last_crash` from this shape.
+> The handle reads `id`, `name`, `phase`, `addressable`, `connect_url`, `region`, `sandbox_template_id`, `resources`, `labels`, and `last_crash` from this shape.
 
 ### `SandboxLabels`
 
@@ -1826,7 +1825,7 @@ Alias for the generated `Snapshot` schema — a snapshot captured from a sandbox
 | `project_id` | `string` | yes |
 | `name` | `string` | no |
 | `status` | `SnapshotStatus` | yes |
-| `snapshot_type` | `SnapshotType` | yes |
+| `snapshot_type` | `SnapshotType` | yes — `"full"` (memory and files, restorable) or `"filesystem"` (files only; `restorability` is `unsupported`) |
 | `source_region` | `string` | yes |
 | `size_bytes` | `number \| null` | no |
 | `error_message` | `string \| null` | no |
@@ -2131,7 +2130,7 @@ Compact reviewer index.
 
 | Symbol | Kind | Notes |
 | ------ | ---- | ----- |
-| `id`, `name`, `phase`, `replicas`, `connectUrl`, `addressable`, `region`, `templateId`, `resources`, `labels`, `lastCrash`, `data` | getters | `connectUrl` is `string \| null`; `addressable` is `boolean`; `labels` is `SandboxLabels` (`{}` when none); `lastCrash` is `SandboxLastCrash \| null`. |
+| `id`, `name`, `phase`, `connectUrl`, `addressable`, `region`, `templateId`, `resources`, `labels`, `lastCrash`, `data` | getters | `connectUrl` is `string \| null`; `addressable` is `boolean`; `labels` is `SandboxLabels` (`{}` when none); `lastCrash` is `SandboxLastCrash \| null`. |
 | `files` | getter | `SandboxFiles` (lazy connection). |
 | `processes` | getter | `SandboxProcesses` (lazy connection). |
 | `refresh` | method | `Promise<this>` |

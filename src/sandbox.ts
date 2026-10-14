@@ -94,11 +94,6 @@ export class Sandbox {
     return this.state.phase;
   }
 
-  // 1 while the sandbox is running, 0 while it is paused.
-  get replicas(): number {
-    return this.state.replicas;
-  }
-
   // Direct address of the sandbox runtime, or null when not configured.
   get connectUrl(): string | null {
     return this.state.connect_url ?? null;

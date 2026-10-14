@@ -246,7 +246,7 @@ paths:
             const sandbox = await neev.sandboxes.create({});
             await sandbox.waitUntilReady();
             await sandbox.pause();
-            console.log(sandbox.phase, sandbox.replicas);
+            console.log(sandbox.phase);
         - lang: Python
           source: |
             from neevai import NeevAI
@@ -256,7 +256,7 @@ paths:
             sandbox = neev.sandboxes.create({})
             sandbox.wait_until_ready()
             sandbox.pause()
-            print(sandbox.phase, sandbox.replicas)
+            print(sandbox.phase)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -2024,7 +2024,7 @@ components:
             minimum 4. Can only be set when the sandbox is created.
     Sandbox:
       type: object
-      required: [id, org_id, project_id, name, region, image, phase, replicas, created_at, updated_at]
+      required: [id, org_id, project_id, name, region, image, phase, created_at, updated_at]
       properties:
         id: {type: string, format: uuid}
         org_id: {type: string}
@@ -2038,7 +2038,12 @@ components:
         labels: {$ref: '#/components/schemas/SandboxLabels'}
         addressable: {type: boolean, description: "Whether the sandbox can be reached by name yet. Briefly false after a sandbox is created; a call made before it turns true is refused and is worth retrying."}
         connect_url: {type: string, nullable: true, description: "Public URL the SDK calls (API key + X-Sandbox-Id). null when not configured."}
-        replicas: {type: integer, minimum: 0, maximum: 1, description: "0 = paused, 1 = running."}
+        replicas:
+          type: integer
+          minimum: 0
+          maximum: 1
+          deprecated: true
+          description: "Deprecated: read phase instead. 0 while paused, 1 otherwise."
         egress:
           allOf:
             - $ref: '#/components/schemas/SandboxEgressConfig'
@@ -2275,8 +2280,11 @@ components:
       enum: [Pending, Running, Ready, Failed]
     SnapshotType:
       type: string
-      description: Type of the snapshot.
-      enum: [full]
+      description: |
+        Type of the snapshot. `full`: memory and filesystem, restorable.
+        `filesystem`: files only, taken when a full capture is not possible;
+        its `restorability` is `unsupported`.
+      enum: [full, filesystem]
     SnapshotRestorability:
       type: string
       description: |

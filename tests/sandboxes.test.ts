@@ -168,8 +168,8 @@ describe("sandboxes resource", () => {
 
   it("targets the pause and resume sub-paths", async () => {
     const { neev, calls } = client([
-      json(200, sandboxData({ phase: "Paused", replicas: 0 })),
-      json(200, sandboxData({ phase: "Ready", replicas: 1 })),
+      json(200, sandboxData({ phase: "Paused" })),
+      json(200, sandboxData({ phase: "Ready" })),
     ]);
     const paused = await neev.sandboxes.pause("sb-1");
     expect(paused.phase).toBe("Paused");
