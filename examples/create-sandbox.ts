@@ -35,7 +35,7 @@ async function main(): Promise<void> {
 
   // Pause to release compute, then delete to clean up.
   await sandbox.pause();
-  console.log(`paused (replicas: ${sandbox.replicas})`);
+  console.log(`paused (phase: ${sandbox.phase})`);
   await sandbox.delete();
   console.log("deleted");
 }

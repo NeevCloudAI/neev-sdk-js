@@ -97,8 +97,8 @@ describe("Sandbox handle", () => {
 
   it("updates its state in place after pause", async () => {
     const neev = client([
-      json(201, sandboxData({ phase: "Ready", replicas: 1 })),
-      json(200, sandboxData({ phase: "Paused", replicas: 0 })),
+      json(201, sandboxData({ phase: "Ready" })),
+      json(200, sandboxData({ phase: "Paused" })),
     ]);
     const sb = await neev.sandboxes.create({
       name: "demo",
@@ -107,7 +107,6 @@ describe("Sandbox handle", () => {
     expect(sb.phase).toBe("Ready");
     await sb.pause();
     expect(sb.phase).toBe("Paused");
-    expect(sb.replicas).toBe(0);
   });
 
   it("waitUntilReady resolves once the phase becomes Ready", async () => {
@@ -166,7 +165,7 @@ describe("Sandbox handle", () => {
   });
 
   it("waitUntilReady fails fast when the sandbox is Paused", async () => {
-    const neev = client([json(201, sandboxData({ phase: "Paused", replicas: 0 }))]);
+    const neev = client([json(201, sandboxData({ phase: "Paused" }))]);
     const sb = await neev.sandboxes.create({
       name: "demo",
       sandbox_template_id: "sb-ubuntu-26-04-minimal",

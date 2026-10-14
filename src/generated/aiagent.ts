@@ -845,8 +845,11 @@ export interface components {
             addressable?: boolean;
             /** @description Public URL the SDK calls (API key + X-Sandbox-Id). null when not configured. */
             connect_url?: string | null;
-            /** @description 0 = paused, 1 = running. */
-            replicas: number;
+            /**
+             * @deprecated
+             * @description Deprecated: read phase instead. 0 while paused, 1 otherwise.
+             */
+            replicas?: number;
             egress?: components["schemas"]["SandboxEgressConfig"] | null;
             /** @description Catalogue template id from create when one was provided; null otherwise. */
             sandbox_template_id?: string | null;
@@ -1056,10 +1059,12 @@ export interface components {
          */
         SnapshotStatus: "Pending" | "Running" | "Ready" | "Failed";
         /**
-         * @description Type of the snapshot.
+         * @description Type of the snapshot. `full`: memory and filesystem, restorable.
+         *     `filesystem`: files only, taken when a full capture is not possible;
+         *     its `restorability` is `unsupported`.
          * @enum {string}
          */
-        SnapshotType: "full";
+        SnapshotType: "full" | "filesystem";
         /**
          * @description Whether this snapshot can be restored. `restorable`: fully supported.
          *     `deprecating`: still restorable but on the way out (re-snapshot to stay

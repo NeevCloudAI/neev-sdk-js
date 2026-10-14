@@ -331,7 +331,6 @@ await sandbox.files.write("notes.md", "# hello\n");
 | `id` | `string` | Sandbox UUID. |
 | `name` | `string` | Human-readable name. |
 | `phase` | `SandboxPhase` | Lifecycle phase as last seen (e.g. `"Pending"`, `"Ready"`, `"Paused"`). |
-| `replicas` | `number` | `1` while running, `0` while paused. |
 | `region` | `string` | Region slug the sandbox runs in. |
 | `templateId` | `string \| null` | Template id it was created from, or `null`. |
 | `resources` | `SandboxResources \| undefined` | Provisioned compute size, or `undefined` when defaulted. |
@@ -636,7 +635,7 @@ Minimal one-liners for each public API.
 | `agent.getUrl(...)` | `const url = await agent.getUrl({ port: 3000 });` |
 | `agent.sandbox()` | `const sandbox = await agent.sandbox();` |
 | `neev.raw.request(...)` | `const data = await neev.raw.request<T>({ method: "GET", path });` |
-| `sandbox.id` / `.name` / `.phase` | `console.log(sandbox.phase, sandbox.replicas);` |
+| `sandbox.id` / `.name` / `.phase` | `console.log(sandbox.phase);` |
 | `sandbox.connectUrl` | `console.log(sandbox.connectUrl);` |
 | `sandbox.data` | `const record = sandbox.data;` |
 | `sandbox.refresh()` | `await sandbox.refresh();` |
