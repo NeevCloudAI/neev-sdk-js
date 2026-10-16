@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BadRequestError, Neev, NeevError, NotFoundError, Sandbox } from "../src/index.js";
-import { json, mockFetch, sandboxData, snapshotData } from "./helpers.js";
+import type { AuditParams } from "../src/index.js";
+import { auditEvent, json, mockFetch, sandboxData, snapshotData } from "./helpers.js";
 
 // Builds a client backed by the given queued responses.
 function client(queue: Array<Response | Error>) {
@@ -536,6 +537,16 @@ describe("sandbox snapshots, rollback, and fork", () => {
     expect(calls[1]?.url).toContain("/snapshots/snap-x");
   });
 
+  it("reads a snapshot's trigger, and a snapshot without one", async () => {
+    const { trigger: _, ...untriggered } = snapshotData();
+    const { neev } = client([
+      json(200, snapshotData({ trigger: "memory_pressure" })),
+      json(200, untriggered),
+    ]);
+    expect((await neev.sandboxes.getSnapshot("snap-a")).trigger).toBe("memory_pressure");
+    expect((await neev.sandboxes.getSnapshot("snap-b")).trigger).toBeUndefined();
+  });
+
   it("throws a typed error when a snapshot is not found", async () => {
     const { neev } = client([json(404, { error: "not_found", details: "gone" })]);
     const err = await neev.sandboxes.getSnapshot("missing").catch((e) => e);
@@ -834,21 +845,12 @@ describe("preview ports", () => {
 
 describe("audit trail", () => {
   const trail = {
-    sandbox_id: "11111111-1111-1111-1111-111111111111",
     from: "2026-10-01T00:00:00Z",
     to: "2026-10-02T00:00:00Z",
     retention_days: 30,
     window_truncated: false,
     next_cursor: "c2",
-    records: [
-      {
-        at: "2026-10-01T12:00:00Z",
-        id: "r1",
-        tool: "pty_command",
-        command: "psql",
-        outcome: "success",
-      },
-    ],
+    data: [auditEvent({ api: { operation: "exec" } })],
   };
 
   it("reads one page with the window and paging query", async () => {
@@ -859,7 +861,8 @@ describe("audit trail", () => {
       cursor: "c1",
       limit: 50,
     });
-    expect(page.records[0]?.command).toBe("psql");
+    expect(page.data[0]?.api.operation).toBe("exec");
+    expect(page.data[0]?.actor.user.type).toBe("api_key");
     expect(page.next_cursor).toBe("c2");
     const url = new URL(calls[0]?.url ?? "");
     expect(calls[0]?.method).toBe("GET");
@@ -880,5 +883,37 @@ describe("audit trail", () => {
     expect(page.next_cursor).toBeUndefined();
     expect(new URL(calls[1]?.url ?? "").search).toBe("");
     expect(calls[1]?.url).toMatch(/\/sandboxes\/sb-1\/audit$/);
+  });
+
+  const filterCases: { name: string; params: AuditParams; expected: Record<string, string> }[] = [
+    { name: "one operation", params: { operation: "exec" }, expected: { operation: "exec" } },
+    {
+      name: "several operations joined with commas",
+      params: { operation: ["exec", "pty_command"] },
+      expected: { operation: "exec,pty_command" },
+    },
+    { name: "status", params: { status: "failure" }, expected: { status: "failure" } },
+    {
+      name: "one actor type",
+      params: { actorType: "api_key" },
+      expected: { actor_type: "api_key" },
+    },
+    {
+      name: "several actor types joined with commas",
+      params: { actorType: ["user", "system"] },
+      expected: { actor_type: "user,system" },
+    },
+    { name: "actor uid", params: { actorUid: "u-1" }, expected: { actor_uid: "u-1" } },
+    {
+      name: "credential uid",
+      params: { credentialUid: "k-1" },
+      expected: { credential_uid: "k-1" },
+    },
+  ];
+  it.each(filterCases)("sends the $name filter", async ({ params, expected }) => {
+    const { neev, calls } = client([json(200, trail)]);
+    await neev.sandboxes.audit("sb-1", params);
+    const url = new URL(calls[0]?.url ?? "");
+    expect(Object.fromEntries(url.searchParams)).toEqual(expected);
   });
 });

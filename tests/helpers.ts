@@ -2,6 +2,7 @@ import type { FetchLike } from "../src/http.js";
 import type {
   AgentData,
   AgentTemplate,
+  AuditEvent,
   SandboxData,
   SandboxTemplate,
   SnapshotData,
@@ -106,6 +107,7 @@ export function snapshotData(overrides: Partial<SnapshotData> = {}): SnapshotDat
     project_id: "proj_test",
     status: "Pending",
     snapshot_type: "full",
+    trigger: "manual",
     source_region: "as-south-1",
     sandbox_format_version: 1,
     restorability: "restorable",
@@ -159,6 +161,38 @@ export function agentTemplateData(overrides: Partial<AgentTemplate> = {}): Agent
     ui: { mode: "tui" },
     created_at: "2026-06-05T00:00:00Z",
     updated_at: "2026-06-05T00:00:00Z",
+    ...overrides,
+  };
+}
+
+// Builds an audit event as the API returns it, overridable per field.
+export function auditEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
+  return {
+    class_uid: 6003,
+    class_name: "API Activity",
+    category_uid: 6,
+    category_name: "Application Activity",
+    activity_id: 2,
+    activity_name: "Read",
+    type_uid: 600302,
+    type_name: "API Activity: Read",
+    time: 1790856000000,
+    severity_id: 1,
+    severity: "Informational",
+    status_id: 1,
+    status: "Success",
+    actor: {
+      user: { type: "api_key", type_id: 99, uid: "key-1", name: "ci", credential_uid: "key-1" },
+    },
+    api: { operation: "fs.read" },
+    cloud: { provider: "NeevCloud" },
+    src_endpoint: { name: "unknown" },
+    osint: [],
+    metadata: {
+      version: "1.9.0",
+      product: { name: "Sandbox Audit", vendor_name: "NeevCloud" },
+      uid: "e1",
+    },
     ...overrides,
   };
 }

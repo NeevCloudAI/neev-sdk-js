@@ -190,7 +190,10 @@ paths:
     patch:
       tags: [Sandboxes]
       summary: Update a sandbox in place
-      description: "Updates mutable fields of a sandbox without restarting it. `resources` (cpu/memory) are resized\nin place on the running sandbox. Disk is not resizable in place. \nFields omitted from the body are left unchanged.\n"
+      description: |
+        Updates mutable fields of a sandbox without restarting it. `resources` (cpu/memory) are resized
+        in place on the running sandbox. Disk is not resizable in place.
+        Fields omitted from the body are left unchanged. The code interpreter's memory is set when the sandbox is created: growing memory later does not give the interpreter more, and shrinking below what it uses is refused.
       operationId: updateSandbox
       x-codeSamples:
         - lang: cURL
@@ -903,7 +906,7 @@ paths:
         - name: to
           in: query
           required: false
-          description: End of the window (RFC3339). Defaults to now.
+          description: End of the window (RFC3339). Defaults to now, or for a paused sandbox with `from` also unset, to when it paused.
           schema: {type: string, format: date-time}
         - name: step
           in: query
@@ -927,8 +930,7 @@ paths:
       summary: Read the command audit trail for a sandbox
       description: |
         What ran inside the sandbox — terminal commands, SSH, process and file
-        operations — newest first, with the credential each was made under and how
-        it ended.
+        operations — newest first, with who made each call and how it ended.
 
         Only the program name is recorded, never its arguments, and input typed at
         a hidden password prompt is not captured at all. A trail shows that `psql`
@@ -949,8 +951,8 @@ paths:
 
             const sandbox = await neev.sandboxes.get(sandboxId);
             const trail = await sandbox.audit({ limit: 50 });
-            for (const r of trail.records) {
-              console.log(r.at, r.tool, r.command ?? "", r.outcome);
+            for (const e of trail.data) {
+              console.log(new Date(e.time).toISOString(), e.api.operation, e.actor.user.name ?? e.actor.user.uid, e.status);
             }
         - lang: Python
           source: |
@@ -960,8 +962,8 @@ paths:
 
             sandbox = neev.sandboxes.get(sandbox_id)
             trail = sandbox.audit(limit=50)
-            for r in trail.records:
-                print(r.at, r.tool, r.command or "", r.outcome)
+            for e in trail.data:
+                print(e.time, e.api.operation, e.actor.user.name or e.actor.user.uid, e.status)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -970,6 +972,11 @@ paths:
         - {$ref: '#/components/parameters/AuditTo'}
         - {$ref: '#/components/parameters/AuditCursor'}
         - {$ref: '#/components/parameters/AuditLimit'}
+        - {$ref: '#/components/parameters/AuditOperation'}
+        - {$ref: '#/components/parameters/AuditStatus'}
+        - {$ref: '#/components/parameters/AuditActorTypeFilter'}
+        - {$ref: '#/components/parameters/AuditActorUID'}
+        - {$ref: '#/components/parameters/AuditCredentialUID'}
       responses:
         "200":
           description: One page of the sandbox's audit trail
@@ -1026,7 +1033,7 @@ paths:
       summary: Get a sandbox template
       description: |
         Returns one platform-managed sandbox template by id (e.g.
-        `sb-ubuntu-26-04-minimal`). Use the template `name` at sandbox create.
+        `sb-ubuntu-26-04-dev`). Use the template `name` at sandbox create.
       operationId: getSandboxTemplate
       x-codeSamples:
         - lang: TypeScript
@@ -1035,7 +1042,7 @@ paths:
 
             const neev = new Neev();
 
-            const template = await neev.templates.get("sb-ubuntu-26-04-minimal");
+            const template = await neev.templates.get("sb-ubuntu-26-04-dev");
             console.log(template.name);
         - lang: Python
           source: |
@@ -1043,7 +1050,7 @@ paths:
 
             neev = NeevAI()
 
-            template = neev.templates.get("sb-ubuntu-26-04-minimal")
+            template = neev.templates.get("sb-ubuntu-26-04-dev")
             print(template.name)
       parameters:
         - {$ref: '#/components/parameters/SandboxTemplateID'}
@@ -1677,8 +1684,8 @@ paths:
 
             const agent = await neev.agents.get(agentId);
             const trail = await agent.audit({ limit: 50 });
-            for (const r of trail.records) {
-              console.log(r.at, r.tool, r.command ?? "", r.outcome);
+            for (const e of trail.data) {
+              console.log(new Date(e.time).toISOString(), e.api.operation, e.actor.user.name ?? e.actor.user.uid, e.status);
             }
         - lang: Python
           source: |
@@ -1688,8 +1695,8 @@ paths:
 
             agent = neev.agents.get(agent_id)
             trail = agent.audit(limit=50)
-            for r in trail.records:
-                print(r.at, r.tool, r.command or "", r.outcome)
+            for e in trail.data:
+                print(e.time, e.api.operation, e.actor.user.name or e.actor.user.uid, e.status)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -1698,6 +1705,11 @@ paths:
         - {$ref: '#/components/parameters/AuditTo'}
         - {$ref: '#/components/parameters/AuditCursor'}
         - {$ref: '#/components/parameters/AuditLimit'}
+        - {$ref: '#/components/parameters/AuditOperation'}
+        - {$ref: '#/components/parameters/AuditStatus'}
+        - {$ref: '#/components/parameters/AuditActorTypeFilter'}
+        - {$ref: '#/components/parameters/AuditActorUID'}
+        - {$ref: '#/components/parameters/AuditCredentialUID'}
       responses:
         "200":
           description: One page of the agent's audit trail
@@ -1887,6 +1899,43 @@ components:
       required: false
       description: Records per page. Clamped server-side.
       schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+    AuditOperation:
+      name: operation
+      in: query
+      required: false
+      description: >-
+        Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`.
+      schema: {type: string}
+    AuditStatus:
+      name: status
+      in: query
+      required: false
+      description: Only calls that ended this way.
+      schema: {$ref: '#/components/schemas/AuditStatusFilter'}
+    AuditActorTypeFilter:
+      name: actor_type
+      in: query
+      required: false
+      description: >-
+        Only calls by this kind of principal (actor.user.type), one or several separated by commas. Records from before actors were recorded are not matched; use credential_uid for those.
+      style: form
+      explode: false
+      schema:
+        type: array
+        items: {$ref: '#/components/schemas/AuditActorTypeFilterValue'}
+    AuditActorUID:
+      name: actor_uid
+      in: query
+      required: false
+      description: >-
+        Only calls by this principal (actor.user.uid), such as a user id or an API key id. Records from before actors were recorded are not matched; use credential_uid for those.
+      schema: {type: string}
+    AuditCredentialUID:
+      name: credential_uid
+      in: query
+      required: false
+      description: Only calls made with this API key (actor.user.credential_uid).
+      schema: {type: string}
     AgentTemplateID:
       name: template_id
       in: path
@@ -2292,9 +2341,17 @@ components:
         `deprecating`: still restorable but on the way out (re-snapshot to stay
         current). `unsupported`: a restore will be refused.
       enum: [restorable, deprecating, unsupported]
+    SnapshotTrigger:
+      type: string
+      description: |
+        Why the snapshot was taken. `manual`: requested through the API.
+        `memory_pressure`: taken automatically when the sandbox neared its memory
+        limit, before it could be killed for running out of memory. Only the latest
+        is kept per sandbox, for 48 hours.
+      enum: [manual, memory_pressure]
     Snapshot:
       type: object
-      required: [id, sandbox_id, org_id, project_id, status, snapshot_type, source_region, created_at, updated_at, sandbox_format_version, restorability]
+      required: [id, sandbox_id, org_id, project_id, status, snapshot_type, trigger, source_region, created_at, updated_at, sandbox_format_version, restorability]
       description: Metadata for a sandbox memory+filesystem snapshot.
       properties:
         id: {type: string, format: uuid, description: Snapshot UUID.}
@@ -2304,6 +2361,7 @@ components:
         name: {type: string, description: Optional customer-supplied name.}
         status: {$ref: '#/components/schemas/SnapshotStatus'}
         snapshot_type: {$ref: '#/components/schemas/SnapshotType'}
+        trigger: {$ref: '#/components/schemas/SnapshotTrigger'}
         source_region: {type: string, description: Region where the snapshot is stored.}
         size_bytes:
           type: integer
@@ -2404,11 +2462,10 @@ components:
         mode:
           type: string
           enum: [deny_all, allow_list]
-          default: deny_all
-          description: The egress mode. deny_all blocks all egress. allow_list restricts egress to the specified allowed destinations.
+          description: The egress mode. deny_all blocks all egress. allow_list restricts egress to the specified allowed destinations. When omitted, it is allow_list if allow_internet is true or allow has rules, and deny_all otherwise. An explicit deny_all ignores and drops allow_internet and allow.
         allow_internet:
           type: boolean
-          description: "Escape hatch: if true, allows all outbound traffic (0.0.0.0/0 and ::/0). Applies only in allow_list mode; deny_all ignores it."
+          description: "Escape hatch: if true, allows all outbound traffic (0.0.0.0/0 and ::/0). Implies allow_list when mode is omitted; dropped when mode is deny_all."
           default: false
         allow:
           type: array
@@ -2480,6 +2537,15 @@ components:
           $ref: '#/components/schemas/SandboxTemplateCategory'
         status:
           $ref: '#/components/schemas/SandboxTemplateStatus'
+        interpreter:
+          type: boolean
+          description: "True when sandboxes created from this template run the code interpreter: stateful kernels reached through the interpreter routes and tool. Size the sandbox for the interpreter at creation; its memory does not grow with a later resize."
+        min_memory_gb:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 16
+          description: "Smallest memory size in GB a sandbox created from this template may have; null when the template sets no minimum."
         created_at:
           type: string
           format: date-time
@@ -2518,44 +2584,196 @@ components:
       properties:
         token: {type: string, description: "Signed connect token, presented as a bearer credential when calling the sandbox directly."}
         expires_in: {type: integer, description: "Token lifetime in seconds."}
-    AuditRecord:
+    AuditEvent:
       type: object
-      required: [at, id, tool, outcome]
+      description: >-
+        One call to the sandbox, as an OCSF 1.9.0 API Activity event (class_uid 6003). Program names are recorded without their arguments, and input typed at a hidden password prompt is never recorded.
+      required: [class_uid, class_name, category_uid, category_name, activity_id, activity_name, type_uid, type_name, time, severity_id, severity, status_id, status, actor, api, cloud, src_endpoint, osint, metadata]
       properties:
-        at: {type: string, format: date-time, description: When the operation was recorded.}
-        id: {type: string, description: "Stable id of this record, unique within the trail."}
-        tool:
-          type: string
-          description: "The operation, such as `pty_command`, `ssh`, `exec`, `process.start` or `fs.read`."
-        command:
-          type: string
+        class_uid:
+          type: integer
+          enum: [6003]
+          x-enum-varnames: [AuditClassAPIActivity]
+          description: OCSF class, API Activity.
+        class_name: {type: string, description: Always API Activity.}
+        category_uid:
+          type: integer
+          enum: [6]
+          x-enum-varnames: [AuditCategoryApplicationActivity]
+          description: OCSF category, Application Activity.
+        category_name: {type: string, description: Always Application Activity.}
+        activity_id:
+          type: integer
+          enum: [1, 2, 3, 4, 99]
+          x-enum-varnames: [AuditActivityCreate, AuditActivityRead, AuditActivityUpdate, AuditActivityDelete, AuditActivityOther]
           description: >-
-            The program that ran, without its arguments. Absent on operations that run no program, such as a file read. Reads `[redacted]` where the program name could not be established. A terminal command interrupted with Ctrl-C is prefixed `[Ctrl-C]`.
-        target:
-          type: string
+            1 Create (a write, a started process, a terminal), 2 Read, 3 Update (a move), 4 Delete (a removed file, a killed process), 99 Other.
+        activity_name: {type: string, description: "The name of activity_id, such as Create."}
+        type_uid:
+          type: integer
+          format: int64
+          description: class_uid * 100 + activity_id, such as 600301.
+        type_name: {type: string, description: "Such as API Activity: Create."}
+        time:
+          type: integer
+          format: int64
+          description: When the call was recorded, in milliseconds since the Unix epoch.
+        duration:
+          type: integer
+          format: int64
           description: >-
-            What the operation acted on — the file path it read or wrote, or the process it named. A move carries both paths as `source -> destination`. Absent where the operation names nothing, and truncated with a trailing `...` if unusually long.
-        outcome: {type: string, enum: [success, error]}
-        reason_code:
+            How long the call took, in milliseconds; for exec, how long the command ran. Absent on a terminal command, which has no measured run time.
+        severity_id:
+          type: integer
+          enum: [1]
+          x-enum-varnames: [AuditSeverityInformational]
+          description: Always 1, Informational.
+        severity: {type: string, description: Always Informational.}
+        status_id:
+          type: integer
+          enum: [1, 2]
+          x-enum-varnames: [AuditStatusSuccess, AuditStatusFailure]
+          description: 1 Success or 2 Failure.
+        status: {type: string, description: Success or Failure.}
+        status_code:
           type: string
           description: "Why it ended that way: `ok`, `permission_denied`, `internal`."
-        request_id: {type: string, description: Correlates the record to the request that caused it.}
-        caller_source:
+        status_detail:
           type: string
           description: >-
-            The credential the operation was made under. It identifies a credential, not a person.
-        pty_id: {type: string, description: The terminal a `pty_command` belongs to. Absent otherwise.}
-        seq: {type: integer, description: Ordinal within that terminal. Absent outside a `pty_command`.}
-        duration_ms: {type: integer, format: int64}
+            How a code-interpreter cell ended: `ok`, `error`, `deadline_exceeded`, `kernel_restarted`, `memory_exceeded`, `unavailable`, `invalid_response`, or `client_gone` when the caller disconnected first.
+        actor: {$ref: '#/components/schemas/AuditActor'}
+        api: {$ref: '#/components/schemas/AuditAPI'}
+        resources:
+          type: array
+          description: >-
+            What the call touched: the sandbox, then any file or process it named, the program it ran, and the terminal it ran in.
+          items: {$ref: '#/components/schemas/AuditResource'}
+        cloud: {$ref: '#/components/schemas/AuditCloud'}
+        src_endpoint: {$ref: '#/components/schemas/AuditEndpoint'}
+        osint:
+          type: array
+          description: Threat intelligence about the call. Always empty.
+          items: {type: object}
+        metadata: {$ref: '#/components/schemas/AuditMetadata'}
+    AuditAPI:
+      type: object
+      description: The call made to the sandbox, as OCSF api.
+      required: [operation]
+      properties:
+        operation:
+          type: string
+          description: "The call, such as `pty_command`, `ssh`, `exec`, `process.start`, `fs.read` or `interpreter.run`."
+        request: {$ref: '#/components/schemas/AuditAPIRequest'}
+    AuditAPIRequest:
+      type: object
+      required: [uid]
+      properties:
+        uid: {type: string, description: "The request that caused the call, for correlation."}
+    AuditResource:
+      type: object
+      description: >-
+        Something the call touched, as OCSF resource_details. type is sandbox, file, process, channel (an SSH port forward or agent forward), terminal or interpreter_context (a code-interpreter context).
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [sandbox, file, process, channel, terminal, interpreter_context]
+          x-enum-varnames: [AuditResourceSandbox, AuditResourceFile, AuditResourceProcess, AuditResourceChannel, AuditResourceTerminal, AuditResourceInterpreterContext]
+        uid: {type: string, description: "The sandbox, terminal or interpreter context id."}
+        name:
+          type: string
+          description: >-
+            A file path (a move reads `source -> destination`), a program name without its arguments, or an SSH channel such as `direct-tcpip db.internal:5432`, `tcpip-forward 0.0.0.0:8080` or `auth-agent <socket>`. A program reads `[redacted]` where its name could not be established, and a terminal command interrupted with Ctrl-C is prefixed `[Ctrl-C]`. Truncated with a trailing `...` if unusually long.
+    AuditCloud:
+      type: object
+      required: [provider]
+      properties:
+        provider: {type: string, description: Always NeevCloud.}
+        account: {$ref: '#/components/schemas/AuditAccount'}
+        project_uid: {type: string, description: The project id.}
+    AuditAccount:
+      type: object
+      required: [uid]
+      properties:
+        uid: {type: string, description: The organization id.}
+    AuditEndpoint:
+      type: object
+      description: >-
+        Where the call came from. The caller's address is not recorded yet, so name is Platform for the platform's own calls and unknown otherwise.
+      required: [name]
+      properties:
+        name: {type: string}
+    AuditMetadata:
+      type: object
+      required: [version, product, uid]
+      properties:
+        version: {type: string, description: The OCSF schema version the event follows.}
+        product: {$ref: '#/components/schemas/AuditProduct'}
+        uid: {type: string, description: "Stable id of this event, unique within the trail."}
+        tenant_uid: {type: string, description: The organization id.}
+        sequence:
+          type: integer
+          description: Ordinal of a terminal command within its terminal. Absent otherwise.
+    AuditProduct:
+      type: object
+      required: [name, vendor_name]
+      properties:
+        name: {type: string, description: Always Sandbox Audit.}
+        vendor_name: {type: string, description: Always NeevCloud.}
+    AuditActor:
+      type: object
+      description: >-
+        Who made the call, as an OCSF actor. A console record from before actors were recorded names only its session, so its user is unknown.
+      required: [user]
+      properties:
+        user: {$ref: '#/components/schemas/AuditActorUser'}
+        session: {$ref: '#/components/schemas/AuditActorSession'}
+    AuditActorUser:
+      type: object
+      description: The principal that acted, as OCSF actor.user.
+      required: [type, type_id, uid]
+      properties:
+        type:
+          type: string
+          enum: [user, api_key, system, unknown]
+          x-enum-varnames: [AuditActorTypeUser, AuditActorTypeAPIKey, AuditActorTypeSystem, AuditActorTypeUnknown]
+          description: >-
+            A user in the console, an API key, the platform acting on its own, such as pairing a device, or unknown.
+        type_id:
+          type: integer
+          enum: [0, 1, 3, 99]
+          x-enum-varnames: [AuditActorTypeIDUnknown, AuditActorTypeIDUser, AuditActorTypeIDSystem, AuditActorTypeIDOther]
+          description: "OCSF user.type_id: 0 (Unknown), 1 (User), 3 (System), 99 (Other) for api_key."
+        uid:
+          type: string
+          description: >-
+            The user's id, the API key's id, a stable name for what the platform ran, such as device-pairing, or unknown.
+        name:
+          type: string
+          description: The user's or the API key's name when the call ran.
+        credential_uid:
+          type: string
+          description: The API key the call was made with. Absent for a user.
+    AuditActorSession:
+      type: object
+      description: The console session a user's call came from, as OCSF actor.session.
+      properties:
+        uid:
+          type: string
+          description: The session's id, the same for every call it made.
+    AuditStatusFilter:
+      type: string
+      enum: [success, failure]
+      x-enum-varnames: [AuditStatusFilterSuccess, AuditStatusFilterFailure]
+    AuditActorTypeFilterValue:
+      type: string
+      enum: [user, api_key, system]
+      x-enum-varnames: [AuditActorTypeFilterUser, AuditActorTypeFilterAPIKey, AuditActorTypeFilterSystem]
     AuditTrailResponse:
       type: object
-      required: [sandbox_id, from, to, retention_days, window_truncated, records]
+      required: [from, to, retention_days, window_truncated, data]
       properties:
-        sandbox_id:
-          type: string
-          format: uuid
-          description: >-
-            The sandbox the records came from. For an agent trail this is the sandbox backing the agent, not the agent id.
         from: {type: string, format: date-time}
         to: {type: string, format: date-time}
         retention_days:
@@ -2565,12 +2783,13 @@ components:
           type: boolean
           description: >-
             True when the requested window reaches further back than the available trail, so it begins later than asked.
+        data:
+          type: array
+          description: The events in this page, newest first.
+          items: {$ref: '#/components/schemas/AuditEvent'}
         next_cursor:
           type: string
-          description: Pass as `cursor` for the next page. Absent when the window is exhausted.
-        records:
-          type: array
-          items: {$ref: '#/components/schemas/AuditRecord'}
+          description: Pass as `cursor` for the next, older page. Absent when the window is exhausted.
     SandboxMetricsResponse:
       type: object
       required: [sandbox_id, from, to, step, series]

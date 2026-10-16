@@ -10,6 +10,17 @@
  *     npx tsx examples/agent-ports-audit.ts
  */
 import { Neev } from "@neevcloud/sdk";
+import type { AuditTrail } from "@neevcloud/sdk";
+
+// Audit events land a few seconds after the call, so poll until the first page has some.
+async function firstAuditPage(read: () => Promise<AuditTrail>): Promise<AuditTrail> {
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    const page = await read();
+    if (page.data.length > 0 || Date.now() >= deadline) return page;
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+}
 
 const neev = new Neev();
 
@@ -39,11 +50,12 @@ async function main(): Promise<void> {
     console.log(`preview URL: ${url}`);
     console.log(`exposed ports: ${(await agent.listPorts()).map((p) => p.port).join(", ")}`);
 
-    // One page of the audit trail. sandbox_id is the agent's backing sandbox.
-    const trail = await agent.audit({ limit: 20 });
-    console.log(`audit for sandbox ${trail.sandbox_id}:`);
-    for (const r of trail.records) {
-      console.log(" ", r.at, r.tool, r.command ?? r.target ?? "", r.outcome);
+    // One page of the audit trail.
+    const trail = await firstAuditPage(() => agent.audit({ limit: 20 }));
+    console.log("audit:");
+    for (const e of trail.data) {
+      const who = e.actor.user.name ?? e.actor.user.uid;
+      console.log(" ", new Date(e.time).toISOString(), e.api.operation, who, e.status);
     }
 
     // Hold the agent past its idle deadline while work is in progress.

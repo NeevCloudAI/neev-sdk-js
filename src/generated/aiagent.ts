@@ -53,7 +53,7 @@ export interface paths {
          * Update a sandbox in place
          * @description Updates mutable fields of a sandbox without restarting it. `resources` (cpu/memory) are resized
          *     in place on the running sandbox. Disk is not resizable in place.
-         *     Fields omitted from the body are left unchanged.
+         *     Fields omitted from the body are left unchanged. The code interpreter's memory is set when the sandbox is created: growing memory later does not give the interpreter more, and shrinking below what it uses is refused.
          */
         patch: operations["updateSandbox"];
         trace?: never;
@@ -374,8 +374,7 @@ export interface paths {
         /**
          * Read the command audit trail for a sandbox
          * @description What ran inside the sandbox — terminal commands, SSH, process and file
-         *     operations — newest first, with the credential each was made under and how
-         *     it ended.
+         *     operations — newest first, with who made each call and how it ended.
          *
          *     Only the program name is recorded, never its arguments, and input typed at
          *     a hidden password prompt is not captured at all. A trail shows that `psql`
@@ -428,7 +427,7 @@ export interface paths {
         /**
          * Get a sandbox template
          * @description Returns one platform-managed sandbox template by id (e.g.
-         *     `sb-ubuntu-26-04-minimal`). Use the template `name` at sandbox create.
+         *     `sb-ubuntu-26-04-dev`). Use the template `name` at sandbox create.
          */
         get: operations["getSandboxTemplate"];
         put?: never;
@@ -1072,6 +1071,14 @@ export interface components {
          * @enum {string}
          */
         SnapshotRestorability: "restorable" | "deprecating" | "unsupported";
+        /**
+         * @description Why the snapshot was taken. `manual`: requested through the API.
+         *     `memory_pressure`: taken automatically when the sandbox neared its memory
+         *     limit, before it could be killed for running out of memory. Only the latest
+         *     is kept per sandbox, for 48 hours.
+         * @enum {string}
+         */
+        SnapshotTrigger: "manual" | "memory_pressure";
         /** @description Metadata for a sandbox memory+filesystem snapshot. */
         Snapshot: {
             /**
@@ -1090,6 +1097,7 @@ export interface components {
             name?: string;
             status: components["schemas"]["SnapshotStatus"];
             snapshot_type: components["schemas"]["SnapshotType"];
+            trigger: components["schemas"]["SnapshotTrigger"];
             /** @description Region where the snapshot is stored. */
             source_region: string;
             /**
@@ -1172,13 +1180,12 @@ export interface components {
         /** @description Network egress configuration rules for the sandbox. */
         SandboxEgressConfig: {
             /**
-             * @description The egress mode. deny_all blocks all egress. allow_list restricts egress to the specified allowed destinations.
-             * @default deny_all
+             * @description The egress mode. deny_all blocks all egress. allow_list restricts egress to the specified allowed destinations. When omitted, it is allow_list if allow_internet is true or allow has rules, and deny_all otherwise. An explicit deny_all ignores and drops allow_internet and allow.
              * @enum {string}
              */
             mode?: "deny_all" | "allow_list";
             /**
-             * @description Escape hatch: if true, allows all outbound traffic (0.0.0.0/0 and ::/0). Applies only in allow_list mode; deny_all ignores it.
+             * @description Escape hatch: if true, allows all outbound traffic (0.0.0.0/0 and ::/0). Implies allow_list when mode is omitted; dropped when mode is deny_all.
              * @default false
              */
             allow_internet?: boolean;
@@ -1226,6 +1233,10 @@ export interface components {
             icon?: string | null;
             category: components["schemas"]["SandboxTemplateCategory"];
             status: components["schemas"]["SandboxTemplateStatus"];
+            /** @description True when sandboxes created from this template run the code interpreter: stateful kernels reached through the interpreter routes and tool. Size the sandbox for the interpreter at creation; its memory does not grow with a later resize. */
+            interpreter?: boolean;
+            /** @description Smallest memory size in GB a sandbox created from this template may have; null when the template sets no minimum. */
+            min_memory_gb?: number | null;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -1251,41 +1262,159 @@ export interface components {
             /** @description Token lifetime in seconds. */
             expires_in: number;
         };
-        AuditRecord: {
+        /** @description One call to the sandbox, as an OCSF 1.9.0 API Activity event (class_uid 6003). Program names are recorded without their arguments, and input typed at a hidden password prompt is never recorded. */
+        AuditEvent: {
             /**
-             * Format: date-time
-             * @description When the operation was recorded.
+             * @description OCSF class, API Activity.
+             * @enum {integer}
              */
-            at: string;
-            /** @description Stable id of this record, unique within the trail. */
-            id: string;
-            /** @description The operation, such as `pty_command`, `ssh`, `exec`, `process.start` or `fs.read`. */
-            tool: string;
-            /** @description The program that ran, without its arguments. Absent on operations that run no program, such as a file read. Reads `[redacted]` where the program name could not be established. A terminal command interrupted with Ctrl-C is prefixed `[Ctrl-C]`. */
-            command?: string;
-            /** @description What the operation acted on — the file path it read or wrote, or the process it named. A move carries both paths as `source -> destination`. Absent where the operation names nothing, and truncated with a trailing `...` if unusually long. */
-            target?: string;
-            /** @enum {string} */
-            outcome: "success" | "error";
+            class_uid: 6003;
+            /** @description Always API Activity. */
+            class_name: string;
+            /**
+             * @description OCSF category, Application Activity.
+             * @enum {integer}
+             */
+            category_uid: 6;
+            /** @description Always Application Activity. */
+            category_name: string;
+            /**
+             * @description 1 Create (a write, a started process, a terminal), 2 Read, 3 Update (a move), 4 Delete (a removed file, a killed process), 99 Other.
+             * @enum {integer}
+             */
+            activity_id: 1 | 2 | 3 | 4 | 99;
+            /** @description The name of activity_id, such as Create. */
+            activity_name: string;
+            /**
+             * Format: int64
+             * @description class_uid * 100 + activity_id, such as 600301.
+             */
+            type_uid: number;
+            /** @description Such as API Activity: Create. */
+            type_name: string;
+            /**
+             * Format: int64
+             * @description When the call was recorded, in milliseconds since the Unix epoch.
+             */
+            time: number;
+            /**
+             * Format: int64
+             * @description How long the call took, in milliseconds; for exec, how long the command ran. Absent on a terminal command, which has no measured run time.
+             */
+            duration?: number;
+            /**
+             * @description Always 1, Informational.
+             * @enum {integer}
+             */
+            severity_id: 1;
+            /** @description Always Informational. */
+            severity: string;
+            /**
+             * @description 1 Success or 2 Failure.
+             * @enum {integer}
+             */
+            status_id: 1 | 2;
+            /** @description Success or Failure. */
+            status: string;
             /** @description Why it ended that way: `ok`, `permission_denied`, `internal`. */
-            reason_code?: string;
-            /** @description Correlates the record to the request that caused it. */
-            request_id?: string;
-            /** @description The credential the operation was made under. It identifies a credential, not a person. */
-            caller_source?: string;
-            /** @description The terminal a `pty_command` belongs to. Absent otherwise. */
-            pty_id?: string;
-            /** @description Ordinal within that terminal. Absent outside a `pty_command`. */
-            seq?: number;
-            /** Format: int64 */
-            duration_ms?: number;
+            status_code?: string;
+            /** @description How a code-interpreter cell ended: `ok`, `error`, `deadline_exceeded`, `kernel_restarted`, `memory_exceeded`, `unavailable`, `invalid_response`, or `client_gone` when the caller disconnected first. */
+            status_detail?: string;
+            actor: components["schemas"]["AuditActor"];
+            api: components["schemas"]["AuditAPI"];
+            /** @description What the call touched: the sandbox, then any file or process it named, the program it ran, and the terminal it ran in. */
+            resources?: components["schemas"]["AuditResource"][];
+            cloud: components["schemas"]["AuditCloud"];
+            src_endpoint: components["schemas"]["AuditEndpoint"];
+            /** @description Threat intelligence about the call. Always empty. */
+            osint: Record<string, never>[];
+            metadata: components["schemas"]["AuditMetadata"];
         };
-        AuditTrailResponse: {
+        /** @description The call made to the sandbox, as OCSF api. */
+        AuditAPI: {
+            /** @description The call, such as `pty_command`, `ssh`, `exec`, `process.start`, `fs.read` or `interpreter.run`. */
+            operation: string;
+            request?: components["schemas"]["AuditAPIRequest"];
+        };
+        AuditAPIRequest: {
+            /** @description The request that caused the call, for correlation. */
+            uid: string;
+        };
+        /** @description Something the call touched, as OCSF resource_details. type is sandbox, file, process, channel (an SSH port forward or agent forward), terminal or interpreter_context (a code-interpreter context). */
+        AuditResource: {
+            /** @enum {string} */
+            type: "sandbox" | "file" | "process" | "channel" | "terminal" | "interpreter_context";
+            /** @description The sandbox, terminal or interpreter context id. */
+            uid?: string;
+            /** @description A file path (a move reads `source -> destination`), a program name without its arguments, or an SSH channel such as `direct-tcpip db.internal:5432`, `tcpip-forward 0.0.0.0:8080` or `auth-agent <socket>`. A program reads `[redacted]` where its name could not be established, and a terminal command interrupted with Ctrl-C is prefixed `[Ctrl-C]`. Truncated with a trailing `...` if unusually long. */
+            name?: string;
+        };
+        AuditCloud: {
+            /** @description Always NeevCloud. */
+            provider: string;
+            account?: components["schemas"]["AuditAccount"];
+            /** @description The project id. */
+            project_uid?: string;
+        };
+        AuditAccount: {
+            /** @description The organization id. */
+            uid: string;
+        };
+        /** @description Where the call came from. The caller's address is not recorded yet, so name is Platform for the platform's own calls and unknown otherwise. */
+        AuditEndpoint: {
+            name: string;
+        };
+        AuditMetadata: {
+            /** @description The OCSF schema version the event follows. */
+            version: string;
+            product: components["schemas"]["AuditProduct"];
+            /** @description Stable id of this event, unique within the trail. */
+            uid: string;
+            /** @description The organization id. */
+            tenant_uid?: string;
+            /** @description Ordinal of a terminal command within its terminal. Absent otherwise. */
+            sequence?: number;
+        };
+        AuditProduct: {
+            /** @description Always Sandbox Audit. */
+            name: string;
+            /** @description Always NeevCloud. */
+            vendor_name: string;
+        };
+        /** @description Who made the call, as an OCSF actor. A console record from before actors were recorded names only its session, so its user is unknown. */
+        AuditActor: {
+            user: components["schemas"]["AuditActorUser"];
+            session?: components["schemas"]["AuditActorSession"];
+        };
+        /** @description The principal that acted, as OCSF actor.user. */
+        AuditActorUser: {
             /**
-             * Format: uuid
-             * @description The sandbox the records came from. For an agent trail this is the sandbox backing the agent, not the agent id.
+             * @description A user in the console, an API key, the platform acting on its own, such as pairing a device, or unknown.
+             * @enum {string}
              */
-            sandbox_id: string;
+            type: "user" | "api_key" | "system" | "unknown";
+            /**
+             * @description OCSF user.type_id: 0 (Unknown), 1 (User), 3 (System), 99 (Other) for api_key.
+             * @enum {integer}
+             */
+            type_id: 0 | 1 | 3 | 99;
+            /** @description The user's id, the API key's id, a stable name for what the platform ran, such as device-pairing, or unknown. */
+            uid: string;
+            /** @description The user's or the API key's name when the call ran. */
+            name?: string;
+            /** @description The API key the call was made with. Absent for a user. */
+            credential_uid?: string;
+        };
+        /** @description The console session a user's call came from, as OCSF actor.session. */
+        AuditActorSession: {
+            /** @description The session's id, the same for every call it made. */
+            uid?: string;
+        };
+        /** @enum {string} */
+        AuditStatusFilter: "success" | "failure";
+        /** @enum {string} */
+        AuditActorTypeFilterValue: "user" | "api_key" | "system";
+        AuditTrailResponse: {
             /** Format: date-time */
             from: string;
             /** Format: date-time */
@@ -1294,9 +1423,10 @@ export interface components {
             retention_days: number;
             /** @description True when the requested window reaches further back than the available trail, so it begins later than asked. */
             window_truncated: boolean;
-            /** @description Pass as `cursor` for the next page. Absent when the window is exhausted. */
+            /** @description The events in this page, newest first. */
+            data: components["schemas"]["AuditEvent"][];
+            /** @description Pass as `cursor` for the next, older page. Absent when the window is exhausted. */
             next_cursor?: string;
-            records: components["schemas"]["AuditRecord"][];
         };
         SandboxMetricsResponse: {
             /** Format: uuid */
@@ -1654,6 +1784,16 @@ export interface components {
         AuditCursor: string;
         /** @description Records per page. Clamped server-side. */
         AuditLimit: number;
+        /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. */
+        AuditOperation: string;
+        /** @description Only calls that ended this way. */
+        AuditStatus: components["schemas"]["AuditStatusFilter"];
+        /** @description Only calls by this kind of principal (actor.user.type), one or several separated by commas. Records from before actors were recorded are not matched; use credential_uid for those. */
+        AuditActorTypeFilter: components["schemas"]["AuditActorTypeFilterValue"][];
+        /** @description Only calls by this principal (actor.user.uid), such as a user id or an API key id. Records from before actors were recorded are not matched; use credential_uid for those. */
+        AuditActorUID: string;
+        /** @description Only calls made with this API key (actor.user.credential_uid). */
+        AuditCredentialUID: string;
         AgentTemplateID: string;
     };
     requestBodies: never;
@@ -2349,7 +2489,7 @@ export interface operations {
             query?: {
                 /** @description Start of the window (RFC3339). Defaults to one hour before `to`. */
                 from?: string;
-                /** @description End of the window (RFC3339). Defaults to now. */
+                /** @description End of the window (RFC3339). Defaults to now, or for a paused sandbox with `from` also unset, to when it paused. */
                 to?: string;
                 /** @description Resolution (e.g. "60s", "5m"). Server clamps to a sane range. */
                 step?: string;
@@ -2394,6 +2534,16 @@ export interface operations {
                 cursor?: components["parameters"]["AuditCursor"];
                 /** @description Records per page. Clamped server-side. */
                 limit?: components["parameters"]["AuditLimit"];
+                /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. */
+                operation?: components["parameters"]["AuditOperation"];
+                /** @description Only calls that ended this way. */
+                status?: components["parameters"]["AuditStatus"];
+                /** @description Only calls by this kind of principal (actor.user.type), one or several separated by commas. Records from before actors were recorded are not matched; use credential_uid for those. */
+                actor_type?: components["parameters"]["AuditActorTypeFilter"];
+                /** @description Only calls by this principal (actor.user.uid), such as a user id or an API key id. Records from before actors were recorded are not matched; use credential_uid for those. */
+                actor_uid?: components["parameters"]["AuditActorUID"];
+                /** @description Only calls made with this API key (actor.user.credential_uid). */
+                credential_uid?: components["parameters"]["AuditCredentialUID"];
             };
             header?: never;
             path: {
@@ -3033,6 +3183,16 @@ export interface operations {
                 cursor?: components["parameters"]["AuditCursor"];
                 /** @description Records per page. Clamped server-side. */
                 limit?: components["parameters"]["AuditLimit"];
+                /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. */
+                operation?: components["parameters"]["AuditOperation"];
+                /** @description Only calls that ended this way. */
+                status?: components["parameters"]["AuditStatus"];
+                /** @description Only calls by this kind of principal (actor.user.type), one or several separated by commas. Records from before actors were recorded are not matched; use credential_uid for those. */
+                actor_type?: components["parameters"]["AuditActorTypeFilter"];
+                /** @description Only calls by this principal (actor.user.uid), such as a user id or an API key id. Records from before actors were recorded are not matched; use credential_uid for those. */
+                actor_uid?: components["parameters"]["AuditActorUID"];
+                /** @description Only calls made with this API key (actor.user.credential_uid). */
+                credential_uid?: components["parameters"]["AuditCredentialUID"];
             };
             header?: never;
             path: {
