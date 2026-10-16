@@ -14,6 +14,7 @@ import {
   NeevError,
   NotFoundError,
   RateLimitError,
+  apiErrorReasonCode,
 } from "./errors.js";
 import type { ProcessState } from "./processes.js";
 import type { Sandbox } from "./sandbox.js";
@@ -43,7 +44,11 @@ export type ToolName =
   | "rollback"
   | "start_process"
   | "read_process_output"
-  | "stop_process";
+  | "stop_process"
+  | "stat_path"
+  | "move_path"
+  | "delete_path"
+  | "list_processes";
 
 /** Model-facing description of each tool, identical across the NeevCloud SDKs. */
 export const DESCRIPTIONS: Readonly<Record<ToolName, string>> = Object.freeze({
@@ -59,7 +64,8 @@ export const DESCRIPTIONS: Readonly<Record<ToolName, string>> = Object.freeze({
   read_file:
     "Read a UTF-8 text file from the sandbox. " +
     "path is relative to /workspace, or absolute inside /workspace. " +
-    "Content over 10 KB is cut in the middle.",
+    "Without offset or length, content over 10 KB is cut in the middle. " +
+    "To read a large file in full, pass offset (bytes, default 0) and length (bytes, 1 to 10000) and keep reading from the returned next_offset until eof is true.",
   expose_port:
     "Make a server listening on this port in the sandbox reachable at a public HTTPS preview URL, and return it. " +
     "Anyone with the URL can open it without logging in.",
@@ -85,6 +91,40 @@ export const DESCRIPTIONS: Readonly<Record<ToolName, string>> = Object.freeze({
     "Stop a background process by sending it SIGTERM. " +
     "ok is false if it had already exited. " +
     "An exited process's status is kept for about 10 minutes.",
+  stat_path:
+    "Report whether a path exists in the sandbox and, when it does, its type (file, directory or symlink), size in bytes and modification time. " +
+    "path is relative to /workspace, or absolute inside /workspace. " +
+    "A missing path is exists: false, not an error.",
+  move_path:
+    "Move or rename a file or directory in the sandbox, creating the destination's parent directories. " +
+    "Both paths are relative to /workspace, or absolute inside /workspace. " +
+    "An existing file at the destination is replaced; an existing directory there is an error.",
+  delete_path:
+    "Delete a file or directory in the sandbox. " +
+    "A directory that is not empty is deleted only with recursive: true. " +
+    "A missing path is an error. " +
+    "Deletion cannot be undone, so take a checkpoint first if you have it and may need the files back.",
+  list_processes:
+    "List the background processes started in this sandbox, each with its process_id, command, state and exit_code once exited. " +
+    "Use it to find a process_id you no longer have. " +
+    "An exited process is listed for about 10 minutes.",
+});
+
+/** Short human-readable title of each tool, identical across the NeevCloud SDKs. */
+export const TITLES: Readonly<Record<ToolName, string>> = Object.freeze({
+  run_command: "Run a command",
+  write_file: "Write a file",
+  read_file: "Read a file",
+  expose_port: "Expose a port",
+  checkpoint: "Save a checkpoint",
+  rollback: "Roll back to a checkpoint",
+  start_process: "Start a background process",
+  read_process_output: "Read a process's output",
+  stop_process: "Stop a process",
+  stat_path: "Check a path",
+  move_path: "Move or rename a path",
+  delete_path: "Delete a file or directory",
+  list_processes: "List processes",
 });
 
 /** A JSON Schema object, as found in {@link PARAMETERS}. */
@@ -139,6 +179,17 @@ export const PARAMETERS: Readonly<Record<ToolName, ToolJsonSchema>> = deepFreeze
       path: {
         type: "string",
         description: "File path, relative to /workspace or absolute inside /workspace.",
+      },
+      offset: {
+        type: "integer",
+        description: "Byte to start reading at. Default 0.",
+        minimum: 0,
+      },
+      length: {
+        type: "integer",
+        description: "Bytes to read, 1 to 10000. Default 10000 when offset is given.",
+        minimum: 1,
+        maximum: 10000,
       },
     },
     required: ["path"],
@@ -231,6 +282,53 @@ export const PARAMETERS: Readonly<Record<ToolName, ToolJsonSchema>> = deepFreeze
     required: ["process_id"],
     additionalProperties: false,
   },
+  stat_path: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path, relative to /workspace or absolute inside /workspace.",
+      },
+    },
+    required: ["path"],
+    additionalProperties: false,
+  },
+  move_path: {
+    type: "object",
+    properties: {
+      source: {
+        type: "string",
+        description: "Path to move, relative to /workspace or absolute inside /workspace.",
+      },
+      destination: {
+        type: "string",
+        description: "New path, relative to /workspace or absolute inside /workspace.",
+      },
+    },
+    required: ["source", "destination"],
+    additionalProperties: false,
+  },
+  delete_path: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path to delete, relative to /workspace or absolute inside /workspace.",
+      },
+      recursive: {
+        type: "boolean",
+        description: "Delete a non-empty directory and everything in it. Default false.",
+      },
+    },
+    required: ["path"],
+    additionalProperties: false,
+  },
+  list_processes: {
+    type: "object",
+    properties: {},
+    required: [],
+    additionalProperties: false,
+  },
 });
 
 /** Result of a tool call the model can recover from with a different next call. */
@@ -266,15 +364,24 @@ export interface WriteFileToolResult {
   bytes_written: number;
 }
 
-/** Arguments of read_file. */
+/** Arguments of read_file; offset or length makes it a paged read. */
 export interface ReadFileToolArgs {
   /** Relative to /workspace, or absolute inside it. */
   path: string;
+  /** Byte to start reading at; default 0. Numeric strings are accepted. */
+  offset?: number | string | null;
+  /** Bytes to read; clamped to 1–10000, default 10000. Numeric strings are accepted. */
+  length?: number | string | null;
 }
 
-/** Result of read_file; content over 10 KB is cut in the middle. */
+/**
+ * Result of read_file. Unpaged, content over 10 KB is cut in the middle; paged,
+ * next_offset is where the next read starts and eof is true once nothing follows.
+ */
 export interface ReadFileToolResult {
   content: string;
+  next_offset?: number;
+  eof?: boolean;
 }
 
 /** Arguments of expose_port. */
@@ -353,6 +460,64 @@ export interface StopProcessToolResult {
   ok: boolean;
 }
 
+/** Arguments of stat_path. */
+export interface StatPathToolArgs {
+  /** Relative to /workspace, or absolute inside it. */
+  path: string;
+}
+
+/** Result of stat_path; a missing path is exists: false. */
+export type StatPathToolResult =
+  | { exists: false }
+  | {
+      exists: true;
+      type: "file" | "directory" | "symlink";
+      size: number;
+      modified_time: string;
+    };
+
+/** Arguments of move_path. */
+export interface MovePathToolArgs {
+  /** Relative to /workspace, or absolute inside it. */
+  source: string;
+  /** Relative to /workspace, or absolute inside it. */
+  destination: string;
+}
+
+/** Result of move_path. */
+export interface MovePathToolResult {
+  ok: true;
+}
+
+/** Arguments of delete_path. */
+export interface DeletePathToolArgs {
+  /** Relative to /workspace, or absolute inside it. */
+  path: string;
+  /** Delete a non-empty directory and everything in it; default false. */
+  recursive?: boolean | null;
+}
+
+/** Result of delete_path. */
+export interface DeletePathToolResult {
+  ok: true;
+}
+
+/** Arguments of list_processes, which takes none. */
+export type ListProcessesToolArgs = Record<string, never>;
+
+/** One process in list_processes; exit_code is present only once it has exited. */
+export interface ListedProcess {
+  process_id: string;
+  command: string;
+  state: ProcessState;
+  exit_code?: number | null;
+}
+
+/** Result of list_processes. */
+export interface ListProcessesToolResult {
+  processes: ListedProcess[];
+}
+
 /** Any result a tool can resolve to. */
 export type ToolResult =
   | ToolErrorResult
@@ -364,7 +529,70 @@ export type ToolResult =
   | RollbackToolResult
   | StartProcessToolResult
   | ReadProcessOutputToolResult
-  | StopProcessToolResult;
+  | StopProcessToolResult
+  | StatPathToolResult
+  | MovePathToolResult
+  | DeletePathToolResult
+  | ListProcessesToolResult;
+
+/** One enabled tool with everything a framework needs to declare it, and its call bound to it. */
+export interface ToolSpec {
+  name: ToolName;
+  title: string;
+  description: string;
+  /** The frozen PARAMETERS entry itself; copy it before handing it to a framework that mutates schemas. */
+  parameters: ToolJsonSchema;
+  call(args: unknown): Promise<ToolResult>;
+}
+
+/** The error a FatalGuard answers the model with once a call has thrown, identical across the NeevCloud SDKs. */
+export const FATAL_ERROR = "The sandbox call failed and the run is stopping.";
+
+/** The result a FatalGuard answers with once a call has thrown; the same frozen object every time. */
+export const FATAL_RESULT: Readonly<ToolErrorResult> = Object.freeze({ error: FATAL_ERROR });
+
+/** Stops a run on a call that throws (auth, rate limit, server, network) instead of letting the model retry it; one per run. */
+export class FatalGuard {
+  private readonly controller = new AbortController();
+  // Boxed so that even a thrown undefined counts as a failure.
+  private first: { error: unknown } | undefined;
+
+  /** Aborted, with the first error as its reason, once a call has thrown. */
+  get signal(): AbortSignal {
+    return this.controller.signal;
+  }
+
+  /** True once a call has thrown. */
+  get failed(): boolean {
+    return this.first !== undefined;
+  }
+
+  /** The first error a call threw, if any. */
+  get error(): unknown {
+    return this.first?.error;
+  }
+
+  /** Runs the tool; a throw is recorded (first one wins) and answered with FATAL_RESULT. */
+  async call(spec: Pick<ToolSpec, "call">, args: unknown): Promise<ToolResult> {
+    // A model that keeps calling after a fatal failure must not reach the sandbox again.
+    if (this.first) return FATAL_RESULT;
+    try {
+      return await spec.call(args);
+    } catch (err) {
+      if (!this.first) {
+        this.first = { error: err };
+        this.controller.abort(err);
+      }
+      // The error's text can carry request URLs with org and project ids, so it never reaches the model.
+      return FATAL_RESULT;
+    }
+  }
+
+  /** Throws the first recorded error, if any. */
+  raiseIfFailed(): void {
+    if (this.first) throw this.first.error;
+  }
+}
 
 /** Options of SandboxTools; every opt-in tool is off unless enabled. */
 interface SandboxToolsOptions {
@@ -372,7 +600,7 @@ interface SandboxToolsOptions {
   allowPreview?: boolean;
   /** Enable checkpoint and rollback. */
   allowRollback?: boolean;
-  /** Enable start_process, read_process_output and stop_process. */
+  /** Enable start_process, read_process_output, stop_process and list_processes. */
   allowProcesses?: boolean;
 }
 
@@ -387,8 +615,8 @@ type ToolSandbox = {
   getUrl: (...args: Parameters<Sandbox["getUrl"]>) => Promise<string>;
   snapshot: (...args: Parameters<Sandbox["snapshot"]>) => Promise<{ id: string }>;
   rollback: (snapshotId: string) => Promise<unknown>;
-  files: Pick<Sandbox["files"], "write" | "read">;
-  processes: Pick<Sandbox["processes"], "start" | "logs" | "get" | "kill">;
+  files: Pick<Sandbox["files"], "write" | "read" | "stat" | "move" | "remove">;
+  processes: Pick<Sandbox["processes"], "start" | "logs" | "get" | "kill" | "list">;
 };
 
 // Raised inside a tool when the model's arguments are missing or malformed.
@@ -455,8 +683,8 @@ function optionalString(args: Record<string, unknown>, key: string): string | un
 // order: an object; no argument the schema does not name (own keys only, so
 // "constructor" or "__proto__" is unexpected); every required argument present;
 // then, in schema order, a string where one is due and null only for optional
-// arguments. Numbers are checked when required, or for every numeric argument
-// when strict (as call() does); otherwise an optional number that is not one
+// arguments. Numbers and booleans are checked when required, or for every one
+// when strict (as call() does); otherwise an optional one that is not one
 // takes its default.
 function asRecord(name: ToolName, args: unknown, strict = false): Record<string, unknown> {
   const value = args ?? {};
@@ -484,6 +712,9 @@ function asRecord(name: ToolName, args: unknown, strict = false): Record<string,
     if (v === undefined || (v === null && !required)) continue;
     if (prop.type === "string") {
       if (typeof v !== "string") throw new InvalidArguments(`${field} must be string`);
+    } else if (prop.type === "boolean") {
+      if ((strict || required) && typeof v !== "boolean")
+        throw new InvalidArguments(`${field} must be boolean`);
     } else if (strict || required) {
       const n = toNumber(v);
       if (n === undefined || (prop.type === "integer" && !Number.isInteger(n))) {
@@ -492,6 +723,20 @@ function asRecord(name: ToolName, args: unknown, strict = false): Record<string,
     }
   }
   return record;
+}
+
+// True for a UTF-8 continuation byte (10xxxxxx).
+function isContinuation(byte = 0): boolean {
+  return (byte & 0xc0) === 0x80;
+}
+
+// Bytes in the UTF-8 sequence a lead byte starts; 1 for an invalid lead, so decoding rejects it.
+function sequenceLength(lead = 0): number {
+  if (lead >= 0xf8) return 1;
+  if (lead >= 0xf0) return 4;
+  if (lead >= 0xe0) return 3;
+  if (lead >= 0xc0) return 2;
+  return 1;
 }
 
 // Like asRecord, but never throws; for reading a default before validation runs.
@@ -589,14 +834,39 @@ export class SandboxTools {
     this.startProcess = this.startProcess.bind(this);
     this.readProcessOutput = this.readProcessOutput.bind(this);
     this.stopProcess = this.stopProcess.bind(this);
+    this.statPath = this.statPath.bind(this);
+    this.movePath = this.movePath.bind(this);
+    this.deletePath = this.deletePath.bind(this);
+    this.listProcesses = this.listProcesses.bind(this);
+    this.specs = this.specs.bind(this);
+  }
+
+  /** Returns a ToolSpec per enabled tool, in names() order. */
+  specs(): ToolSpec[] {
+    return this.names().map((name) => ({
+      name,
+      title: TITLES[name],
+      description: DESCRIPTIONS[name],
+      parameters: PARAMETERS[name],
+      call: (args: unknown) => this.call(name, args),
+    }));
   }
 
   /** Returns the enabled tools to declare to the model, in contract order. */
   names(): ToolName[] {
-    const names: ToolName[] = ["run_command", "write_file", "read_file"];
+    const names: ToolName[] = [
+      "run_command",
+      "write_file",
+      "read_file",
+      "stat_path",
+      "move_path",
+      "delete_path",
+    ];
     if (this.allowPreview) names.push("expose_port");
     if (this.allowRollback) names.push("checkpoint", "rollback");
-    if (this.allowProcesses) names.push("start_process", "read_process_output", "stop_process");
+    if (this.allowProcesses) {
+      names.push("start_process", "read_process_output", "stop_process", "list_processes");
+    }
     return names;
   }
 
@@ -640,6 +910,14 @@ export class SandboxTools {
         return this.readProcessOutput(a);
       case "stop_process":
         return this.stopProcess(a);
+      case "stat_path":
+        return this.statPath(a);
+      case "move_path":
+        return this.movePath(a);
+      case "delete_path":
+        return this.deletePath(a);
+      case "list_processes":
+        return this.listProcesses(a);
     }
   }
 
@@ -682,10 +960,16 @@ export class SandboxTools {
     });
   }
 
-  /** Reads a UTF-8 text file, cut in the middle past 10 KB; a file that is not UTF-8 is an error result. */
+  /**
+   * Reads a UTF-8 text file, cut in the middle past 10 KB; a file that is not
+   * UTF-8 is an error result. offset or length reads one page of up to 10000
+   * bytes instead, trimmed to whole characters.
+   */
   async readFile(args: ReadFileToolArgs): Promise<ReadFileToolResult | ToolErrorResult> {
     return recover("read_file", async () => {
-      const path = requireString(asRecord("read_file", args), "path");
+      const a = asRecord("read_file", args);
+      const path = requireString(a, "path");
+      if (a.offset != null || a.length != null) return this.readPage(path, a.offset, a.length);
       const bytes = await this.sandbox.files.read(path);
       let text: string;
       try {
@@ -695,6 +979,42 @@ export class SandboxTools {
       }
       return { content: truncate(text) };
     });
+  }
+
+  // Reads one page of a file, trimmed to whole characters, without a second call to learn eof.
+  private async readPage(
+    path: string,
+    rawOffset: unknown,
+    rawLength: unknown,
+  ): Promise<ReadFileToolResult | ToolErrorResult> {
+    const offset = Math.floor(Math.max(toNumber(rawOffset) ?? 0, 0));
+    const length = Math.floor(clamp(rawLength, MAX_OUTPUT_BYTES, 1, MAX_OUTPUT_BYTES));
+    // 7 spare bytes: 3 for a leading skip, 3 to finish a character, 1 to see eof.
+    const bytes = await this.sandbox.files.read(path, { offset, length: length + 7 });
+    // An offset the model chose may land inside a character, which is at most 3 bytes in.
+    let start = 0;
+    while (start < 3 && start < bytes.length && isContinuation(bytes[start])) start++;
+    if (start < bytes.length && isContinuation(bytes[start])) return { error: "not UTF-8 text" };
+    let end = Math.max(Math.min(bytes.length, length), start);
+    // Back off a character the window cuts; one cut by the real end of file stays and fails decoding.
+    if (bytes.length > end) {
+      let lead = end - 1;
+      while (lead >= start && isContinuation(bytes[lead])) lead--;
+      if (lead >= start && lead + sequenceLength(bytes[lead]) > end) end = lead;
+    }
+    // A window too short for one whole character takes the next one, so paging never stalls.
+    if (end <= start && start < bytes.length) {
+      end = Math.min(start + sequenceLength(bytes[start]), bytes.length);
+    }
+    let content: string;
+    try {
+      content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(
+        bytes.subarray(start, end),
+      );
+    } catch {
+      return { error: "not UTF-8 text" };
+    }
+    return { content, next_offset: offset + end, eof: bytes.length <= end };
   }
 
   /** Exposes a port and returns its preview URL once it is routable. */
@@ -814,6 +1134,70 @@ export class SandboxTools {
         requireString(asRecord("stop_process", args), "process_id"),
       ),
     }));
+  }
+
+  /** Reports whether a path exists and, when it does, its type, size and modification time. */
+  async statPath(args: StatPathToolArgs): Promise<StatPathToolResult | ToolErrorResult> {
+    return recover("stat_path", async () => {
+      const path = requireString(asRecord("stat_path", args), "path");
+      try {
+        const entry = await this.sandbox.files.stat(path);
+        return {
+          exists: true as const,
+          type: entry.type,
+          size: entry.size,
+          modified_time: entry.modifiedTime,
+        };
+      } catch (err) {
+        // Only the sandbox's own not_found means a missing path; any other 404 is an error.
+        if (err instanceof NotFoundError && apiErrorReasonCode(err) === "not_found") {
+          return { exists: false as const };
+        }
+        throw err;
+      }
+    });
+  }
+
+  /** Moves or renames a file or directory. */
+  async movePath(args: MovePathToolArgs): Promise<MovePathToolResult | ToolErrorResult> {
+    return recover("move_path", async () => {
+      const a = asRecord("move_path", args);
+      await this.sandbox.files.move(requireString(a, "source"), requireString(a, "destination"));
+      return { ok: true as const };
+    });
+  }
+
+  /** Deletes a file or directory; a non-empty directory needs recursive: true. */
+  async deletePath(args: DeletePathToolArgs): Promise<DeletePathToolResult | ToolErrorResult> {
+    return recover("delete_path", async () => {
+      const a = asRecord("delete_path", args);
+      // call() has rejected a non-boolean; on a direct call it takes the default.
+      const recursive = typeof a.recursive === "boolean" ? a.recursive : undefined;
+      await this.sandbox.files.remove(requireString(a, "path"), { recursive });
+      return { ok: true as const };
+    });
+  }
+
+  /** Lists the sandbox's background processes, with each command as start_process was given it. */
+  async listProcesses(
+    args: ListProcessesToolArgs = {},
+  ): Promise<ListProcessesToolResult | ToolErrorResult> {
+    if (!this.allowProcesses) return disabled("list_processes");
+    return recover("list_processes", async () => {
+      asRecord("list_processes", args);
+      const processes = (await this.sandbox.processes.list()).map((p) => {
+        // start_process runs sh -lc <command>; show the model the command it passed.
+        const argv = p.name === "sh" && p.args[0] === "-lc" ? p.args.slice(1) : [p.name, ...p.args];
+        const listed: ListedProcess = {
+          process_id: p.processId,
+          command: argv.join(" "),
+          state: p.state,
+        };
+        if (p.state === "exited") listed.exit_code = p.exitCode;
+        return listed;
+      });
+      return { processes };
+    });
   }
 
   // Blocks up to waitS seconds for a process to exit and returns its exit code,
