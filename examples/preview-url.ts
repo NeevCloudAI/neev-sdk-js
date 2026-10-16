@@ -28,16 +28,16 @@ async function main(): Promise<void> {
   const neev = new Neev();
   log("creating sandbox…");
   const sandbox = await neev.sandboxes.create({
-    sandbox_template_id: "sb-ubuntu-24-04-minimal",
+    sandbox_template_id: "sb-ubuntu-26-04-dev",
   });
 
   try {
     await sandbox.waitUntilReady({ timeoutMs: 120_000 });
     log("ready");
 
-    // Write a page and serve the workspace on port 3000 (busybox ships with httpd).
+    // Write a page and serve the workspace on port 3000.
     await sandbox.files.write("index.html", "<h1>hello from the sandbox</h1>\n");
-    await sandbox.processes.start(["busybox", "httpd", "-f", "-p", "3000"]);
+    await sandbox.processes.start(["python3", "-m", "http.server", "3000"]);
     log("server listening on :3000");
 
     // Expose the port and wait until its URL is routable.

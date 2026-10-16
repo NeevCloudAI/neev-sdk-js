@@ -14,7 +14,7 @@ import { Neev, type Sandbox } from "@neevcloud/sdk";
 
 const neev = new Neev();
 
-const TEMPLATE = "sb-ubuntu-26-04-minimal";
+const TEMPLATE = "sb-ubuntu-26-04-dev";
 // Split the range [1, TOTAL] into SHARDS contiguous slices, one per sandbox.
 const TOTAL = 3000;
 const SHARDS = 3;
@@ -24,8 +24,7 @@ function log(message: string): void {
   console.error(`[fanout] ${message}`);
 }
 
-// Sums the inclusive integer range [from, to] inside one sandbox using POSIX sh
-// arithmetic (no dependency on bc/awk, so it runs on the minimal template).
+// Sums the inclusive integer range [from, to] inside one sandbox with shell arithmetic.
 async function sumRange(sandbox: Sandbox, from: number, to: number): Promise<number> {
   const script = `s=0; i=${from}; while [ $i -le ${to} ]; do s=$((s+i)); i=$((i+1)); done; echo $s`;
   const result = await sandbox.exec(["sh", "-c", script]);

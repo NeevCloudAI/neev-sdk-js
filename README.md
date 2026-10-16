@@ -10,7 +10,7 @@ One package, one auth model, one client — adopt new capabilities as they ship.
 **Available today**
 
 - **`neev.sandboxes`** — full agent-sandbox lifecycle: create (catalogue template or BYOI image), list, get (by id or name), update (in-place resize + egress, or an in-place allow-list edit), pause, resume, keepalive, timeout windows, delete, live metrics, an audit trail of what ran, preview URLs for ports, plus snapshots, rollback, and fork. Inside a running sandbox: `files` (including resumable chunked uploads and local-disk `uploadFile` / `downloadFile`), `exec`, a `processes` supervisor for long-running, detached processes, `pty` for interactive terminal sessions, and `ssh`. Sandboxes are strongly isolated compute environments for AI agents.
-- **`neev.templates`** — the platform sandbox-template catalogue (list, get). A template id (e.g. `sb-ubuntu-26-04-minimal`) is optional when creating a sandbox; omit it to use the platform's default template.
+- **`neev.templates`** — the platform sandbox-template catalogue (list, get). A template id (e.g. `sb-ubuntu-26-04-dev`) is optional when creating a sandbox; omit it to use the platform's default template.
 - **`neev.agents`** — agent lifecycle: create from a catalogue template, list, get (by id or name), update (in-place egress / cpu / memory / idle window), pause, resume, keepalive, rollback, preview URLs, audit trail, delete. Each agent runs on its own backing sandbox, reachable from the handle via `agent.sandbox()`.
 - **`neev.agentTemplates`** — the platform agent-template catalogue (list, get). A template name (e.g. `claude-code`) is passed as `agent_template` when creating an agent.
 
@@ -116,14 +116,17 @@ const fork = await neev.sandboxes.fork(id, "my-fork"); // fork the current live 
 ```ts
 // Create directly from a known template id.
 const sandbox = await neev.sandboxes.create({
-  sandbox_template_id: "sb-ubuntu-26-04-minimal",
+  sandbox_template_id: "sb-ubuntu-26-04-dev",
 });
 
 // Or discover what's available first.
 const { items } = await neev.templates.list();
-const template = await neev.templates.get("sb-ubuntu-26-04-minimal"); // inspect one
+const template = await neev.templates.get("sb-ubuntu-26-04-dev"); // inspect one
 template.icon; // display icon (e.g. an SVG document) or null
+template.min_memory_gb; // smallest memory a sandbox from it may have, or null
 ```
+
+The catalogue changes over time, so discover ids with `templates.list()` rather than hard-coding them. A retired template drops out of the list and can't be created from; sandboxes already built from it keep running. `sb-ubuntu-26-04-dev` is a general-purpose image with `bash`, `python3` and `node`, and `sb-ubuntu-26-04-docker` runs its own Docker daemon (see [`examples/docker.ts`](./examples/docker.ts)).
 
 ### Custom images (BYOI)
 
@@ -407,7 +410,7 @@ Run a server inside the sandbox and get a public, credential-free preview URL fo
 
 ```ts
 // Start a web server on port 3000, then get its preview URL.
-await sandbox.processes.start(["busybox", "httpd", "-f", "-p", "3000"]);
+await sandbox.processes.start(["python3", "-m", "http.server", "3000"]);
 const url = await sandbox.getUrl({ port: 3000 });
 
 // Pass { waitUntilReady: false } to skip the readiness wait, and tune it with
