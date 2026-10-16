@@ -1,0 +1,15 @@
+{
+  "run_command": "Run a command",
+  "write_file": "Write a file",
+  "read_file": "Read a file",
+  "expose_port": "Expose a port",
+  "checkpoint": "Save a checkpoint",
+  "rollback": "Roll back to a checkpoint",
+  "start_process": "Start a background process",
+  "read_process_output": "Read a process's output",
+  "stop_process": "Stop a process",
+  "stat_path": "Check a path",
+  "move_path": "Move or rename a path",
+  "delete_path": "Delete a file or directory",
+  "list_processes": "List processes"
+}

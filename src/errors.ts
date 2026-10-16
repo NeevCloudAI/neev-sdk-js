@@ -74,6 +74,14 @@ export function apiErrorBodyMessage(err: APIError): string | undefined {
   return bodyMessages.get(err);
 }
 
+// The reason_code an APIError's body carried, if any; read via apiErrorReasonCode.
+const reasonCodes = new WeakMap<APIError, string>();
+
+// Returns the reason_code the error body carried, which `code` cannot tell apart from an API `code`.
+export function apiErrorReasonCode(err: APIError): string | undefined {
+  return reasonCodes.get(err);
+}
+
 // Raised for any non-2xx HTTP response. Subclasses pin specific status codes.
 export class APIError extends NeevError {
   // HTTP status code of the response.
@@ -102,6 +110,8 @@ export class APIError extends NeevError {
     this.details = body?.details;
     this.requestId = requestId;
     bodyMessages.set(this, firstText(body?.message, body?.error, body?.details));
+    const reasonCode = (raw as { reason_code?: unknown } | undefined)?.reason_code;
+    if (typeof reasonCode === "string") reasonCodes.set(this, reasonCode);
   }
 }
 

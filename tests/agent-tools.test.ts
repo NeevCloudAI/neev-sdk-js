@@ -1,6 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { DESCRIPTIONS, PARAMETERS, SandboxTools, type ToolName } from "../src/agent-tools.js";
+import {
+  DESCRIPTIONS,
+  FATAL_ERROR,
+  FATAL_RESULT,
+  FatalGuard,
+  PARAMETERS,
+  SandboxTools,
+  TITLES,
+  type ToolName,
+} from "../src/agent-tools.js";
 import {
   APIConnectionError,
   AuthenticationError,
@@ -15,7 +24,12 @@ import {
   errorFromStatus,
 } from "../src/errors.js";
 import { APIError, Neev } from "../src/index.js";
-import type { ProcessLogsPage, ProcessStatus, ProcessStatusOptions } from "../src/processes.js";
+import type {
+  ProcessInfo,
+  ProcessLogsPage,
+  ProcessStatus,
+  ProcessStatusOptions,
+} from "../src/processes.js";
 import type { Sandbox } from "../src/sandbox.js";
 import { errorText, shortError } from "../src/tool-text.js";
 import { json, sandboxData, snapshotData } from "./helpers.js";
@@ -45,6 +59,7 @@ function fakeSandbox({
     calls: [] as unknown[][],
     fail: null as Error | null,
     page: { entries: [], cursor: 0, dropped: false, state: "running" } as ProcessLogsPage,
+    processes: [] as ProcessInfo[],
     // What processes.get answers, by call: a status, an error, or a wait that ends
     // only when the caller's signal aborts.
     get: (_options: ProcessStatusOptions): Promise<ProcessStatus> =>
@@ -62,10 +77,50 @@ function fakeSandbox({
         workspace[path] = new TextEncoder().encode(content);
         return { bytesWritten: workspace[path].length };
       },
-      async read(path: string) {
+      async read(path: string, options?: { offset?: number; length?: number }) {
         const content = workspace[path];
         if (content === undefined) throw apiError(NotFoundError, `${path}: no such file`);
-        return content;
+        if (!options) return content;
+        state.calls.push(["files.read", path, options]);
+        const start = options.offset ?? 0;
+        return content.slice(start, start + (options.length ?? content.length));
+      },
+      // A path is a directory when some file lives under it.
+      async stat(path: string) {
+        state.calls.push(["files.stat", path]);
+        if (state.fail) throw state.fail;
+        const file = workspace[path];
+        if (file) return { type: "file", size: file.length, modifiedTime: "2026-10-14T00:00:00Z" };
+        if (Object.keys(workspace).some((k) => k.startsWith(`${path}/`))) {
+          return { type: "directory", size: 4096, modifiedTime: "2026-10-13T00:00:00Z" };
+        }
+        throw errorFromSandboxBody(
+          404,
+          JSON.stringify({
+            reason_code: "not_found",
+            message: `${path}: no such file or directory`,
+          }),
+          undefined,
+        );
+      },
+      async move(source: string, destination: string) {
+        state.calls.push(["files.move", source, destination]);
+        const content = workspace[source];
+        if (content === undefined) throw apiError(NotFoundError, `${source}: no such file`);
+        delete workspace[source];
+        workspace[destination] = content;
+        return { path: destination };
+      },
+      async remove(path: string, options: { recursive?: boolean }) {
+        state.calls.push(["files.remove", path, options]);
+        const under = Object.keys(workspace).filter((k) => k.startsWith(`${path}/`));
+        if (workspace[path] === undefined && under.length === 0) {
+          throw apiError(NotFoundError, `${path}: no such file or directory`);
+        }
+        if (under.length > 0 && !options.recursive) {
+          throw apiError(BadRequestError, `${path}: directory not empty`);
+        }
+        for (const k of [path, ...under]) delete workspace[k];
       },
     },
     async getUrl({ port }: { port: number }) {
@@ -103,6 +158,11 @@ function fakeSandbox({
         if (processId !== "proc-1") throw apiError(NotFoundError, "process not found");
         return true;
       },
+      async list() {
+        state.calls.push(["processes.list"]);
+        if (state.fail) throw state.fail;
+        return state.processes;
+      },
     },
   };
   return { state, workspace, sandbox: sandbox as unknown as Sandbox };
@@ -123,12 +183,16 @@ describe("agent-tools", () => {
     it("covers every tool", () => {
       expect(Object.keys(DESCRIPTIONS).sort()).toEqual([
         "checkpoint",
+        "delete_path",
         "expose_port",
+        "list_processes",
+        "move_path",
         "read_file",
         "read_process_output",
         "rollback",
         "run_command",
         "start_process",
+        "stat_path",
         "stop_process",
         "write_file",
       ]);
@@ -143,13 +207,36 @@ describe("agent-tools", () => {
     });
   });
 
+  describe("TITLES", () => {
+    it("covers the same tools as DESCRIPTIONS, in order", () => {
+      expect(Object.keys(TITLES)).toEqual(Object.keys(DESCRIPTIONS));
+    });
+
+    it("matches the shared fixture byte for byte", () => {
+      expect(JSON.stringify(TITLES)).toBe(JSON.stringify(fixture("agent_tool_titles")));
+    });
+
+    it("cannot be changed at runtime", () => {
+      expect(Object.isFrozen(TITLES)).toBe(true);
+      expect(() => {
+        (TITLES as Record<string, string>).run_command = "x";
+      }).toThrow(TypeError);
+    });
+  });
+
   describe("names", () => {
-    it("defaults to the three safe tools", () => {
-      expect(new SandboxTools(fakeSandbox().sandbox).names()).toEqual([
-        "run_command",
-        "write_file",
-        "read_file",
-      ]);
+    const safe = [
+      "run_command",
+      "write_file",
+      "read_file",
+      "stat_path",
+      "move_path",
+      "delete_path",
+    ];
+    const processes = ["start_process", "read_process_output", "stop_process", "list_processes"];
+
+    it("defaults to the safe tools", () => {
+      expect(new SandboxTools(fakeSandbox().sandbox).names()).toEqual(safe);
     });
 
     it("includes opt-in tools only when enabled", () => {
@@ -162,13 +249,25 @@ describe("agent-tools", () => {
         "run_command",
         "write_file",
         "read_file",
+        "stat_path",
+        "move_path",
+        "delete_path",
         "expose_port",
         "checkpoint",
         "rollback",
         "start_process",
         "read_process_output",
         "stop_process",
+        "list_processes",
       ]);
+    });
+
+    it.each([
+      [{ allowPreview: true }, [...safe, "expose_port"]],
+      [{ allowRollback: true }, [...safe, "checkpoint", "rollback"]],
+      [{ allowProcesses: true }, [...safe, ...processes]],
+    ])("adds only the tools %j enables", (options, want) => {
+      expect(new SandboxTools(fakeSandbox().sandbox, options).names()).toEqual(want);
     });
   });
 
@@ -381,6 +480,9 @@ describe("agent-tools", () => {
       });
       expect(await tools.stopProcess({ process_id: "proc-1" })).toEqual({
         error: "stop_process is not enabled for this agent",
+      });
+      expect(await tools.listProcesses()).toEqual({
+        error: "list_processes is not enabled for this agent",
       });
       expect(state.calls).toEqual([]);
     });
@@ -714,6 +816,10 @@ describe("agent-tools", () => {
       start_process: { command: "sleep 1" },
       read_process_output: { process_id: "proc-1" },
       stop_process: { process_id: "proc-1" },
+      stat_path: { path: "a.txt" },
+      move_path: { source: "a.txt", destination: "b.txt" },
+      delete_path: { path: "b.txt" },
+      list_processes: {},
     };
 
     it("runs every enabled tool by its contract name", async () => {
@@ -774,6 +880,16 @@ describe("agent-tools", () => {
       ["expose_port", { port: Number.POSITIVE_INFINITY }, "port must be integer"],
       ["expose_port", { port: "1e400" }, "port must be integer"],
       ["stop_process", undefined, 'missing a required argument: "process_id"'],
+      ["stat_path", {}, 'missing a required argument: "path"'],
+      ["move_path", { source: "a.txt" }, 'missing a required argument: "destination"'],
+      ["move_path", { source: "a.txt", destination: 2 }, "destination must be string"],
+      ["delete_path", { path: "d", recursive: "true" }, "recursive must be boolean"],
+      ["delete_path", { path: "d", recursive: 1 }, "recursive must be boolean"],
+      ["delete_path", { path: "d", recursive: [] }, "recursive must be boolean"],
+      ["list_processes", { all: true }, 'got an unexpected keyword argument "all"'],
+      ["read_file", { path: "a.txt", offset: 1.5 }, "offset must be integer"],
+      ["read_file", { path: "a.txt", length: "ten" }, "length must be integer"],
+      ["read_file", { path: "a.txt", offset: true }, "offset must be integer"],
     ])("rejects %s with %j", async (name, args, reason) => {
       const { state, sandbox } = fakeSandbox();
       expect(await new SandboxTools(sandbox, all).call(name, args)).toEqual({
@@ -863,10 +979,355 @@ describe("agent-tools", () => {
     it("works on methods taken off the instance", async () => {
       const { state, sandbox } = fakeSandbox();
       const { runCommand, call, names } = new SandboxTools(sandbox);
-      expect(names()).toHaveLength(3);
+      expect(names()).toHaveLength(6);
       expect(await runCommand({ command: "ls" })).toMatchObject({ exit_code: 0 });
       expect(await call("run_command", { command: "pwd" })).toMatchObject({ exit_code: 0 });
       expect(state.calls).toHaveLength(2);
+    });
+  });
+
+  describe("readFile paging", () => {
+    // "aé€😀" is 1 + 2 + 3 + 4 bytes: characters start at bytes 0, 1, 3 and 6.
+    const text = "aé€😀";
+
+    it.each([
+      ["a whole small file", { offset: 0 }, { content: text, next_offset: 10, eof: true }],
+      ["the first page", { offset: 0, length: 3 }, { content: "aé", next_offset: 3, eof: false }],
+      ["a page ending mid-character", { length: 5 }, { content: "aé", next_offset: 3, eof: false }],
+      [
+        "a page starting mid-character",
+        { offset: 2, length: 4 },
+        { content: "€", next_offset: 6, eof: false },
+      ],
+      ["the last page", { offset: 6, length: 4 }, { content: "😀", next_offset: 10, eof: true }],
+      ["a page past the end", { offset: 50 }, { content: "", next_offset: 50, eof: true }],
+      ["a page right at the end", { offset: 10 }, { content: "", next_offset: 10, eof: true }],
+      [
+        "a null offset with a length",
+        { offset: null, length: 1 },
+        { content: "a", next_offset: 1, eof: false },
+      ],
+      [
+        "a page of continuation bytes only",
+        { offset: 7, length: 2 },
+        { content: "", next_offset: 10, eof: true },
+      ],
+    ])("reads %s", async (_name, range, want) => {
+      const { workspace, sandbox } = fakeSandbox();
+      workspace["t.txt"] = new TextEncoder().encode(text);
+      expect(await new SandboxTools(sandbox).readFile({ path: "t.txt", ...range })).toEqual(want);
+    });
+
+    it("reads a large file in full by following next_offset", async () => {
+      const { workspace, sandbox } = fakeSandbox();
+      const big = "é😀x".repeat(5_000);
+      workspace["big.txt"] = new TextEncoder().encode(big);
+      const tools = new SandboxTools(sandbox);
+      let out = "";
+      let offset = 0;
+      for (let turn = 0; turn < 20; turn++) {
+        const page = (await tools.readFile({ path: "big.txt", offset })) as {
+          content: string;
+          next_offset: number;
+          eof: boolean;
+        };
+        out += page.content;
+        offset = page.next_offset;
+        if (page.eof) break;
+      }
+      expect(out).toBe(big);
+    });
+
+    it.each([
+      [undefined, 10_007],
+      [0, 8],
+      [-4, 8],
+      [50_000, 10_007],
+      ["20", 27],
+    ])("clamps length %s and asks for 7 bytes more", async (length, asked) => {
+      const { state, workspace, sandbox } = fakeSandbox();
+      workspace["t.txt"] = new TextEncoder().encode(text);
+      await new SandboxTools(sandbox).readFile({ path: "t.txt", offset: 0, length });
+      expect(state.calls).toEqual([["files.read", "t.txt", { offset: 0, length: asked }]]);
+    });
+
+    it("clamps a negative offset on direct calls to 0", async () => {
+      const { state, workspace, sandbox } = fakeSandbox();
+      workspace["t.txt"] = new TextEncoder().encode(text);
+      expect(await new SandboxTools(sandbox).readFile({ path: "t.txt", offset: -3 })).toEqual({
+        content: text,
+        next_offset: 10,
+        eof: true,
+      });
+      expect(state.calls).toEqual([["files.read", "t.txt", { offset: 0, length: 10_007 }]]);
+    });
+
+    it("keeps the unpaged read when offset and length are null", async () => {
+      const { state, workspace, sandbox } = fakeSandbox();
+      workspace["big.txt"] = new TextEncoder().encode("x".repeat(20_000));
+      const r = (await new SandboxTools(sandbox).readFile({
+        path: "big.txt",
+        offset: null,
+        length: null,
+      })) as { content: string };
+      expect(Object.keys(r)).toEqual(["content"]);
+      expect(r.content).toContain("…[10000 bytes truncated]…");
+      expect(state.calls).toEqual([]);
+    });
+
+    it("makes a page that is not UTF-8 an error result", async () => {
+      const { workspace, sandbox } = fakeSandbox();
+      workspace["blob.bin"] = new Uint8Array([0x61, 0xff, 0xfe, 0x62]);
+      expect(await new SandboxTools(sandbox).readFile({ path: "blob.bin", offset: 0 })).toEqual({
+        error: "not UTF-8 text",
+      });
+    });
+
+    it("widens a window too short for one character to the whole character", async () => {
+      const { workspace, sandbox } = fakeSandbox();
+      workspace["t.txt"] = new TextEncoder().encode(text);
+      expect(
+        await new SandboxTools(sandbox).readFile({ path: "t.txt", offset: 6, length: 2 }),
+      ).toEqual({ content: "😀", next_offset: 10, eof: true });
+    });
+
+    it.each([
+      ["€uro", 1],
+      ["€uro", 2],
+      ["€uro", 3],
+      ["😀a", 1],
+      ["😀a", 2],
+      ["😀a", 3],
+    ])("never stalls reading %s with length %s", async (file, length) => {
+      const { workspace, sandbox } = fakeSandbox();
+      workspace["t.txt"] = new TextEncoder().encode(file);
+      const tools = new SandboxTools(sandbox);
+      let out = "";
+      let offset = 0;
+      for (let turn = 0; turn < 10; turn++) {
+        const page = (await tools.readFile({ path: "t.txt", offset, length })) as {
+          content: string;
+          next_offset: number;
+          eof: boolean;
+        };
+        out += page.content;
+        if (page.eof) break;
+        expect(page.next_offset).toBeGreaterThan(offset);
+        offset = page.next_offset;
+      }
+      expect(out).toBe(file);
+    });
+
+    it.each([
+      ["a page starting 1 byte into a character", 1, { content: "a", next_offset: 5, eof: true }],
+      ["a page starting 3 bytes into a character", 3, { content: "a", next_offset: 5, eof: true }],
+    ])("skips the rest of a character for %s", async (_name, offset, want) => {
+      const { workspace, sandbox } = fakeSandbox();
+      workspace["t.txt"] = new TextEncoder().encode("😀a");
+      expect(
+        await new SandboxTools(sandbox).readFile({ path: "t.txt", offset, length: 1 }),
+      ).toEqual(want);
+    });
+
+    it.each([
+      ["4 continuation bytes in a row", [0x80, 0x80, 0x80, 0x80, 0x61], 0, 10],
+      ["an 0xF8 lead byte", [0x61, 0xf8, 0x62, 0x63], 0, 2],
+      ["an 0xF8 lead byte alone", [0xf8, 0x62], 0, 1],
+      ["a stray continuation byte mid-page", [0x61, 0x80, 0x62], 0, 10],
+    ])("makes %s not UTF-8 text", async (_name, bytes, offset, length) => {
+      const { workspace, sandbox } = fakeSandbox();
+      workspace["b.bin"] = new Uint8Array(bytes);
+      expect(await new SandboxTools(sandbox).readFile({ path: "b.bin", offset, length })).toEqual({
+        error: "not UTF-8 text",
+      });
+    });
+
+    it("makes a character cut by the real end of file an error result", async () => {
+      const { workspace, sandbox } = fakeSandbox();
+      workspace["cut.txt"] = new Uint8Array([0x61, 0xe2, 0x82]);
+      expect(await new SandboxTools(sandbox).readFile({ path: "cut.txt", offset: 0 })).toEqual({
+        error: "not UTF-8 text",
+      });
+    });
+
+    it("makes a missing file an error result", async () => {
+      const r = await new SandboxTools(fakeSandbox().sandbox).readFile({
+        path: "nope.txt",
+        offset: 0,
+      });
+      expect((r as { error: string }).error).toContain("nope.txt: no such file");
+    });
+
+    it("pages through call() too", async () => {
+      const { workspace, sandbox } = fakeSandbox();
+      workspace["t.txt"] = new TextEncoder().encode(text);
+      expect(
+        await new SandboxTools(sandbox).call("read_file", { path: "t.txt", offset: 1, length: 2 }),
+      ).toEqual({ content: "é", next_offset: 3, eof: false });
+    });
+  });
+
+  describe("statPath", () => {
+    it("reports a file, a directory and a missing path", async () => {
+      const { workspace, sandbox } = fakeSandbox();
+      workspace["src/a.txt"] = new TextEncoder().encode("héllo");
+      const tools = new SandboxTools(sandbox);
+      expect(await tools.statPath({ path: "src/a.txt" })).toEqual({
+        exists: true,
+        type: "file",
+        size: 6,
+        modified_time: "2026-10-14T00:00:00Z",
+      });
+      expect(await tools.statPath({ path: "src" })).toEqual({
+        exists: true,
+        type: "directory",
+        size: 4096,
+        modified_time: "2026-10-13T00:00:00Z",
+      });
+      expect(await tools.statPath({ path: "nope" })).toEqual({ exists: false });
+    });
+
+    it.each([
+      [{ reason_code: "not_found", message: "gone" }, { exists: false }],
+      [
+        { code: "not_found", message: "sandbox not found" },
+        { error: "HTTP 404 not_found: sandbox not found" },
+      ],
+      [{ message: "no route" }, { error: "HTTP 404: no route" }],
+    ])("reads a 404 with body %j as %j", async (body, want) => {
+      const { state, sandbox } = fakeSandbox();
+      state.fail = errorFromSandboxBody(404, JSON.stringify(body), undefined);
+      expect(await new SandboxTools(sandbox).statPath({ path: "a" })).toEqual(want);
+    });
+
+    it("makes a bad path an error result", async () => {
+      const { state, sandbox } = fakeSandbox();
+      state.fail = apiError(BadRequestError, "path escapes workspace root");
+      expect(await new SandboxTools(sandbox).statPath({ path: "../etc" })).toEqual({
+        error: "HTTP 400: path escapes workspace root",
+      });
+    });
+
+    it("throws auth errors", async () => {
+      const { state, sandbox } = fakeSandbox();
+      state.fail = new AuthenticationError(401, { message: "bad key" }, undefined);
+      await expect(new SandboxTools(sandbox).statPath({ path: "a" })).rejects.toBeInstanceOf(
+        AuthenticationError,
+      );
+    });
+  });
+
+  describe("movePath", () => {
+    it("moves a file", async () => {
+      const { state, workspace, sandbox } = fakeSandbox();
+      workspace["a.txt"] = new TextEncoder().encode("x");
+      expect(
+        await new SandboxTools(sandbox).movePath({ source: "a.txt", destination: "d/b.txt" }),
+      ).toEqual({ ok: true });
+      expect(Object.keys(workspace)).toEqual(["d/b.txt"]);
+      expect(state.calls).toEqual([["files.move", "a.txt", "d/b.txt"]]);
+    });
+
+    it("makes a missing source an error result", async () => {
+      const r = await new SandboxTools(fakeSandbox().sandbox).movePath({
+        source: "nope",
+        destination: "b",
+      });
+      expect(r).toEqual({ error: "HTTP 400: nope: no such file" });
+    });
+  });
+
+  describe("deletePath", () => {
+    it("deletes a file", async () => {
+      const { state, workspace, sandbox } = fakeSandbox();
+      workspace["a.txt"] = new TextEncoder().encode("x");
+      expect(await new SandboxTools(sandbox).deletePath({ path: "a.txt" })).toEqual({ ok: true });
+      expect(workspace).toEqual({});
+      expect(state.calls).toEqual([["files.remove", "a.txt", { recursive: undefined }]]);
+    });
+
+    it("deletes a non-empty directory only with recursive: true", async () => {
+      const { workspace, sandbox } = fakeSandbox();
+      workspace["d/a.txt"] = new TextEncoder().encode("x");
+      const tools = new SandboxTools(sandbox);
+      expect(await tools.call("delete_path", { path: "d", recursive: null })).toEqual({
+        error: "HTTP 400: d: directory not empty",
+      });
+      expect(await tools.call("delete_path", { path: "d", recursive: false })).toEqual({
+        error: "HTTP 400: d: directory not empty",
+      });
+      expect(await tools.call("delete_path", { path: "d", recursive: true })).toEqual({
+        ok: true,
+      });
+      expect(workspace).toEqual({});
+    });
+
+    it("makes a missing path an error result", async () => {
+      expect(await new SandboxTools(fakeSandbox().sandbox).deletePath({ path: "nope" })).toEqual({
+        error: "HTTP 400: nope: no such file or directory",
+      });
+    });
+
+    it.each(["yes", 1, 0, {}])(
+      "falls back to recursive false for %j on direct calls",
+      async (recursive) => {
+        const { state, workspace, sandbox } = fakeSandbox();
+        workspace["d/a.txt"] = new TextEncoder().encode("x");
+        expect(
+          await new SandboxTools(sandbox).deletePath({ path: "d", recursive: recursive as never }),
+        ).toEqual({ error: "HTTP 400: d: directory not empty" });
+        expect(state.calls).toEqual([["files.remove", "d", { recursive: undefined }]]);
+      },
+    );
+  });
+
+  describe("listProcesses", () => {
+    it("lists each process with the command it was started with", async () => {
+      const { state, sandbox } = fakeSandbox();
+      const info = { cwd: "/workspace", startedAt: 1 };
+      state.processes = [
+        {
+          ...info,
+          processId: "p1",
+          name: "sh",
+          args: ["-lc", "npm run dev"],
+          state: "running",
+          exitCode: null,
+        },
+        {
+          ...info,
+          processId: "p2",
+          name: "python3",
+          args: ["-m", "http.server"],
+          state: "exited",
+          exitCode: 0,
+        },
+        { ...info, processId: "p3", name: "sh", args: ["-c", "ls"], state: "exited", exitCode: 2 },
+        { ...info, processId: "p4", name: "sleep", args: [], state: "exited", exitCode: null },
+      ];
+      const tools = new SandboxTools(sandbox, { allowProcesses: true });
+      expect(await tools.call("list_processes", {})).toEqual({
+        processes: [
+          { process_id: "p1", command: "npm run dev", state: "running" },
+          { process_id: "p2", command: "python3 -m http.server", state: "exited", exit_code: 0 },
+          { process_id: "p3", command: "sh -c ls", state: "exited", exit_code: 2 },
+          { process_id: "p4", command: "sleep", state: "exited", exit_code: null },
+        ],
+      });
+      expect(await tools.listProcesses()).toEqual(await tools.call("list_processes", undefined));
+    });
+
+    it("returns an empty list", async () => {
+      const tools = new SandboxTools(fakeSandbox().sandbox, { allowProcesses: true });
+      expect(await tools.listProcesses()).toEqual({ processes: [] });
+    });
+
+    it("throws server errors", async () => {
+      const { state, sandbox } = fakeSandbox();
+      state.fail = new InternalServerError(500, { message: "boom" }, undefined);
+      await expect(
+        new SandboxTools(sandbox, { allowProcesses: true }).listProcesses(),
+      ).rejects.toBeInstanceOf(InternalServerError);
     });
   });
 
@@ -1174,6 +1635,109 @@ describe("agent-tools", () => {
       };
       expect(Array.from(r.error)).toHaveLength(501);
       expect(r.error.endsWith("…")).toBe(true);
+    });
+  });
+
+  describe("specs", () => {
+    it.each([
+      [{}],
+      [{ allowPreview: true }],
+      [{ allowRollback: true }],
+      [{ allowProcesses: true }],
+      [{ allowPreview: true, allowRollback: true, allowProcesses: true }],
+    ])("lists the enabled tools in names() order for %j", (options) => {
+      const tools = new SandboxTools(fakeSandbox().sandbox, options);
+      expect(tools.specs().map((s) => s.name)).toEqual(tools.names());
+    });
+
+    it("carries each tool's title, description and the frozen schema itself", () => {
+      const all = { allowPreview: true, allowRollback: true, allowProcesses: true };
+      for (const spec of new SandboxTools(fakeSandbox().sandbox, all).specs()) {
+        expect(Object.keys(spec)).toEqual(["name", "title", "description", "parameters", "call"]);
+        expect(spec.title).toBe(TITLES[spec.name]);
+        expect(spec.description).toBe(DESCRIPTIONS[spec.name]);
+        expect(spec.parameters).toBe(PARAMETERS[spec.name]);
+        expect(Object.isFrozen(spec.parameters)).toBe(true);
+      }
+    });
+
+    it("routes call to its own tool through call()", async () => {
+      const { state, sandbox } = fakeSandbox();
+      const { specs } = new SandboxTools(sandbox);
+      const run = specs().find((s) => s.name === "run_command");
+      expect(await run?.call({ command: "ls" })).toMatchObject({ exit_code: 0 });
+      expect(await run?.call({ cmd: "ls" })).toEqual({
+        error: 'invalid arguments for run_command: got an unexpected keyword argument "cmd"',
+      });
+      expect(state.calls).toEqual([
+        ["exec", "sh", { args: ["-lc", "ls"], cwd: undefined, timeoutMs: 60_000 }],
+      ]);
+    });
+  });
+
+  describe("FatalGuard", () => {
+    const failing = (err: unknown) => ({
+      call: () => Promise.reject(err),
+    });
+
+    it("passes results through and stays clean", async () => {
+      const guard = new FatalGuard();
+      expect(await guard.call({ call: async () => ({ error: "no such file" }) }, {})).toEqual({
+        error: "no such file",
+      });
+      expect(guard.failed).toBe(false);
+      expect(guard.error).toBeUndefined();
+      expect(guard.signal.aborted).toBe(false);
+      expect(() => guard.raiseIfFailed()).not.toThrow();
+    });
+
+    it("answers a throw with the fixed result and keeps the error off it", async () => {
+      const guard = new FatalGuard();
+      const err = new AuthenticationError(401, { message: "bad key for /orgs/org-123" }, undefined);
+      const result = await guard.call(failing(err), {});
+      expect(result).toBe(FATAL_RESULT);
+      expect(result).toEqual({ error: FATAL_ERROR });
+      expect(Object.isFrozen(FATAL_RESULT)).toBe(true);
+      expect(FATAL_ERROR).toBe("The sandbox call failed and the run is stopping.");
+      expect(JSON.stringify(result)).not.toContain("org-123");
+      expect(guard.failed).toBe(true);
+      expect(guard.error).toBe(err);
+      expect(guard.signal.aborted).toBe(true);
+      expect(guard.signal.reason).toBe(err);
+      expect(() => guard.raiseIfFailed()).toThrow(err);
+    });
+
+    it("keeps the first error", async () => {
+      const guard = new FatalGuard();
+      const first = new Error("first");
+      await guard.call(failing(first), {});
+      expect(await guard.call(failing(new Error("second")), {})).toEqual({ error: FATAL_ERROR });
+      expect(guard.error).toBe(first);
+      expect(guard.signal.reason).toBe(first);
+    });
+
+    it("counts a thrown undefined as a failure", async () => {
+      const guard = new FatalGuard();
+      await guard.call(failing(undefined), {});
+      expect(guard.failed).toBe(true);
+      expect(() => guard.raiseIfFailed()).toThrow();
+    });
+
+    it("guards a real tool whose sandbox call throws", async () => {
+      const { state, sandbox } = fakeSandbox();
+      state.fail = new InternalServerError(500, { message: "boom" }, undefined);
+      const [run] = new SandboxTools(sandbox).specs();
+      const guard = new FatalGuard();
+      expect(await guard.call(run as never, { command: "ls" })).toEqual({ error: FATAL_ERROR });
+      expect(guard.error).toBe(state.fail);
+    });
+
+    it("stops running tools once it has failed", async () => {
+      const guard = new FatalGuard();
+      await guard.call(failing(new Error("first")), {});
+      const spec = { call: vi.fn(async () => ({ ok: true as const })) };
+      expect(await guard.call(spec, {})).toBe(FATAL_RESULT);
+      expect(spec.call).not.toHaveBeenCalled();
     });
   });
 });

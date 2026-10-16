@@ -47,6 +47,17 @@
       "path": {
         "type": "string",
         "description": "File path, relative to /workspace or absolute inside /workspace."
+      },
+      "offset": {
+        "type": "integer",
+        "description": "Byte to start reading at. Default 0.",
+        "minimum": 0
+      },
+      "length": {
+        "type": "integer",
+        "description": "Bytes to read, 1 to 10000. Default 10000 when offset is given.",
+        "minimum": 1,
+        "maximum": 10000
       }
     },
     "required": [
@@ -146,6 +157,60 @@
     "required": [
       "process_id"
     ],
+    "additionalProperties": false
+  },
+  "stat_path": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Path, relative to /workspace or absolute inside /workspace."
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "additionalProperties": false
+  },
+  "move_path": {
+    "type": "object",
+    "properties": {
+      "source": {
+        "type": "string",
+        "description": "Path to move, relative to /workspace or absolute inside /workspace."
+      },
+      "destination": {
+        "type": "string",
+        "description": "New path, relative to /workspace or absolute inside /workspace."
+      }
+    },
+    "required": [
+      "source",
+      "destination"
+    ],
+    "additionalProperties": false
+  },
+  "delete_path": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "Path to delete, relative to /workspace or absolute inside /workspace."
+      },
+      "recursive": {
+        "type": "boolean",
+        "description": "Delete a non-empty directory and everything in it. Default false."
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "additionalProperties": false
+  },
+  "list_processes": {
+    "type": "object",
+    "properties": {},
+    "required": [],
     "additionalProperties": false
   }
 }

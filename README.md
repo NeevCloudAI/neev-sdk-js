@@ -271,6 +271,7 @@ const sandbox = await neev.sandboxes.get(id);
 await sandbox.files.write("main.py", "print('hi')"); // → { bytesWritten }
 const bytes = await sandbox.files.read("main.py"); // → Uint8Array
 const text = await sandbox.files.readText("main.py"); // → string
+const head = await sandbox.files.read("big.log", { offset: 0, length: 4096 }); // → first 4 KiB only
 const entries = await sandbox.files.list(".", { recursive: true }); // → FileEntry[]
 
 const info = await sandbox.files.stat("main.py"); // → FileEntry
@@ -561,7 +562,7 @@ Resource methods mirror the handle: `neev.agents.list/create/get/update/keepaliv
 
 ### Agent tools
 
-`@neevcloud/sdk/agent-tools` ships the sandbox tool contract for agents you build yourself: `run_command`, `write_file` and `read_file`, plus opt-in `expose_port`, `checkpoint`/`rollback` and background processes. It has no framework dependency: declare `names()` to your model with `DESCRIPTIONS` and `PARAMETERS` (JSON Schema), and hand each tool call to `call(name, args)`. Every call resolves to a plain object for the model; a failure the model can fix, including an unknown tool or bad arguments, resolves to `{ error }`, and auth, rate-limit, server and network failures throw.
+`@neevcloud/sdk/agent-tools` ships the sandbox tool contract for agents you build yourself: `run_command`, `write_file`, `read_file`, `stat_path`, `move_path` and `delete_path`, plus opt-in `expose_port`, `checkpoint`/`rollback` and background processes (`start_process`, `read_process_output`, `stop_process`, `list_processes`). It has no framework dependency: declare `names()` to your model with `DESCRIPTIONS` and `PARAMETERS` (JSON Schema), with `TITLES` for a short display name, and hand each tool call to `call(name, args)`. Every call resolves to a plain object for the model; a failure the model can fix, including an unknown tool or bad arguments, resolves to `{ error }`, and auth, rate-limit, server and network failures throw.
 
 ```ts
 import { DESCRIPTIONS, PARAMETERS, SandboxTools } from "@neevcloud/sdk/agent-tools";
@@ -577,7 +578,50 @@ const specs = tools.names().map((name) => ({
 const result = await tools.call(toolCall.name, toolCall.arguments);
 ```
 
-The methods (`runCommand`, `readProcessOutput`, …) are bound, so they can be handed to a framework on their own, and every tool's argument and result types are exported (`RunCommandToolArgs`, `ReadProcessOutputToolResult`, …). `read_process_output` takes `wait_s` (0–60 s) to wait for a running process to exit before reading. A command that prints nothing for about 2 minutes is cut off at the network edge (`run_command` then returns an error result saying so, and the command may still be running), so give the model `allowProcesses: true` for long or quiet work. The contract, its limits and its error rules are described in [the tool contract](https://docs.ai.neevcloud.com/build-your-own-agent/tool-contract).
+The methods (`runCommand`, `readProcessOutput`, …) are bound, so they can be handed to a framework on their own, and every tool's argument and result types are exported (`RunCommandToolArgs`, `ReadProcessOutputToolResult`, …). `read_file` reads a large file in pages: pass `offset` and `length` (up to 10000 bytes) and keep reading from the returned `next_offset` until `eof` is true. `read_process_output` takes `wait_s` (0–60 s) to wait for a running process to exit before reading. A command that prints nothing for about 2 minutes is cut off at the network edge (`run_command` then returns an error result saying so, and the command may still be running), so give the model `allowProcesses: true` for long or quiet work. The contract, its limits and its error rules are described in [the tool contract](https://docs.ai.neevcloud.com/build-your-own-agent/tool-contract).
+
+#### Using the tools with a framework
+
+Each adapter is a subpath export that turns a `SandboxTools` into the framework's own tools; install the framework yourself (it is an optional peer dependency). A sandbox call that throws (auth, rate limit, server, network) stops the run and is rethrown to you, and its text never reaches the model. For any other framework, `tools.specs()` gives each enabled tool's `name`, `title`, `description`, `parameters` and a bound `call`, and a `FatalGuard` gives the same stop-the-run behaviour.
+
+Claude Agent SDK (`@anthropic-ai/claude-agent-sdk` and `zod` 4.2 or later): the tools run in-process as an MCP server, Claude Code's own tools are switched off, and `watch` stops the run and throws if a sandbox call fails. The Claude Agent SDK is ESM-only, so use this adapter from ESM (or a Node version that can `require` ESM).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { SandboxTools } from "@neevcloud/sdk/agent-tools";
+import { toClaude } from "@neevcloud/sdk/agent-tools/claude";
+
+const claude = toClaude(new SandboxTools(sandbox));
+for await (const msg of claude.watch(query({ prompt, options: { ...claude.options(), maxTurns: 12 } }))) {
+  if (msg.type === "result") console.log(msg.result);
+}
+```
+
+OpenAI Agents SDK (`@openai/agents`, Node 20+): a sandbox call that throws ends `Runner.run`.
+
+```ts
+import { Agent, run } from "@openai/agents";
+import { SandboxTools } from "@neevcloud/sdk/agent-tools";
+import { toOpenAIAgents } from "@neevcloud/sdk/agent-tools/openai-agents";
+
+const agent = new Agent({ name: "coder", tools: toOpenAIAgents(new SandboxTools(sandbox)) });
+const result = await run(agent, prompt);
+```
+
+Vercel AI SDK (`ai`): pass the guard's signal, and call `raiseIfFailed()` after the run so a failed sandbox call surfaces instead of the abort.
+
+```ts
+import { generateText, stepCountIs } from "ai";
+import { SandboxTools } from "@neevcloud/sdk/agent-tools";
+import { toAiSdk } from "@neevcloud/sdk/agent-tools/ai-sdk";
+
+const { tools, guard } = toAiSdk(new SandboxTools(sandbox));
+try {
+  const { text } = await generateText({ model, tools, prompt, stopWhen: stepCountIs(12), abortSignal: guard.signal });
+} finally {
+  guard.raiseIfFailed();
+}
+```
 
 ## Documentation
 

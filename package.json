@@ -19,7 +19,10 @@
   "types": "./dist/index.d.ts",
   "typesVersions": {
     "*": {
-      "agent-tools": ["./dist/agent-tools.d.ts"]
+      "agent-tools": ["./dist/agent-tools.d.ts"],
+      "agent-tools/claude": ["./dist/agent-tools/claude.d.ts"],
+      "agent-tools/openai-agents": ["./dist/agent-tools/openai-agents.d.ts"],
+      "agent-tools/ai-sdk": ["./dist/agent-tools/ai-sdk.d.ts"]
     }
   },
   "exports": {
@@ -41,6 +44,36 @@
       "require": {
         "types": "./dist/agent-tools.d.cts",
         "default": "./dist/agent-tools.cjs"
+      }
+    },
+    "./agent-tools/claude": {
+      "import": {
+        "types": "./dist/agent-tools/claude.d.ts",
+        "default": "./dist/agent-tools/claude.js"
+      },
+      "require": {
+        "types": "./dist/agent-tools/claude.d.cts",
+        "default": "./dist/agent-tools/claude.cjs"
+      }
+    },
+    "./agent-tools/openai-agents": {
+      "import": {
+        "types": "./dist/agent-tools/openai-agents.d.ts",
+        "default": "./dist/agent-tools/openai-agents.js"
+      },
+      "require": {
+        "types": "./dist/agent-tools/openai-agents.d.cts",
+        "default": "./dist/agent-tools/openai-agents.cjs"
+      }
+    },
+    "./agent-tools/ai-sdk": {
+      "import": {
+        "types": "./dist/agent-tools/ai-sdk.d.ts",
+        "default": "./dist/agent-tools/ai-sdk.js"
+      },
+      "require": {
+        "types": "./dist/agent-tools/ai-sdk.d.cts",
+        "default": "./dist/agent-tools/ai-sdk.cjs"
       }
     },
     "./package.json": "./package.json"
@@ -73,25 +106,46 @@
     "prepublishOnly": "pnpm run build"
   },
   "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.142",
     "@biomejs/biome": "^1.9.4",
     "@changesets/cli": "^2.27.10",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@openai/agents": "^0.20.0",
     "@types/node": "^22.10.2",
     "@types/ws": "^8.5.13",
     "@vitest/coverage-v8": "^2.1.8",
+    "ai": "^5.0.0",
     "openapi-typescript": "^7.4.4",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "zod": "^4.2.0"
   },
   "dependencies": {
     "openapi-fetch": "^0.17.0"
   },
   "peerDependencies": {
-    "ws": "^8"
+    "@anthropic-ai/claude-agent-sdk": "^0.3.142",
+    "@openai/agents": "^0.20.0",
+    "ai": "^5.0.0 || ^6.0.0 || ^7.0.0",
+    "ws": "^8",
+    "zod": "^3.25.76 || ^4.0.0"
   },
   "peerDependenciesMeta": {
+    "@anthropic-ai/claude-agent-sdk": {
+      "optional": true
+    },
+    "@openai/agents": {
+      "optional": true
+    },
+    "ai": {
+      "optional": true
+    },
     "ws": {
+      "optional": true
+    },
+    "zod": {
       "optional": true
     }
   }

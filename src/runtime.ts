@@ -72,6 +72,10 @@ export interface DownloadFileResult {
 export interface ReadFileOptions {
   // Working directory the path is resolved against, if relative.
   cwd?: string;
+  // First byte to return. Defaults to 0.
+  offset?: number;
+  // Most bytes to return. Defaults to the rest of the file.
+  length?: number;
   // Caller cancellation signal.
   signal?: AbortSignal;
 }
@@ -454,8 +458,15 @@ export class SandboxFiles {
     return { bytesWritten: body.bytes_written };
   }
 
-  // Reads a file from the sandbox and returns its raw bytes (binary-safe).
+  // Reads a file's raw bytes (binary-safe); offset/length stop the download once the range is in.
   async read(path: string, options: ReadFileOptions = {}): Promise<Uint8Array> {
+    const { offset, length } = options;
+    if (offset !== undefined && !(Number.isInteger(offset) && offset >= 0)) {
+      throw new NeevError("files.read: offset must be a non-negative integer.");
+    }
+    if (length !== undefined && !(Number.isInteger(length) && length > 0)) {
+      throw new NeevError("files.read: length must be a positive integer.");
+    }
     const conn = await this.resolve();
     const response = await conn.request({
       method: "POST",
@@ -464,7 +475,15 @@ export class SandboxFiles {
       body: JSON.stringify({ path, cwd: options.cwd }),
       signal: options.signal,
     });
-    return new Uint8Array(await response.arrayBuffer());
+    if (offset === undefined && length === undefined) {
+      return new Uint8Array(await response.arrayBuffer());
+    }
+    const start = offset ?? 0;
+    return readRange(
+      response,
+      start,
+      length === undefined ? Number.POSITIVE_INFINITY : start + length,
+    );
   }
 
   // Reads a file from the sandbox and decodes it as a UTF-8 string.
@@ -579,6 +598,36 @@ export class SandboxFiles {
     });
     yield* streamWatch(response);
   }
+}
+
+// /v1/files/read has no range, so the body is streamed and cancelled once [start, end) is in.
+async function readRange(response: Response, start: number, end: number): Promise<Uint8Array> {
+  if (!response.body) {
+    return new Uint8Array(await response.arrayBuffer()).slice(start, end);
+  }
+  const chunks: Uint8Array[] = [];
+  let seen = 0;
+  const reader = response.body.getReader();
+  try {
+    while (seen < end) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const from = Math.max(start - seen, 0);
+      const to = Math.min(end - seen, value.length);
+      if (from < to) chunks.push(value.subarray(from, to));
+      seen += value.length;
+    }
+  } finally {
+    // Also on a failed read, so the connection is released rather than left locked.
+    await reader.cancel().catch(() => {});
+  }
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
 }
 
 // Wraps upload data as a ChunkSource, encoding a string as UTF-8.

@@ -5,7 +5,13 @@ import { defineConfig } from "tsup";
 // Splitting is on for CJS too, so every entry shares one copy of the error classes
 // and instanceof holds across `@neevcloud/sdk` and its subpath exports.
 export default defineConfig({
-  entry: ["src/index.ts", "src/agent-tools.ts"],
+  entry: {
+    index: "src/index.ts",
+    "agent-tools": "src/agent-tools.ts",
+    "agent-tools/claude": "src/agent-tools/claude.ts",
+    "agent-tools/openai-agents": "src/agent-tools/openai-agents.ts",
+    "agent-tools/ai-sdk": "src/agent-tools/ai-sdk.ts",
+  },
   format: ["esm", "cjs"],
   splitting: true,
   dts: true,
