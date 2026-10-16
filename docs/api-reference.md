@@ -563,6 +563,52 @@ const specs = tools.names().map((name) => ({ name, description: DESCRIPTIONS[nam
 const result = await tools.call("run_command", { command: "npm test", timeout_s: 120 });
 ```
 
+`tools.specs()` returns one `{ name, title, description, parameters, call(args) }` per enabled tool. `FatalGuard` wraps those calls for a framework that would hand a thrown error to the model: `guard.call(spec, args)` answers a throw with `{ error: FATAL_ERROR }`, records the first error and aborts `guard.signal`, and stops running tools after that, and `guard.raiseIfFailed()` rethrows it.
+
+### Framework adapters
+
+| Subpath | Export | Framework (optional peer) |
+| ------- | ------ | ------------------------- |
+| `@neevcloud/sdk/agent-tools/claude` | `toClaude(tools)` → `{ options(), watch(query), guard }` | `@anthropic-ai/claude-agent-sdk` ^0.3.142, `zod` 4.2 or later |
+| `@neevcloud/sdk/agent-tools/openai-agents` | `toOpenAIAgents(tools)` → `FunctionTool[]` | `@openai/agents` ^0.20.0 |
+| `@neevcloud/sdk/agent-tools/ai-sdk` | `toAiSdk(tools)` → `{ tools, guard }` | `ai` 5, 6 or 7 |
+
+Claude Agent SDK (`@anthropic-ai/claude-agent-sdk` and `zod` 4.2 or later): the tools run in-process as an MCP server, Claude Code's own tools are switched off, and `watch` stops the run and throws if a sandbox call fails.
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { toClaude } from "@neevcloud/sdk/agent-tools/claude";
+
+const claude = toClaude(new SandboxTools(sandbox));
+for await (const msg of claude.watch(query({ prompt, options: { ...claude.options(), maxTurns: 12 } }))) {
+  if (msg.type === "result") console.log(msg.result);
+}
+```
+
+OpenAI Agents SDK (`@openai/agents`): a sandbox call that throws ends `Runner.run`.
+
+```ts
+import { Agent, run } from "@openai/agents";
+import { toOpenAIAgents } from "@neevcloud/sdk/agent-tools/openai-agents";
+
+const agent = new Agent({ name: "coder", tools: toOpenAIAgents(new SandboxTools(sandbox)) });
+const result = await run(agent, prompt);
+```
+
+Vercel AI SDK (`ai`): pass the guard's signal, and call `raiseIfFailed()` after the run so a failed sandbox call surfaces instead of the abort.
+
+```ts
+import { generateText, stepCountIs } from "ai";
+import { toAiSdk } from "@neevcloud/sdk/agent-tools/ai-sdk";
+
+const { tools, guard } = toAiSdk(new SandboxTools(sandbox));
+try {
+  const { text } = await generateText({ model, tools, prompt, stopWhen: stepCountIs(12), abortSignal: guard.signal });
+} finally {
+  guard.raiseIfFailed();
+}
+```
+
 ---
 
 ## Errors

@@ -35,7 +35,7 @@ import { Neev } from "@neevcloud/sdk";
 
 **Agent tools** — the `@neevcloud/sdk/agent-tools` subpath
 
-- [Agent tools](#agent-tools) — SandboxTools, DESCRIPTIONS, PARAMETERS, TITLES, call
+- [Agent tools](#agent-tools) — SandboxTools, DESCRIPTIONS, PARAMETERS, TITLES, call, specs, FatalGuard, framework adapters
 
 **Reference**
 
@@ -1467,6 +1467,10 @@ Exported from the `@neevcloud/sdk/agent-tools` subpath (`src/agent-tools.ts`), n
 | `DESCRIPTIONS` | const `Readonly<Record<ToolName, string>>` | Model-facing description per tool; frozen; identical to the Python SDK's. |
 | `PARAMETERS` | const `Readonly<Record<ToolName, { readonly [key: string]: unknown }>>` | JSON Schema of each tool's arguments; deep-frozen; identical to the Python SDK's. |
 | `TITLES` | const `Readonly<Record<ToolName, string>>` | Short human-readable title per tool; frozen; identical to the Python SDK's. |
+| `ToolSpec` | interface (type) | `{ name, title, description, parameters, call(args) }`, one per enabled tool from `specs()`; `parameters` is the frozen `PARAMETERS` entry itself. |
+| `FatalGuard` | class | Per-run guard for frameworks that would hand a thrown error to the model; see below. |
+| `FATAL_ERROR` | const `string` | `"The sandbox call failed and the run is stopping."`, the error a `FatalGuard` answers with; identical to the Python SDK's. |
+| `FATAL_RESULT` | const `Readonly<ToolErrorResult>` | `{ error: FATAL_ERROR }`; frozen; the same object every time a `FatalGuard` answers. |
 | `ToolName` | type alias (union) | `"run_command" \| "write_file" \| "read_file" \| "expose_port" \| "checkpoint" \| "rollback" \| "start_process" \| "read_process_output" \| "stop_process" \| "stat_path" \| "move_path" \| "delete_path" \| "list_processes"`. |
 | `ToolErrorResult` | interface (type) | `{ error: string }`. |
 | `ToolResult` | type alias (union) | Every `*ToolResult` plus `ToolErrorResult`. |
@@ -1498,6 +1502,7 @@ Opt-in tools (`expose_port`; `checkpoint`/`rollback`; `start_process`/`read_proc
 | Method | Returns | Notes |
 | ------ | ------- | ----- |
 | `names()` | `ToolName[]` | Enabled tools in contract order. |
+| `specs()` | `ToolSpec[]` | One spec per enabled tool, in `names()` order; `call(args)` is `call(name, args)` bound to that tool. |
 | `call(name, args)` | `Promise<ToolResult>` | Runs a tool by contract name. Unknown name → `{ error: "unknown tool: <name>" }`; arguments that do not fit `PARAMETERS[name]` → `{ error: "invalid arguments for <name>: <reason>" }`, checked in this order: an unexpected argument (`got an unexpected keyword argument "<key>"`), a missing one (`missing a required argument: "<key>"`), then `<field> must be string|boolean|number|integer` in schema order; numbers are checked strictly here. Never throws for model input. |
 | `runCommand(args)` | `Promise<RunCommandToolResult \| ToolErrorResult>` | `sh -lc`; `timeout_s` clamped to 1–600 (default 60); a deadline → `command did not finish within <n> s`. A command silent for about 2 minutes is cut off at the network edge: the edge's HTTP 524 becomes `{ error: "the command printed nothing for about 2 minutes and the connection was cut; it may still be running. Use start_process for long or quiet commands" }`, while a stream dropped after output has started still throws. Long or quiet work belongs in `start_process`. |
 | `writeFile(args)` | `Promise<WriteFileToolResult \| ToolErrorResult>` | UTF-8 text. |
@@ -1514,6 +1519,26 @@ Opt-in tools (`expose_port`; `checkpoint`/`rollback`; `start_process`/`read_proc
 | `listProcesses(args?)` | `Promise<ListProcessesToolResult \| ToolErrorResult>` | `command` is the program and args joined with spaces, or the command given to `start_process` for an `sh -lc` process; `exit_code` only once exited. |
 
 Numeric arguments (`timeout_s`, `wait_s`, `cursor`, `port`, `offset`, `length`) accept finite numbers and plain decimal strings (ASCII digits, optional ASCII whitespace around them). Through `call()` anything else is an invalid-arguments error; on a direct method call an optional one takes its default. A boolean argument (`recursive`) must be a JSON boolean, or null for the default, through `call()`; on a direct method call anything else takes its default. Output and file content over 10 KB per stream are cut in the middle; an error result from an `APIError` reads `HTTP <status> <code>: <message>` (`HTTP <status>: <message>` without a code), where the message is the body's first non-empty string among `message`, `error` and `details` (a body that is not a JSON object counts as `details`), never the URL, method or request id, and every error result keeps its first line, cut to 500 characters. These texts match the Python SDK's. `BadRequestError`, `NotFoundError`, `ConflictError`, `DeadlineExceededError` and client-side `NeevError`s become error results; auth, permission, rate-limit, server and connection errors throw.
+
+### `new FatalGuard()`
+
+| Member | Type | Notes |
+| ------ | ---- | ----- |
+| `call(spec, args)` | `Promise<ToolResult>` | Runs `spec.call(args)`. On a throw: records the error (the first one wins), aborts `signal` with it as the reason, and resolves `FATAL_RESULT`; the error's text never reaches the model. Once failed, it answers every later call with `FATAL_RESULT` without running the tool. |
+| `signal` | `AbortSignal` | Aborted once a call has thrown. |
+| `failed` | `boolean` | True once a call has thrown. |
+| `error` | `unknown` | The first error a call threw, else `undefined`. |
+| `raiseIfFailed()` | `void` | Throws the first recorded error; does nothing when clean. |
+
+### Framework adapters
+
+Subpath exports; each framework is an optional peer dependency, so install it yourself. Each adapter builds from `specs()`.
+
+| Subpath | Export | Notes |
+| ------- | ------ | ----- |
+| `@neevcloud/sdk/agent-tools/claude` | `toClaude(tools): ClaudeTools` | `options()` → `{ tools: [], mcpServers: { neev }, strictMcpConfig: true, allowedTools: ["mcp__neev__<name>", …], settingSources: [], permissionMode: "dontAsk" }` (a fresh in-process MCP server per call; schemas via `z.fromJSONSchema`); each tool carries its `TITLES` entry as its `title` annotation, and a handler answers with the result as JSON text, `isError` only for `FATAL_RESULT`. `watch(query)` yields the query's messages, stops at the first message after a fatal call and throws its error, throws `host tools were used: <names>` for a `tool_use` outside `mcp__neev__`, and always calls `query.close()`. `guard` is the run's `FatalGuard`. Needs `@anthropic-ai/claude-agent-sdk` ^0.3.142 and `zod` 4.2 or later (it throws on an older zod); ESM-only, like the Claude Agent SDK. |
+| `@neevcloud/sdk/agent-tools/openai-agents` | `toOpenAIAgents(tools): FunctionTool[]` | `tool({ name, description, parameters, strict: false, execute })`; `execute` returns the result as JSON text, and `errorFunction` rethrows so a throw ends `Runner.run` (as a `ToolCallError` whose `error` is the sandbox error). Needs `@openai/agents` ^0.20.0. |
+| `@neevcloud/sdk/agent-tools/ai-sdk` | `toAiSdk(tools): { tools, guard }` | `tools` maps each name to `tool({ description, inputSchema: jsonSchema(parameters), execute })`, with `execute` going through `guard`. Pass `abortSignal: guard.signal` and call `guard.raiseIfFailed()` after the run, also when it throws. Needs `ai` 5, 6 or 7. |
 
 ---
 

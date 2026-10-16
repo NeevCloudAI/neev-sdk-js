@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   DESCRIPTIONS,
+  FATAL_ERROR,
+  FATAL_RESULT,
+  FatalGuard,
   PARAMETERS,
   SandboxTools,
   TITLES,
@@ -1632,6 +1635,109 @@ describe("agent-tools", () => {
       };
       expect(Array.from(r.error)).toHaveLength(501);
       expect(r.error.endsWith("…")).toBe(true);
+    });
+  });
+
+  describe("specs", () => {
+    it.each([
+      [{}],
+      [{ allowPreview: true }],
+      [{ allowRollback: true }],
+      [{ allowProcesses: true }],
+      [{ allowPreview: true, allowRollback: true, allowProcesses: true }],
+    ])("lists the enabled tools in names() order for %j", (options) => {
+      const tools = new SandboxTools(fakeSandbox().sandbox, options);
+      expect(tools.specs().map((s) => s.name)).toEqual(tools.names());
+    });
+
+    it("carries each tool's title, description and the frozen schema itself", () => {
+      const all = { allowPreview: true, allowRollback: true, allowProcesses: true };
+      for (const spec of new SandboxTools(fakeSandbox().sandbox, all).specs()) {
+        expect(Object.keys(spec)).toEqual(["name", "title", "description", "parameters", "call"]);
+        expect(spec.title).toBe(TITLES[spec.name]);
+        expect(spec.description).toBe(DESCRIPTIONS[spec.name]);
+        expect(spec.parameters).toBe(PARAMETERS[spec.name]);
+        expect(Object.isFrozen(spec.parameters)).toBe(true);
+      }
+    });
+
+    it("routes call to its own tool through call()", async () => {
+      const { state, sandbox } = fakeSandbox();
+      const { specs } = new SandboxTools(sandbox);
+      const run = specs().find((s) => s.name === "run_command");
+      expect(await run?.call({ command: "ls" })).toMatchObject({ exit_code: 0 });
+      expect(await run?.call({ cmd: "ls" })).toEqual({
+        error: 'invalid arguments for run_command: got an unexpected keyword argument "cmd"',
+      });
+      expect(state.calls).toEqual([
+        ["exec", "sh", { args: ["-lc", "ls"], cwd: undefined, timeoutMs: 60_000 }],
+      ]);
+    });
+  });
+
+  describe("FatalGuard", () => {
+    const failing = (err: unknown) => ({
+      call: () => Promise.reject(err),
+    });
+
+    it("passes results through and stays clean", async () => {
+      const guard = new FatalGuard();
+      expect(await guard.call({ call: async () => ({ error: "no such file" }) }, {})).toEqual({
+        error: "no such file",
+      });
+      expect(guard.failed).toBe(false);
+      expect(guard.error).toBeUndefined();
+      expect(guard.signal.aborted).toBe(false);
+      expect(() => guard.raiseIfFailed()).not.toThrow();
+    });
+
+    it("answers a throw with the fixed result and keeps the error off it", async () => {
+      const guard = new FatalGuard();
+      const err = new AuthenticationError(401, { message: "bad key for /orgs/org-123" }, undefined);
+      const result = await guard.call(failing(err), {});
+      expect(result).toBe(FATAL_RESULT);
+      expect(result).toEqual({ error: FATAL_ERROR });
+      expect(Object.isFrozen(FATAL_RESULT)).toBe(true);
+      expect(FATAL_ERROR).toBe("The sandbox call failed and the run is stopping.");
+      expect(JSON.stringify(result)).not.toContain("org-123");
+      expect(guard.failed).toBe(true);
+      expect(guard.error).toBe(err);
+      expect(guard.signal.aborted).toBe(true);
+      expect(guard.signal.reason).toBe(err);
+      expect(() => guard.raiseIfFailed()).toThrow(err);
+    });
+
+    it("keeps the first error", async () => {
+      const guard = new FatalGuard();
+      const first = new Error("first");
+      await guard.call(failing(first), {});
+      expect(await guard.call(failing(new Error("second")), {})).toEqual({ error: FATAL_ERROR });
+      expect(guard.error).toBe(first);
+      expect(guard.signal.reason).toBe(first);
+    });
+
+    it("counts a thrown undefined as a failure", async () => {
+      const guard = new FatalGuard();
+      await guard.call(failing(undefined), {});
+      expect(guard.failed).toBe(true);
+      expect(() => guard.raiseIfFailed()).toThrow();
+    });
+
+    it("guards a real tool whose sandbox call throws", async () => {
+      const { state, sandbox } = fakeSandbox();
+      state.fail = new InternalServerError(500, { message: "boom" }, undefined);
+      const [run] = new SandboxTools(sandbox).specs();
+      const guard = new FatalGuard();
+      expect(await guard.call(run as never, { command: "ls" })).toEqual({ error: FATAL_ERROR });
+      expect(guard.error).toBe(state.fail);
+    });
+
+    it("stops running tools once it has failed", async () => {
+      const guard = new FatalGuard();
+      await guard.call(failing(new Error("first")), {});
+      const spec = { call: vi.fn(async () => ({ ok: true as const })) };
+      expect(await guard.call(spec, {})).toBe(FATAL_RESULT);
+      expect(spec.call).not.toHaveBeenCalled();
     });
   });
 });

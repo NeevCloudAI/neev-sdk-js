@@ -536,6 +536,49 @@ const result = await tools.call(toolCall.name, toolCall.arguments);
 
 The methods (`runCommand`, `readProcessOutput`, …) are bound, so they can be handed to a framework on their own, and every tool's argument and result types are exported (`RunCommandToolArgs`, `ReadProcessOutputToolResult`, …). `read_file` reads a large file in pages: pass `offset` and `length` (up to 10000 bytes) and keep reading from the returned `next_offset` until `eof` is true. `read_process_output` takes `wait_s` (0–60 s) to wait for a running process to exit before reading. A command that prints nothing for about 2 minutes is cut off at the network edge (`run_command` then returns an error result saying so, and the command may still be running), so give the model `allowProcesses: true` for long or quiet work. The contract, its limits and its error rules are described in [the tool contract](https://docs.ai.neevcloud.com/build-your-own-agent/tool-contract).
 
+#### Using the tools with a framework
+
+Each adapter is a subpath export that turns a `SandboxTools` into the framework's own tools; install the framework yourself (it is an optional peer dependency). A sandbox call that throws (auth, rate limit, server, network) stops the run and is rethrown to you, and its text never reaches the model. For any other framework, `tools.specs()` gives each enabled tool's `name`, `title`, `description`, `parameters` and a bound `call`, and a `FatalGuard` gives the same stop-the-run behaviour.
+
+Claude Agent SDK (`@anthropic-ai/claude-agent-sdk` and `zod` 4.2 or later): the tools run in-process as an MCP server, Claude Code's own tools are switched off, and `watch` stops the run and throws if a sandbox call fails. The Claude Agent SDK is ESM-only, so use this adapter from ESM (or a Node version that can `require` ESM).
+
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+import { SandboxTools } from "@neevcloud/sdk/agent-tools";
+import { toClaude } from "@neevcloud/sdk/agent-tools/claude";
+
+const claude = toClaude(new SandboxTools(sandbox));
+for await (const msg of claude.watch(query({ prompt, options: { ...claude.options(), maxTurns: 12 } }))) {
+  if (msg.type === "result") console.log(msg.result);
+}
+```
+
+OpenAI Agents SDK (`@openai/agents`): a sandbox call that throws ends `Runner.run`.
+
+```ts
+import { Agent, run } from "@openai/agents";
+import { SandboxTools } from "@neevcloud/sdk/agent-tools";
+import { toOpenAIAgents } from "@neevcloud/sdk/agent-tools/openai-agents";
+
+const agent = new Agent({ name: "coder", tools: toOpenAIAgents(new SandboxTools(sandbox)) });
+const result = await run(agent, prompt);
+```
+
+Vercel AI SDK (`ai`): pass the guard's signal, and call `raiseIfFailed()` after the run so a failed sandbox call surfaces instead of the abort.
+
+```ts
+import { generateText, stepCountIs } from "ai";
+import { SandboxTools } from "@neevcloud/sdk/agent-tools";
+import { toAiSdk } from "@neevcloud/sdk/agent-tools/ai-sdk";
+
+const { tools, guard } = toAiSdk(new SandboxTools(sandbox));
+try {
+  const { text } = await generateText({ model, tools, prompt, stopWhen: stepCountIs(12), abortSignal: guard.signal });
+} finally {
+  guard.raiseIfFailed();
+}
+```
+
 ## Documentation
 
 SDK guides and reference live in [`docs/`](./docs):

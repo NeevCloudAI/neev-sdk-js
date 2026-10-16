@@ -535,6 +535,65 @@ export type ToolResult =
   | DeletePathToolResult
   | ListProcessesToolResult;
 
+/** One enabled tool with everything a framework needs to declare it, and its call bound to it. */
+export interface ToolSpec {
+  name: ToolName;
+  title: string;
+  description: string;
+  /** The frozen PARAMETERS entry itself; copy it before handing it to a framework that mutates schemas. */
+  parameters: ToolJsonSchema;
+  call(args: unknown): Promise<ToolResult>;
+}
+
+/** The error a FatalGuard answers the model with once a call has thrown, identical across the NeevCloud SDKs. */
+export const FATAL_ERROR = "The sandbox call failed and the run is stopping.";
+
+/** The result a FatalGuard answers with once a call has thrown; the same frozen object every time. */
+export const FATAL_RESULT: Readonly<ToolErrorResult> = Object.freeze({ error: FATAL_ERROR });
+
+/** Stops a run on a call that throws (auth, rate limit, server, network) instead of letting the model retry it; one per run. */
+export class FatalGuard {
+  private readonly controller = new AbortController();
+  // Boxed so that even a thrown undefined counts as a failure.
+  private first: { error: unknown } | undefined;
+
+  /** Aborted, with the first error as its reason, once a call has thrown. */
+  get signal(): AbortSignal {
+    return this.controller.signal;
+  }
+
+  /** True once a call has thrown. */
+  get failed(): boolean {
+    return this.first !== undefined;
+  }
+
+  /** The first error a call threw, if any. */
+  get error(): unknown {
+    return this.first?.error;
+  }
+
+  /** Runs the tool; a throw is recorded (first one wins) and answered with FATAL_RESULT. */
+  async call(spec: Pick<ToolSpec, "call">, args: unknown): Promise<ToolResult> {
+    // A model that keeps calling after a fatal failure must not reach the sandbox again.
+    if (this.first) return FATAL_RESULT;
+    try {
+      return await spec.call(args);
+    } catch (err) {
+      if (!this.first) {
+        this.first = { error: err };
+        this.controller.abort(err);
+      }
+      // The error's text can carry request URLs with org and project ids, so it never reaches the model.
+      return FATAL_RESULT;
+    }
+  }
+
+  /** Throws the first recorded error, if any. */
+  raiseIfFailed(): void {
+    if (this.first) throw this.first.error;
+  }
+}
+
 /** Options of SandboxTools; every opt-in tool is off unless enabled. */
 interface SandboxToolsOptions {
   /** Enable expose_port, which makes a sandbox port public. */
@@ -779,6 +838,18 @@ export class SandboxTools {
     this.movePath = this.movePath.bind(this);
     this.deletePath = this.deletePath.bind(this);
     this.listProcesses = this.listProcesses.bind(this);
+    this.specs = this.specs.bind(this);
+  }
+
+  /** Returns a ToolSpec per enabled tool, in names() order. */
+  specs(): ToolSpec[] {
+    return this.names().map((name) => ({
+      name,
+      title: TITLES[name],
+      description: DESCRIPTIONS[name],
+      parameters: PARAMETERS[name],
+      call: (args: unknown) => this.call(name, args),
+    }));
   }
 
   /** Returns the enabled tools to declare to the model, in contract order. */
