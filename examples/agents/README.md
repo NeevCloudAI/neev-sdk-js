@@ -13,6 +13,13 @@ OpenAI-compatible Neev inference endpoint, and share two helpers:
 
 So each example file holds only the framework-specific wiring.
 
+## Contents
+
+- [Setup](#setup)
+- [Run](#run)
+- [Verify](#verify)
+- [What this demonstrates](#what-this-demonstrates)
+
 | Example | Framework | Model |
 | ------- | --------- | ----- |
 | [`langchain.ts`](./langchain.ts) | LangChain.js (LangGraph ReAct agent) | NeevCloud `gpt-oss-120b` |

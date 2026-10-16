@@ -6,7 +6,7 @@
  * both for the platform default. The image must be a public reference with an
  * explicit tag or digest; `command` overrides the container's default entrypoint.
  *
- * Run with (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/byoi-create.ts
  */

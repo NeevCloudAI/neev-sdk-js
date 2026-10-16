@@ -10,7 +10,7 @@
  *
  * Deliberately small memory (1 GB) so the OOM lands quickly.
  *
- * Run with (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/last-crash.ts
  */

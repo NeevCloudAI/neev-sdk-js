@@ -10,8 +10,7 @@
  */
 import { Neev, type Sandbox } from "@neevcloud/sdk";
 
-// Construct the client from NEEV_* environment variables. Targets the Neev
-// production API by default.
+// Construct the client from NEEV_* environment variables.
 const neev = new Neev();
 
 async function main(): Promise<void> {

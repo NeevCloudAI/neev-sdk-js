@@ -3,7 +3,7 @@
  * alive past that idle deadline with a keepalive loop. Also shows changing the
  * windows in place with updateTimeout().
  *
- * Run with (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/lifecycle-keepalive.ts
  */

@@ -15,7 +15,7 @@
  * tunnel loads automatically:
  *   npm install ws
  *
- * Run (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/ssh-tunnel.ts
  */

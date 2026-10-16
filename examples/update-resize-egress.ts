@@ -4,7 +4,7 @@
  * carrying both), without recreating the sandbox or losing its id. Then edit the
  * allow-list in place with egress_add / egress_remove instead of restating it.
  *
- * Run with (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/update-resize-egress.ts
  */

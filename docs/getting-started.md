@@ -1,4 +1,4 @@
-# @neevcloud/sdk — Getting Started
+# Getting started
 
 Install the SDK, configure credentials, and run your first script. For a shorter
 overview, see the [README](../README.md). When you need API lists, method
@@ -8,6 +8,18 @@ below.
 `@neevcloud/sdk` is **async-only**: every method returns a `Promise`, so all the
 snippets below use `await` (inside an `async` function or a module that supports
 top-level `await`).
+
+## Contents
+
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Configure credentials](#configure-credentials)
+- [Imports](#imports)
+- [From zero to your first sandbox](#from-zero-to-your-first-sandbox)
+- [Choose a template](#choose-a-template)
+- [Quick start](#quick-start)
+- [Other products](#other-products)
+- [Documentation map](#documentation-map)
 
 ## Prerequisites
 
@@ -25,16 +37,15 @@ it is installed automatically with the SDK.
 
 ## Installation
 
-The SDK is currently published as a **beta**. Install it with your package
-manager of choice — these docs use **pnpm**:
+Install it with your package manager of choice:
 
 ```sh
-pnpm add @neevcloud/sdk@beta
-# or: npm install @neevcloud/sdk@beta · yarn add @neevcloud/sdk@beta · bun add @neevcloud/sdk@beta
+npm install @neevcloud/sdk
+# or
+pnpm add @neevcloud/sdk
+yarn add @neevcloud/sdk
+bun add @neevcloud/sdk
 ```
-
-Once the package leaves beta, drop the `@beta` tag to track the latest stable
-release.
 
 To run the bundled examples from a clone instead, see
 [`examples/README.md`](../examples/README.md) — `import "@neevcloud/sdk"` resolves
@@ -52,6 +63,8 @@ pass the equivalent options to `new Neev({ ... })`.
 | `NEEV_API_KEY` | `apiKey` | Bearer token (**required**) |
 | `NEEV_ORG_ID` | `orgId` | Default organization id |
 | `NEEV_PROJECT_ID` | `projectId` | Default project id |
+
+Find your organization and project IDs as described in [Organizations and projects](https://docs.ai.neevcloud.com/getting-started/org-and-project#find-your-organization-id-and-project-id).
 
 Notes:
 
@@ -124,7 +137,7 @@ This section walks the full path from a clean project to a running sandbox.
 1. **Install the SDK** into a Node 18+ project:
 
    ```sh
-   pnpm add @neevcloud/sdk@beta
+   npm install @neevcloud/sdk
    ```
 
 2. **Set credentials** using the [blocks above](#configure-credentials). At
@@ -171,6 +184,26 @@ This section walks the full path from a clean project to a running sandbox.
 If you see authentication or permission errors, double-check your API key and
 org/project ids. `create` returns a funds-validation error when the project has no
 available credits.
+
+## Choose a template
+
+A template is the image a sandbox starts from. `sb-ubuntu-26-04-dev` is a good default;
+the others add something specific.
+
+| Template | Use it for |
+| --- | --- |
+| `sb-ubuntu-26-04-dev` | General development: git, gh, Python 3, Node 24 LTS |
+| `sb-ubuntu-26-04-docker` | Docker, Compose and Buildx; run `start-docker` first, and run containers with `--network=host` |
+| `sb-ubuntu-26-04-interpreter` | The code interpreter: Python kernels that keep their state (`sandbox.code`) |
+| `sb-ubuntu-26-04-playwright` | Browser testing: a desktop with Node 24, Playwright and Chromium, headless or headed (`DISPLAY=:1`) |
+
+The catalogue grows over time, so `neev.templates.list()` is the source of truth.
+
+```ts
+const browser = await neev.sandboxes.create({ sandbox_template_id: "sb-ubuntu-26-04-playwright" });
+await browser.waitUntilReady();
+const run = await browser.exec(["npx", "playwright", "test"], { cwd: "app", timeoutMs: 300_000 });
+```
 
 ## Quick start
 
@@ -292,12 +325,21 @@ For snapshot capture, rollback, and fork workflows, see
 [`examples/snapshot-fork-rollback.ts`](../examples/snapshot-fork-rollback.ts) and
 the snapshots section of [`api-reference.md`](./api-reference.md).
 
+## Other products
+
+The same client covers every NeevCloud product in this SDK.
+
+| Product | Start here |
+| --- | --- |
+| Agents: ready-made coding agents, each on its own sandbox | [README: Agents](../README.md#agents) |
+| Agent tools: sandbox tools for the agent you build | [README: Agent tools](../README.md#agent-tools) |
+
 ## Documentation map
 
 | Document | What you'll find |
 | -------- | ---------------- |
 | [README](../README.md) | Short install overview, quickstart, usage snippets |
 | **Getting started** (this file) | Full install walkthrough, env vars, first script |
-| [`api-reference.md`](./api-reference.md) | Lifecycle vs runtime API lists and copy-paste snippets |
+| [`api-reference.md`](./api-reference.md) | Every product and method, grouped by product, with snippets |
 | [`api-inventory.md`](./api-inventory.md) | Full method signatures, parameter tables, types, errors |
 | [`examples/README.md`](../examples/README.md) | Tiered learning path and per-example run commands |

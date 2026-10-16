@@ -1,8 +1,8 @@
-# Neev JavaScript/TypeScript SDK — API Inventory
+# API inventory
 
-Complete, hand-maintained inventory of the public `@neevcloud/sdk` package: per-method reference, type field tables, symbol index, and contract notes. Use this document when you need exhaustive detail on the entire SDK surface.
+Complete, hand-maintained inventory of the public `@neevcloud/sdk` package: per-method reference, type field tables, symbol index, and behaviour notes. Use this document when you need exhaustive detail on the entire SDK surface.
 
-Everything is `async`: methods return `Promise<...>` and are used with `await`. Install with `npm install @neevcloud/sdk@beta` and import from the package root:
+Everything is `async`: methods return `Promise<...>` and are used with `await`. Install with `npm install @neevcloud/sdk` and import from the package root:
 
 ```ts
 import { Neev } from "@neevcloud/sdk";
@@ -44,8 +44,7 @@ import { Neev } from "@neevcloud/sdk";
 - [Errors](#errors)
 - [Pagination types](#pagination-types)
 - [Symbol index by module](#symbol-index-by-module)
-- [Contract notes](#contract-notes)
-- [Maintaining this inventory](#maintaining-this-inventory)
+- [Contract notes](#behaviour-notes)
 
 ---
 
@@ -190,10 +189,10 @@ The platform client. Construct once and reuse. Exposes four resource namespaces 
 | `apiKey` | `string` | `NEEV_API_KEY` env | Bearer API key. **Required** (constructor throws if absent). |
 | `orgId` | `string` | `NEEV_ORG_ID` env | Default organization id. |
 | `projectId` | `string` | `NEEV_PROJECT_ID` env | Default project id. |
-| `baseURL` | `string` | `https://api.ai.neevcloud.com/agent` | Lifecycle base URL. |
 | `timeoutMs` | `number` | `60000` | Per-request timeout in milliseconds. |
 | `maxRetries` | `number` | `2` | Retries on transient failures (network errors, 429, 5xx). Sandbox runtime calls always use 0 retries because exec/write are not idempotent. |
 | `fetch` | `FetchLike` | runtime global `fetch` | Custom fetch implementation. |
+| `webSocket` | `WebSocketFactory` | runtime global `WebSocket` | Factory for terminal sessions. In Node, pass one built on the `ws` package. |
 
 **Raises:**
 
@@ -468,7 +467,21 @@ audit(id: string, params?: AuditParams): Promise<AuditTrail>
 
 Reads one page of the sandbox's audit trail, newest first: terminal commands, SSH, process and file operations, each as an OCSF API Activity event with who made the call (`actor`) and how it ended (`status`, `status_code`). Only the program name is recorded, never its arguments, and input at a hidden password prompt is not captured.
 
-`AuditParams` = `{ from?: string; to?: string; cursor?: string; limit?: number; operation?: string | string[]; status?: AuditStatusFilter; actorType?: AuditActorType | AuditActorType[]; actorUid?: string; credentialUid?: string; orgId?; projectId? }` — `from` / `to` are RFC3339 (default: the 24 hours before now), `limit` is 1–200 (default 50). The filters narrow by call (`api.operation`, e.g. `"exec"`), outcome (`"success"` / `"failure"`), kind of principal (`"user"`, `"api_key"`, `"system"`), principal id, or API key; arrays are sent comma-separated. Actor filters don't match events recorded before actors were; use `credentialUid` for those.
+`AuditParams`:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `from`, `to` | `string` | RFC3339; default is the 24 hours before now |
+| `cursor` | `string` | The previous page's `next_cursor` |
+| `limit` | `number` | 1–200, default 50 |
+| `operation` | `string \| string[]` | Only these calls (`api.operation`), such as `"exec"` |
+| `status` | `AuditStatusFilter` | `"success"` or `"failure"` |
+| `actorType` | `AuditActorType \| AuditActorType[]` | `"user"`, `"api_key"` or `"system"` |
+| `actorUid` | `string` | One principal: a user id or an API key id |
+| `credentialUid` | `string` | Calls made with this API key |
+| `orgId`, `projectId` | `string` | Scope override |
+
+Arrays are sent comma-separated. Actor filters don't match events recorded before actors were; use `credentialUid` for those.
 
 **Returns:** `AuditTrail` = `{ from; to; retention_days; window_truncated; next_cursor?; data: AuditEvent[] }`. `window_truncated` is true when `from` reaches past the `retention_days` window. Pass `next_cursor` as `cursor` for the next page; it is absent when the window is exhausted.
 
@@ -487,7 +500,7 @@ const failed = await client.sandboxes.audit(id, { operation: "exec", status: "fa
 createSnapshot(id: string, params?: CreateSnapshotParams, scope?: Scope): Promise<SnapshotData>
 ```
 
-Captures a filesystem snapshot of a sandbox. Returns immediately with `status === "Pending"`; poll `getSnapshot` until the status is `Ready` before restoring or forking from it.
+Captures a snapshot of a sandbox's full state: its files and the memory of its running processes. Returns immediately with `status === "Pending"`; call `waitForSnapshot` until it is `Ready` before restoring from it.
 
 **Parameters:**
 
@@ -754,7 +767,16 @@ Fetches a single agent by id or by name — names are unique within a project. E
 update(id: string, params: UpdateAgentParams, scope?: Scope): Promise<Agent>
 ```
 
-Updates an agent in place. `UpdateAgentParams` = the generated `UpdateAgentRequest` (`{ egress?; egress_add?; egress_remove?; resources?; idle_timeout_seconds? }`) plus the SDK-only `allowInternet` / `allowEgress` convenience (same as `create`, mapped to `egress`); at least one of `resources`, `egress`, `egress_add`, `egress_remove` or `idle_timeout_seconds` is required. `egress_add` / `egress_remove` behave exactly as on [`sandboxes.update`](#clientsandboxesupdateid-params-scope) and cannot be combined with `egress`. `idle_timeout_seconds` sets the idle window (`0` = no idle limit, which keeps the agent consuming quota until deleted). `resources` resizes `cpu` / `memory_gb` in place (`disk_gb` is fixed at creation) — see [Agent resources](#agent-resources) for defaults and bounds. `egress` replaces the policy in full with no restart.
+Updates an agent in place. `UpdateAgentParams` is the generated `UpdateAgentRequest` plus the SDK-only `allowInternet` / `allowEgress` convenience (mapped to `egress`, as on `create`).
+
+| Field | Effect |
+| --- | --- |
+| `resources` | Resize `cpu` / `memory_gb` in place; `disk_gb` is fixed at creation. See [Agent resources](#agent-resources) |
+| `egress` | Replace the policy in full, with no restart |
+| `egress_add`, `egress_remove` | Edit the allow-list in place, exactly as on [`sandboxes.update`](#clientsandboxesupdateid-params-scope); can't be combined with `egress` |
+| `idle_timeout_seconds` | The idle window; `0` means no limit, so the agent holds quota until deleted |
+
+At least one of these fields is required.
 
 ### `client.agents.keepalive(id, scope?)` / `rollback(id, snapshotId, scope?)`
 
@@ -1042,7 +1064,9 @@ Lower-level port control: `exposePort` exposes a port without the readiness wait
 
 The preview URL needs no credential: its slug is the only thing gating it, so treat the URL as a secret. `ExposePortOptions.slug` (exactly 8 lowercase letters and digits) chooses the slug; omit it for a random, unguessable one. Exposing an already-exposed port with a different slug replaces it and breaks the previous URL — that is how you rotate a leaked URL. A slug you choose is a name, not a secret.
 
-`SandboxPort`: `{ port: number; slug: string; preview_url: string }`. The matching resource methods are `client.sandboxes.exposePort(id, port, params?)`, `listPorts(id, scope?)`, `revokePort(id, port, scope?)`, and `getPortUrl(id, port, options?, scope?)`. On the resource method `ExposePortParams` = `Scope & ExposePortOptions`, so the slug travels alongside an optional scope override: `exposePort(id, 3000, { slug, projectId })`, and a call that passes only a scope as its third argument behaves as it always has.
+`SandboxPort`: `{ port: number; slug: string; preview_url: string }`.
+
+The matching resource methods are `client.sandboxes.exposePort(id, port, params?)`, `listPorts(id, scope?)`, `revokePort(id, port, scope?)` and `getPortUrl(id, port, options?, scope?)`. On the resource method, `ExposePortParams` is `Scope & ExposePortOptions`, so a slug and a scope override can travel together: `exposePort(id, 3000, { slug, projectId })`.
 
 ```ts
 const ports = await sandbox.listPorts();
@@ -1309,7 +1333,11 @@ All file operations raise typed `APIError` subclasses (mapped from the sandbox.s
 
 ## Processes API
 
-Access via the `sandbox.processes` getter (a `SandboxProcesses`). Runs **detached** processes whose lifetime is decoupled from the request that started them, each addressed by a stable `process_id`. The first call resolves the sandbox connection, waiting for the sandbox to be `Ready`. HTTP-backed failures raise typed `APIError` subclasses (e.g. `NotFoundError` for an unknown `process_id`, `BadRequestError` for a disallowed signal). Before any HTTP call, `start` throws `NeevError` for invalid arguments (an argv array combined with `args`, or an empty program), and the first-use readiness wait throws `NeevError` if the sandbox is `Paused` or does not become `Ready` in time.
+Access via the `sandbox.processes` getter (a `SandboxProcesses`). It runs **detached** processes that outlive the request that started them, each addressed by a stable `process_id`.
+
+- The first call waits for the sandbox to be `Ready`, and throws `NeevError` if it is `Paused` or doesn't become `Ready` in time.
+- Before any request, `start` throws `NeevError` for invalid arguments: an argv array combined with `args`, or an empty program.
+- Request failures raise typed `APIError` subclasses, such as `NotFoundError` for an unknown `process_id` or `BadRequestError` for a disallowed signal.
 
 ### `sandbox.processes.start(command, options?)`
 
@@ -1527,7 +1555,17 @@ Opt-in tools (`expose_port`; `checkpoint`/`rollback`; `start_process`/`read_proc
 | `stopProcess(args)` | `Promise<StopProcessToolResult \| ToolErrorResult>` | SIGTERM; `ok` is false if it had already exited. |
 | `listProcesses(args?)` | `Promise<ListProcessesToolResult \| ToolErrorResult>` | `command` is the program and args joined with spaces, or the command given to `start_process` for an `sh -lc` process; `exit_code` only once exited. |
 
-Numeric arguments (`timeout_s`, `wait_s`, `cursor`, `port`, `offset`, `length`) accept finite numbers and plain decimal strings (ASCII digits, optional ASCII whitespace around them). Through `call()` anything else is an invalid-arguments error; on a direct method call an optional one takes its default. A boolean argument (`recursive`) must be a JSON boolean, or null for the default, through `call()`; on a direct method call anything else takes its default. Output and file content over 10 KB per stream are cut in the middle; an error result from an `APIError` reads `HTTP <status> <code>: <message>` (`HTTP <status>: <message>` without a code), where the message is the body's first non-empty string among `message`, `error` and `details` (a body that is not a JSON object counts as `details`), never the URL, method or request id, and every error result keeps its first line, cut to 500 characters. These texts match the Python SDK's. `BadRequestError`, `NotFoundError`, `ConflictError`, `DeadlineExceededError` and client-side `NeevError`s become error results; auth, permission, rate-limit, server and connection errors throw.
+Argument handling:
+
+- Numeric arguments (`timeout_s`, `wait_s`, `cursor`, `port`, `offset`, `length`) accept finite numbers and plain decimal strings. Through `call()` anything else is an invalid-arguments error; on a direct method call an optional one takes its default.
+- The boolean argument `recursive` must be a JSON boolean (or null for the default) through `call()`; on a direct method call anything else takes its default.
+
+Results and errors:
+
+- Output and file content over 10 KB per stream are cut in the middle.
+- An error result from an `APIError` reads `HTTP <status> <code>: <message>` (`HTTP <status>: <message>` without a code). The message is the body's first non-empty `message`, `error` or `details`, never the URL, method or request id. Every error result keeps its first line, cut to 500 characters.
+- `BadRequestError`, `NotFoundError`, `ConflictError`, `DeadlineExceededError` and client-side `NeevError`s become error results. Authentication, permission, rate-limit, server and connection errors throw.
+- These texts match the Python SDK's.
 
 ### `new FatalGuard()`
 
@@ -1714,13 +1752,23 @@ Per-field resolution order for a **sandbox**: caller value → platform default 
 
 ### Agent resources
 
-An agent runs on a 1:1 backing sandbox, so **agent resources use the same `SandboxResources` shape and bounds** as sandboxes (above). On `agents.create`, the `resources` field sizes that backing sandbox. Each field resolves as: caller value → the **agent template's** `default_resources` (`AgentTemplate.default_resources`) → platform default. Because agent templates seed their own `default_resources`, an agent created without `resources` inherits the **template's** sizing, not the platform floor — every current platform template defaults to 2 vCPU / 4 GB / 20 GB (set per template, so treat this as the current value rather than a fixed guarantee).
+An agent runs on its own backing sandbox, so **agent resources use the same `SandboxResources` shape and bounds** as sandboxes (above). On `agents.create`, `resources` sizes that sandbox. Each field resolves in this order:
+
+1. The value you pass.
+2. The agent template's `default_resources` (`AgentTemplate.default_resources`).
+3. The platform default.
+
+So an agent created without `resources` takes its template's sizing. Every current template defaults to 2 vCPU / 4 GB / 20 GB, but that is set per template, so treat it as the current value rather than a guarantee.
 
 `agents.update` resizes `cpu` / `memory_gb` in place on the running sandbox; `disk_gb` cannot be changed after creation.
 
 ### `SandboxEgressConfig` / `SandboxEgressRule` / `SandboxEgressRules`
 
-`SandboxEgressConfig` — network egress policy: `mode` (`"deny_all"` or `"allow_list"`), optional `allow` rules, and `allow_internet` (allows all outbound traffic, `0.0.0.0/0` and `::/0`; applies only in `allow_list` mode). `SandboxEgressRule` — a single allow rule: `host` (FQDN or CIDR), optional `ports` (omit to allow every port) and `protocol` (`"TCP"` or `"UDP"`; defaults to TCP when `ports` is set). Both `ports` and `protocol` are enforced. `SandboxEgressRules` — `{ allow: SandboxEgressRule[] }` on its own, the shape of `egress_add` / `egress_remove` on `update`.
+| Type | Shape |
+| --- | --- |
+| `SandboxEgressConfig` | The egress policy: `mode` (`"deny_all"` or `"allow_list"`), optional `allow` rules, and `allow_internet` (all outbound traffic, `0.0.0.0/0` and `::/0`; only in `allow_list` mode) |
+| `SandboxEgressRule` | One allow rule: `host` (FQDN or CIDR), optional `ports` (omit for every port) and `protocol` (`"TCP"` or `"UDP"`; TCP when `ports` is set). Both are enforced |
+| `SandboxEgressRules` | `{ allow: SandboxEgressRule[] }`, the shape of `egress_add` / `egress_remove` on `update` |
 
 ### `EgressConvenience`
 
@@ -1758,7 +1806,13 @@ The generated `UpdateAgentRequest` plus the SDK-only `EgressConvenience` fields 
 
 ### `UpdateSandboxParams`
 
-The generated `UpdateSandboxRequest` plus the SDK-only `EgressConvenience` fields — the body for `sandboxes.update`. At least one of `resources`, `egress`, `egress_add` or `egress_remove` must be provided, and `egress_add` / `egress_remove` can't be combined with `egress` or the convenience fields — either mistake throws `NeevError` before any request. `disk_gb` inside `resources` is not resizable in place and is rejected by the server if changed. The `allowInternet` / `allowEgress` convenience maps to `egress` byte-identically to `create`.
+The generated `UpdateSandboxRequest` plus the SDK-only `EgressConvenience` fields: the body for `sandboxes.update`.
+
+- At least one of `resources`, `egress`, `egress_add` or `egress_remove` is required.
+- `egress_add` / `egress_remove` can't be combined with `egress` or the convenience fields.
+- Either mistake throws `NeevError` before any request is sent.
+- `disk_gb` can't be resized in place; the server rejects a change.
+- `allowInternet` / `allowEgress` map to `egress` exactly as on `create`.
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
@@ -2089,7 +2143,7 @@ Compact reviewer index.
 | Symbol | Kind | Description |
 | ------ | ---- | ----------- |
 | `Neev` | class | Platform client; exposes `.sandboxes`, `.templates`, `.agents`, `.agentTemplates`, `.raw`. |
-| `Neev` constructor | method | `NeevOptions`: `apiKey`, `orgId`, `projectId`, `baseURL`, `timeoutMs`, `maxRetries`, `fetch`. |
+| `Neev` constructor | method | `NeevOptions`: `apiKey`, `orgId`, `projectId`, `timeoutMs`, `maxRetries`, `fetch`, `webSocket`. |
 | `Neev.createSandboxConnection` | method | `SandboxConnection` for a `connect_url` (internal use). |
 | `NeevOptions` | type | Constructor options. |
 | `Scope` | type | `{ orgId?, projectId? }`. |
@@ -2259,9 +2313,9 @@ Compact reviewer index.
 
 ---
 
-## Contract notes
+## Behaviour notes
 
-- Client env vars: `NEEV_API_KEY`, `NEEV_ORG_ID`, `NEEV_PROJECT_ID` (not `NEEVAI_*`). The constructor throws `NeevError` if no API key resolves.
+- Client env vars: `NEEV_API_KEY`, `NEEV_ORG_ID`, `NEEV_PROJECT_ID`. The constructor throws `NeevError` if no API key resolves.
 - `create` takes all-optional fields; the platform generates a name when omitted and defaults the template.
 - `pause()` and `resume()` return the updated `Sandbox` handle (not `void`).
 - `connectUrl` is a getter returning `string | null`, not a method.
@@ -2274,28 +2328,3 @@ Compact reviewer index.
 - Sandbox runtime calls use a **no-retry** transport (exec/write are not idempotent); lifecycle calls retry network errors, 429, and 5xx up to `maxRetries` (default 2).
 - `sandbox.exec` and `sandbox.files` wait for the sandbox to be `Ready` (and to expose a `connect_url`) on first use; `SandboxConnection` methods do not wait.
 - There is no `close()` on `Neev` or `SandboxConnection` — neither holds a persistent connection.
-
----
-
-## Maintaining this inventory
-
-Update manually when the public API changes. Cross-check against `src/`:
-
-- `src/index.ts` — the authoritative list of public exports.
-- `src/client.ts`, `src/resources/*.ts`, `src/sandbox.ts`, `src/runtime.ts` — method signatures and behaviors.
-- `src/types.ts` + `src/generated/aiagent.ts` — lifecycle type shapes (regenerate generated types from the spec, then verify the field tables here).
-- `src/errors.ts` — the error hierarchy and status mapping.
-
----
-
-I read all the source files and `/tmp/py-api-inventory.md`, then produced the complete, exact markdown above for `docs/api-inventory.md`. Key accuracy notes baked into the doc:
-
-- Documented all exports from `src/index.ts` (values vs `export type`), including the package-root types and the fact that `ListSnapshotsParams`/`SnapshotPage` are exported from `resources/sandboxes.ts` but not re-exported at root.
-- `Neev` constructor (`NeevOptions`) with real defaults (`baseURL` default `https://api.ai.neevcloud.com/agent`, `timeoutMs` 60000, `maxRetries` 2) and both throw paths (missing apiKey, missing fetch). No `close()`.
-- Every `Sandboxes` method with exact TS signatures and `scope?`/params interfaces; `create` requires only `name`; `listSnapshots`/`snapshots` are paginated (`SnapshotPage`); `rollback` = in-place to chosen snapshot; `fork` = new sandbox from current live state (not a stored snapshot); included `connect`.
-- `Sandbox` handle getters (`connectUrl` is `string | null`, plus `region`/`templateId`/`resources`), `waitUntilReady` (`Paused` fail-fast, timeout), overloaded `exec` (buffered vs `{ stream: true }`), deprecated `execStream`, `toJSON`.
-- Runtime `SandboxConnection`/`SandboxFiles` with camelCase results (`bytesWritten`, `modifiedTime`, `symlinkTarget`), `ExecOptions`/`ExecResult`/`ExecStreamEvent`/`FileEntry`.
-- Full error hierarchy with status mapping (incl. reason-code → status table) and `APIError` properties (`status`, `code`, `details`, `requestId`).
-- `RawClient.request<T>` returns `undefined` on 204; no-retry runtime vs retrying lifecycle transport.
-
-For type field tables sourced from the generated OpenAPI schema (e.g. `SandboxResources`, `MetricSeries`, exact `CreateSandboxRequest`/`Snapshot` field optionality), I noted they follow `src/generated/aiagent.ts` since `types.ts` only aliases them — that generated file was not in the read set, so those specific field lists are best-effort and flagged as such in the doc.

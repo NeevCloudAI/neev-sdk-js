@@ -13,7 +13,7 @@
  * This starts a tiny web server on port 3000 and prints its preview URL — open
  * that URL to reach the server.
  *
- * Run (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/preview-url.ts
  */

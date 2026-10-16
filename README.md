@@ -1,571 +1,418 @@
-# @neevcloud/sdk
+# NeevCloud SDK for TypeScript
 
-> Official NeevCloud SDK for the Neev platform — Node, Bun, Deno & edge.
+The official TypeScript client for NeevCloud, published as `@neevcloud/sdk`.
 
-`@neevcloud/sdk` is the single, growing TypeScript client for the **Neev platform**.
-One package, one auth model, one client — adopt new capabilities as they ship.
+[![npm](https://img.shields.io/npm/v/@neevcloud/sdk)](https://www.npmjs.com/package/@neevcloud/sdk)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](./LICENSE)
+[![CI](https://github.com/NeevCloudAI/neev-sdk-js/actions/workflows/ci.yml/badge.svg)](https://github.com/NeevCloudAI/neev-sdk-js/actions/workflows/ci.yml)
 
-> **Using DeepSeek Harness?** [`@neevcloud/dsh-sandbox`](https://github.com/NeevCloudAI/dsh-neev-sandbox) is a DSH plugin built on this SDK that runs the Harness's Bash, PTY, files, and LSP inside a NeevCloud Sandbox — `dsh plugin add @neevcloud/dsh-sandbox`.
+One package for the NeevCloud products you build with: Sandboxes, Agents and Agent tools
+today, with more to come. It runs on Node, Bun, Deno and edge runtimes, with one client,
+one API key, and typed requests, responses and errors.
 
-**Available today**
+## Contents
 
-- **`neev.sandboxes`** — full agent-sandbox lifecycle: create (catalogue template or BYOI image), list, get (by id or name), update (in-place resize + egress, or an in-place allow-list edit), pause, resume, keepalive, timeout windows, delete, live metrics, an audit trail of what ran, preview URLs for ports, plus snapshots, rollback, and fork. Inside a running sandbox: `files` (including resumable chunked uploads and local-disk `uploadFile` / `downloadFile`), `exec`, a `processes` supervisor for long-running, detached processes, `pty` for interactive terminal sessions, and `ssh`. Sandboxes are strongly isolated compute environments for AI agents.
-- **`neev.templates`** — the platform sandbox-template catalogue (list, get). A template id (e.g. `sb-ubuntu-26-04-dev`) is optional when creating a sandbox; omit it to use the platform's default template.
-- **`neev.agents`** — agent lifecycle: create from a catalogue template, list, get (by id or name), update (in-place egress / cpu / memory / idle window), pause, resume, keepalive, rollback, preview URLs, audit trail, delete. Each agent runs on its own backing sandbox, reachable from the handle via `agent.sandbox()`.
-- **`neev.agentTemplates`** — the platform agent-template catalogue (list, get). A template name (e.g. `claude-code`) is passed as `agent_template` when creating an agent.
-
-**Coming next**
-
-- `neev.inference`, `neev.runtimes`, `neev.storage`, … — rolling out in the same package.
-
----
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Products](#products)
+- [Sandboxes](#sandboxes)
+- [Agents](#agents)
+- [Agent tools](#agent-tools)
+- [Errors](#errors)
+- [Configuration](#configuration)
+- [Examples](#examples)
+- [Documentation](#documentation)
+- [Security](#security)
+- [License](#license)
 
 ## Install
 
 ```sh
-npm install @neevcloud/sdk@beta
-# or: pnpm add @neevcloud/sdk@beta · yarn add @neevcloud/sdk@beta · bun add @neevcloud/sdk@beta
+npm install @neevcloud/sdk
+# or
+pnpm add @neevcloud/sdk
+bun add @neevcloud/sdk
 ```
 
-Requires a server-side JS runtime with global `fetch`: **Node 18+**, **Bun**, **Deno**, or an edge runtime. There is no browser build — your API key must never ship to a browser.
+Runs on Node 18+, Bun, Deno and edge runtimes with a global `fetch`. It is a
+server-side SDK: never ship your API key to a browser.
 
-## Authentication
+## Quick start
 
-The client reads configuration from explicit options or `NEEV_*` environment variables:
+Set your credentials:
 
-| Option      | Env var                 | Required | Default |
-| ----------- | ----------------------- | -------- | ------- |
-| `apiKey`    | `NEEV_API_KEY`          | yes      | —       |
-| `orgId`     | `NEEV_ORG_ID`           | yes\*    | —       |
-| `projectId` | `NEEV_PROJECT_ID`       | yes\*    | —       |
-| `baseURL`   | —                       | no       | production API |
+```sh
+export NEEV_API_KEY="your-api-key"
+export NEEV_ORG_ID="your-org-id"
+export NEEV_PROJECT_ID="your-project-id"
+```
 
-\* `orgId` / `projectId` may be set on the client or overridden per call.
+Find your organization and project IDs as described in [Organizations and projects](https://docs.ai.neevcloud.com/getting-started/org-and-project#find-your-organization-id-and-project-id).
 
-`baseURL` defaults to the Neev production API; set it only to target another environment.
-
-## Quickstart
+Create a sandbox, run a command, read a file, and clean up:
 
 ```ts
 import { Neev } from "@neevcloud/sdk";
 
-const neev = new Neev({
-  apiKey: process.env.NEEV_API_KEY,
-  orgId: process.env.NEEV_ORG_ID,
-  projectId: process.env.NEEV_PROJECT_ID,
-});
+const neev = new Neev(); // reads the NEEV_* variables
 
-// Create a sandbox on the platform defaults and wait for it to come up.
-const sandbox = await neev.sandboxes.create({});
+const sandbox = await neev.sandboxes.create({ sandbox_template_id: "sb-ubuntu-26-04-dev" });
+
+try {
+  await sandbox.waitUntilReady();
+  const { stdout } = await sandbox.exec(["python3", "-c", "print(6 * 7)"]);
+  console.log(stdout); // 42
+
+  await sandbox.files.write("hello.txt", "hello from NeevCloud\n");
+  console.log(await sandbox.files.readText("hello.txt"));
+} finally {
+  await sandbox.delete();
+}
+```
+
+## Products
+
+| Product | What it is | Entry point | Guide |
+| --- | --- | --- | --- |
+| Sandboxes | Isolated machines that run your code, commands and servers | `neev.sandboxes`, `neev.templates` | [Sandboxes](#sandboxes) |
+| Agents | Ready-made coding agents, such as Claude Code, each on its own sandbox | `neev.agents`, `neev.agentTemplates` | [Agents](#agents) |
+| Agent tools | A sandbox tool set, with model-ready schemas, for the agent you build | `@neevcloud/sdk/agent-tools` | [Agent tools](#agent-tools) |
+
+## Sandboxes
+
+A sandbox is an isolated machine for running code, commands and servers. You create it
+from a template, work inside it, and pause or delete it when you are done.
+
+| Capability | API | Example |
+| --- | --- | --- |
+| [Sandbox lifecycle](#sandbox-lifecycle) | `neev.sandboxes.create / list / get / update / pause / resume / delete` | [`create-sandbox.ts`](./examples/create-sandbox.ts) |
+| [Templates](#templates) | `neev.templates.list / get` | [`docker.ts`](./examples/docker.ts) |
+| [Files](#files) | `sandbox.files` | [`files.ts`](./examples/files.ts) |
+| [Commands and processes](#commands-and-processes) | `sandbox.exec`, `sandbox.processes` | [`processes.ts`](./examples/processes.ts) |
+| [Terminals and SSH](#terminals-and-ssh) | `sandbox.pty`, `sandbox.ssh()` | [`pty.ts`](./examples/pty.ts) |
+| [Preview URLs](#preview-urls) | `sandbox.getUrl`, `sandbox.exposePort` | [`preview-url.ts`](./examples/preview-url.ts) |
+| [Snapshots, fork and rollback](#snapshots-fork-and-rollback) | `sandbox.snapshot / fork / rollback` | [`snapshot-fork-rollback.ts`](./examples/snapshot-fork-rollback.ts) |
+| [Network egress](#network-egress) | `allowInternet`, `allowEgress`, `egress` | [`update-resize-egress.ts`](./examples/update-resize-egress.ts) |
+| [Labels](#labels) | `labels` on create and list | [`labels.ts`](./examples/labels.ts) |
+| [Metrics](#metrics) | `sandbox.metrics` | [`sandbox-metrics.ts`](./examples/sandbox-metrics.ts) |
+| [Audit trail](#audit-trail) | `sandbox.audit` | [`audit-trail.ts`](./examples/audit-trail.ts) |
+| [Code interpreter](#code-interpreter) | `sandbox.code` | [`code-interpreter.ts`](./examples/code-interpreter.ts) |
+
+### Sandbox lifecycle
+
+`create`, `get` and `list` return a `Sandbox` handle. Its lifecycle methods act on that
+sandbox, and `get` accepts an id or a name.
+
+```ts
+const sandbox = await neev.sandboxes.create({ name: "web" });
 await sandbox.waitUntilReady();
 
-console.log(sandbox.id, sandbox.phase, sandbox.connectUrl);
-
-// Pause it when idle, resume on demand, delete when done.
-await sandbox.pause();
+await sandbox.pause(); // release compute; files and running processes are kept
 await sandbox.resume();
+await sandbox.update({ resources: { cpu: 2, memory_gb: 4 } }); // resize in place
+
+const page = await neev.sandboxes.list({ status: "Paused", limit: 50 });
 await sandbox.delete();
 ```
 
-To run the examples from a clone (including against dev), see [`examples/README.md`](./examples/README.md) for the full setup and per-example commands.
+Lifecycle windows stop a sandbox from running forever. Durations are in seconds.
 
-## Usage
+| Option | Meaning |
+| --- | --- |
+| `idle_timeout_seconds` | Act after this long with no activity |
+| `on_idle` | `"pause"` or `"delete"` |
+| `max_lifetime_seconds` | Hard limit on total lifetime |
 
-### Resource methods
+Set them in `lifecycle` at create time, change them with `sandbox.updateTimeout(...)`,
+and reset the idle timer with `sandbox.keepalive()`.
 
-```ts
-const page = await neev.sandboxes.list({ limit: 50 });
-const paused = await neev.sandboxes.list({ name: "web", status: "Paused" });
-// Label at create time, then find by label (every label given must match).
-await neev.sandboxes.create({ labels: { team: "payments", "ci-run": "4821" } });
-const payments = await neev.sandboxes.list({ labels: { team: "payments" } });
-const sandbox = await neev.sandboxes.get(id); // by id, or by name: neev.sandboxes.get("my-sandbox")
-await neev.sandboxes.pause(id);
-await neev.sandboxes.resume(id);
-await neev.sandboxes.delete(id);
-const metrics = await neev.sandboxes.metrics(id, { step: "60s" });
+See [`create-sandbox.ts`](./examples/create-sandbox.ts) · [`lifecycle-keepalive.ts`](./examples/lifecycle-keepalive.ts) · [reference](./docs/api-reference.md#sandboxes)
 
-// Update a running sandbox in place: resize cpu/memory and/or re-scope egress
-// (at least one required; disk is not resizable in place; egress needs no restart).
-await neev.sandboxes.update(id, { resources: { cpu: 2, memory_gb: 4 } });
-await neev.sandboxes.update(id, { allowEgress: ["api.github.com"] });
-// Or edit the allow-list in place without restating it (removals apply first).
-await neev.sandboxes.update(id, { egress_add: { allow: [{ host: "pypi.org", ports: [443] }] } });
+### Templates
 
-// What ran inside the sandbox, newest first (see "Audit trail" below).
-const trail = await neev.sandboxes.audit(id, { limit: 50 });
-
-// Lifecycle windows (all in seconds). keepalive resets the idle timer; updateTimeout
-// changes only the windows passed (send 0 to turn one off, omit to leave unchanged).
-await neev.sandboxes.keepalive(id);
-await neev.sandboxes.updateTimeout(id, { idle_timeout_seconds: 600, on_idle: "pause" });
-
-// Snapshots, rollback, and fork (see "Snapshots, fork & rollback" below).
-const snap = await neev.sandboxes.createSnapshot(id, { name: "checkpoint" });
-const { items } = await neev.sandboxes.listSnapshots(id); // paginated
-// `snap` starts Pending — wait until it reaches Ready before rolling back to it.
-await neev.sandboxes.waitForSnapshot(snap.id);         // resolves once Ready (throws on failure)
-await neev.sandboxes.rollback(id, snap.id);            // roll back in place to the Ready snapshot
-const fork = await neev.sandboxes.fork(id, "my-fork"); // fork the current live state (no snapshot needed)
-```
-
-### Sandbox templates
-
-`sandbox_template_id` is optional — omit it to use the platform's default template, or pass a known id directly, or browse the catalogue to discover one:
+A template is the image a sandbox starts from. Omit `sandbox_template_id` to use the
+default, or pick one from the catalogue.
 
 ```ts
-// Create directly from a known template id.
-const sandbox = await neev.sandboxes.create({
-  sandbox_template_id: "sb-ubuntu-26-04-dev",
-});
-
-// Or discover what's available first.
 const { items } = await neev.templates.list();
-const template = await neev.templates.get("sb-ubuntu-26-04-dev"); // inspect one
-template.icon; // display icon (e.g. an SVG document) or null
-template.min_memory_gb; // smallest memory a sandbox from it may have, or null
+const template = await neev.templates.get("sb-ubuntu-26-04-dev");
 ```
 
-The catalogue changes over time, so discover ids with `templates.list()` rather than hard-coding them. A retired template drops out of the list and can't be created from; sandboxes already built from it keep running. `sb-ubuntu-26-04-dev` is a general-purpose image with `bash`, `python3` and `node`, and `sb-ubuntu-26-04-docker` runs its own Docker daemon (see [`examples/docker.ts`](./examples/docker.ts)).
+Templates you can start from:
 
-### Custom images (BYOI)
+| Template | Use it for |
+| --- | --- |
+| `sb-ubuntu-26-04-dev` | General development: git, gh, Python 3, Node 24 LTS |
+| `sb-ubuntu-26-04-docker` | Docker, Compose and Buildx; run `start-docker` first, and run containers with `--network=host` |
+| `sb-ubuntu-26-04-interpreter` | The [code interpreter](#code-interpreter): Python kernels that keep their state |
+| `sb-ubuntu-26-04-playwright` | Browser testing: a desktop with Node 24, Playwright and Chromium, headless or headed (`DISPLAY=:1`) |
 
-Instead of a catalogue template, create from any public OCI image with an explicit
-tag or digest, and optionally override the start command. Set at most one of
-`sandbox_template_id` or `image` (omit both to use the platform default template):
+The catalogue grows over time, so `templates.list()` is the source of truth. To use your
+own image instead, pass `image` (a public OCI image with a tag or digest).
+
+Playwright and Chromium come preinstalled on the Playwright template, so a project that
+pins the same Playwright version runs its tests with nothing to download:
 
 ```ts
-const sandbox = await neev.sandboxes.create({
-  image: "docker.io/library/python:3.12-slim",
-  command: ["sleep", "infinity"], // keep it alive to exec into
-});
+const browser = await neev.sandboxes.create({ sandbox_template_id: "sb-ubuntu-26-04-playwright" });
+await browser.waitUntilReady();
+const run = await browser.exec(["npx", "playwright", "test"], { cwd: "app", timeoutMs: 300_000 });
 ```
 
-### Lifecycle windows
+See [`docker.ts`](./examples/docker.ts) · [`byoi-create.ts`](./examples/byoi-create.ts) · [reference](./docs/api-reference.md#templates)
 
-Cap how long a sandbox lives and what happens when it goes idle. Durations are in
-seconds. Set windows at create time, change them in place with `updateTimeout`, and
-reset the idle timer with `keepalive`:
+### Files
+
+Paths are relative to the sandbox workspace, or absolute inside it.
 
 ```ts
-// At create time: pause after 10 min idle, hard-stop after 2 h total.
-const sandbox = await neev.sandboxes.create({
-  lifecycle: { idle_timeout_seconds: 600, max_lifetime_seconds: 7200, on_idle: "pause" },
-});
+await sandbox.files.write("main.py", "print('hi')");
+const text = await sandbox.files.readText("main.py");
+const entries = await sandbox.files.list(".", { recursive: true });
 
-// Reset the idle timer while work is in progress (e.g. once per agent turn).
-await sandbox.keepalive();
-
-// Change only the windows passed; send 0 to turn one off, omit to leave unchanged.
-await sandbox.updateTimeout({ idle_timeout_seconds: 0, max_lifetime_seconds: 3600 });
+await sandbox.files.move("main.py", "app.py");
+await sandbox.files.remove("build", { recursive: true });
 ```
 
-`on_idle` is `"pause"` or `"delete"`. Omit `lifecycle` entirely to use the account
-defaults (no lifecycle key is sent).
+Large writes are sent in resumable chunks automatically. In Node, `uploadFile` and
+`downloadFile` move files between local disk and the sandbox without buffering them,
+and `files.watch` streams changes as they happen.
 
-### Network egress
+See [`files.ts`](./examples/files.ts) · [`upload-download.ts`](./examples/upload-download.ts) · [reference](./docs/api-reference.md#files)
 
-Sandboxes (and agents) are **deny-all by default** — no outbound network. Open egress at create time with the convenience fields, on either `sandboxes.create` or `agents.create`:
+### Commands and processes
 
-```ts
-// allow the whole internet
-await neev.sandboxes.create({ name: "web", allowInternet: true });
-
-// allow only specific hosts (FQDN or CIDR; wildcards supported)
-await neev.sandboxes.create({ name: "ci", allowEgress: ["github.com", "*.npmjs.org"] });
-
-// same on agents
-await neev.agents.create({ name: "coder", agent_template: "claude-code", allowInternet: true });
-```
-
-`allowInternet: true` allows all outbound traffic (`0.0.0.0/0` and `::/0`). For finer control (ports, protocols, a mix of rules) pass a full `egress` object instead — it takes precedence over the convenience fields. A rule's `ports` limit it to those destination ports (omit for every port), and `protocol` defaults to `TCP` when `ports` is set:
+`exec` runs a command to completion and returns its output. A non-zero exit code is
+returned, not thrown.
 
 ```ts
-await neev.sandboxes.create({
-  name: "adv",
-  egress: {
-    mode: "allow_list",
-    allow_internet: false,
-    allow: [{ host: "api.example.com", ports: [443], protocol: "TCP" }],
-  },
-});
-```
+const { stdout, exitCode } = await sandbox.exec(["ls", "-la"]);
 
-On a running sandbox or agent, `update` either replaces the policy in full with `egress`, or edits the existing allow-list in place with `egress_add` / `egress_remove` (removals apply first, so one call can swap a host). The two styles can't be combined in one call, and `egress_add` needs the sandbox to already be in `allow_list` mode:
-
-```ts
-await sandbox.update({
-  egress_remove: { allow: [{ host: "old-api.example.com" }] },
-  egress_add: { allow: [{ host: "api.example.com", ports: [443] }] },
-});
-```
-
-### Sandbox handles
-
-`create`, `get`, and `list` return `Sandbox` handles with lifecycle methods on the object itself:
-
-```ts
-const sandbox = await neev.sandboxes.get(id);
-await sandbox.refresh();          // re-fetch latest state
-sandbox.lastCrash;                // null, or { reason, at, storage_reset } for the last unexpected stop
-sandbox.labels;                   // labels set at create time, {} when none
-const trail = await sandbox.audit(); // one page of the audit trail
-await sandbox.waitUntilReady();   // poll until phase === "Ready" and the sandbox is addressable
-sandbox.addressable;              // false for a moment after create; runtime calls wait for it
-await sandbox.update({ resources: { cpu: 2, memory_gb: 4 } }); // resize (or re-scope egress) in place
-await sandbox.pause();
-const snap = await sandbox.snapshot({ waitUntilReady: true }); // capture and wait until Ready
-const fork = await sandbox.fork("my-fork"); // branch the current state into a new sandbox
-await sandbox.rollback(snap.id);            // roll this sandbox back in place to the Ready snapshot
-sandbox.data;                     // full raw API record
-```
-
-### Per-call scope override
-
-Methods accept an optional scope to target a different org/project than the client default:
-
-```ts
-await neev.sandboxes.list({ orgId: "other-org", projectId: "other-proj" });
-```
-
-### Error handling
-
-Every failure is a typed `NeevError` subclass:
-
-```ts
-import { NotFoundError, RateLimitError, APIError } from "@neevcloud/sdk";
-
-try {
-  await neev.sandboxes.get("missing");
-} catch (err) {
-  if (err instanceof NotFoundError) {
-    // 404 — handle missing sandbox
-  } else if (err instanceof APIError) {
-    console.error(err.status, err.code, err.message, err.requestId);
-  }
-}
-```
-
-`err.code` is a machine-readable classification (`not_found`, `validation_error`, `sandbox_quota_exceeded`, …; see the `ErrorCode` type) — branch on it rather than on the message text. Quota refusals also carry `err.scope` (`organization` or `project`). A `503` surfaces as `ServiceUnavailableError`, a subclass of `InternalServerError`.
-
-Transient failures (network errors, `429`, `5xx`) are retried automatically with exponential backoff (configurable via `maxRetries`).
-
-### Advanced: untyped requests
-
-Most resources are typed against an OpenAPI spec. For endpoints that don't have a published spec yet, `neev.raw` issues requests over the same transport (auth, retries, timeout, typed errors), with caller-supplied types:
-
-```ts
-const widget = await neev.raw.request<{ id: string }>({
-  method: "GET",
-  path: "/api/v1beta1/orgs/acme/projects/web/widgets/123",
-});
-```
-
-These graduate to fully-typed resource methods as specs land in the SDK.
-
-### Working inside a sandbox (files & exec)
-
-Operations that act inside a running sandbox are reached directly on the sandbox handle. The handle resolves the sandbox's `connect_url` (returned by `create`/`get`/`list`) on first use and caches it; if the sandbox isn't Ready yet, the first `files`/`exec` call waits until it is:
-
-File paths are relative to the workspace, or absolute inside it (a path outside the workspace is refused):
-
-```ts
-const sandbox = await neev.sandboxes.get(id);
-await sandbox.files.write("main.py", "print('hi')"); // → { bytesWritten }
-const bytes = await sandbox.files.read("main.py"); // → Uint8Array
-const text = await sandbox.files.readText("main.py"); // → string
-const head = await sandbox.files.read("big.log", { offset: 0, length: 4096 }); // → first 4 KiB only
-const entries = await sandbox.files.list(".", { recursive: true }); // → FileEntry[]
-
-const info = await sandbox.files.stat("main.py"); // → FileEntry
-const there = await sandbox.files.exists("main.py"); // → boolean
-await sandbox.files.mkdir("out/logs"); // → FileEntry (creates parents)
-await sandbox.files.move("main.py", "app.py"); // → FileEntry (moved)
-await sandbox.files.remove("out", { recursive: true }); // → void
-
-// Large files: write() sends anything over 1 MiB in resumable chunks automatically.
-// upload() does the same for a string, Uint8Array, ArrayBuffer or Blob, with progress.
-await sandbox.files.upload("data.bin", bigBlob, {
-  onProgress: (sent, total) => console.log(`${sent}/${total}`),
-}); // → { bytesWritten }
-
-// Node only: move files between the local disk and the sandbox without buffering them.
-await sandbox.files.uploadFile("./model.bin", "model.bin"); // → { bytesWritten }
-await sandbox.files.downloadFile("results.tar", "./results.tar"); // → { bytesWritten }
-
-// Stream filesystem changes as they happen (until the timeout or an abort signal).
-for await (const ev of sandbox.files.watch(".", { recursive: true })) {
-  console.log(ev.type, ev.path); // e.g. "create app.py"
-}
-
-const result = await sandbox.exec(["sh", "-c", "python3 app.py"]); // → { stdout, stderr, exitCode }
-```
-
-By default `exec` is buffered — it runs the command to completion and returns captured output; a non-zero `exitCode` is returned, not thrown.
-
-To consume output **as it is produced** (long-running commands, live logs), pass `{ stream: true }`. The same `exec` then returns an async iterable that yields `stdout`/`stderr` text chunks the moment the sandbox flushes them, then a terminal `exit` event:
-
-```ts
-for await (const event of sandbox.exec(["sh", "-c", "for i in 1 2 3; do echo $i; sleep 1; done"], {
-  stream: true,
-})) {
+// Stream output as it is produced.
+for await (const event of sandbox.exec(["npm", "test"], { stream: true })) {
   if (event.type === "stdout") process.stdout.write(event.data);
-  else if (event.type === "stderr") process.stderr.write(event.data);
-  else console.log("exit", event.exitCode); // non-zero is reported here, not thrown
 }
 ```
 
-These calls are **not** retried automatically (a retried `write` could run twice) — handle retries yourself if needed. The exception is a chunked upload: a chunk that fails in transit resumes from the last byte the sandbox received rather than starting over, and an upload that cannot finish is cancelled before the error is thrown.
-
-`upload` and `uploadFile` take `{ chunkSize?, cwd?, onProgress?, signal? }`; `chunkSize` is 64 KiB to 1 MiB (the default, and the most one request can carry); a smaller chunk loses less to a dropped connection. `downloadFile` writes to a temporary file next to the destination and renames it into place once the whole file has arrived, so a failed download leaves nothing behind. The full example is [`examples/upload-download.ts`](./examples/upload-download.ts).
-
-### Long-running processes
-
-`exec` ties a command's lifetime to your request. For background work that should outlive a single call — a dev server, a build, a watcher — use `sandbox.processes`. The supervisor runs the process detached, addressed by a stable `process_id`, so you can start it, follow or poll its output, await its exit, and signal it across separate calls:
+For work that should outlive one call, such as a dev server or a watcher, start a
+background process instead:
 
 ```ts
 const proc = await sandbox.processes.start("npm", { args: ["run", "dev"], cwd: "app" });
-proc.id; // "proc_9f3a…"
-
-// Follow combined stdout/stderr live until the process exits (or you abort).
-for await (const event of proc.follow()) {
-  if (event.type === "stdout") process.stdout.write(event.data);
-  else if (event.type === "stderr") process.stderr.write(event.data);
-  else console.log("exit", event.exitCode);
-}
-
-// …or poll with a reconnect-safe cursor instead of following.
-const page = await proc.logs({ cursor: 0 }); // → { entries, cursor, dropped, state }
-
-const status = await proc.status();          // non-blocking snapshot
-const final = await proc.wait();             // block until it exits → { state, exitCode, … }
-await proc.kill(Signal.TERM);                // signal; default is SIGTERM
+const page = await proc.logs({ cursor: 0 }); // or follow() to stream
+await proc.kill();
 ```
 
-Collection-level operations live on `sandbox.processes`:
+See [`processes.ts`](./examples/processes.ts) · [`streaming-exec.ts`](./examples/streaming-exec.ts) · [reference](./docs/api-reference.md#commands-and-processes)
+
+### Terminals and SSH
+
+`sandbox.pty` opens an interactive terminal. You send keystrokes and receive output
+through a callback.
 
 ```ts
-const all = await sandbox.processes.list();        // → ProcessInfo[]
-const status = await sandbox.processes.get(id);    // by process_id
-const signalled = await sandbox.processes.kill(id, Signal.KILL);
-const count = await sandbox.processes.killAll();   // signal every running process
+const pty = await sandbox.pty.create({ cols: 80, rows: 24, onData: (c) => process.stdout.write(c) });
+pty.sendInput("ls -la\n");
+const { exitCode } = await pty.wait();
 ```
 
-Output is captured in a bounded ring: `logs` returns plain-text `entries` plus a monotonic `cursor` to resume from, and `dropped: true` when the ring rolled past your cursor. `follow` is the streaming counterpart; a client abort ends it without an `exit` event. Like `files`/`exec`, the first process call waits until the sandbox is Ready to resolve its `connect_url`.
+`sandbox.ssh()` opens a local port that forwards to the sandbox, so `ssh`, `scp`,
+`rsync` and IDE remote development work with no keys to manage. It runs on Node.
 
-The full example is [`examples/processes.ts`](./examples/processes.ts).
+```ts
+const tunnel = await sandbox.ssh();
+console.log(`ssh -p ${tunnel.port} neev@localhost`);
+await tunnel.close();
+```
+
+In Node, the terminal needs a WebSocket that can send headers. Install
+[`ws`](https://www.npmjs.com/package/ws) and pass it as the `webSocket` option (see
+[Configuration](#configuration)).
+
+See [`pty.ts`](./examples/pty.ts) · [`ssh-tunnel.ts`](./examples/ssh-tunnel.ts) · [reference](./docs/api-reference.md#terminals-and-ssh)
+
+### Preview URLs
+
+Expose a port and get a public HTTPS URL for it. `getUrl` waits until the URL answers.
+
+```ts
+await sandbox.processes.start("python3", { args: ["-m", "http.server", "3000"] });
+const url = await sandbox.getUrl({ port: 3000 });
+```
+
+Anyone with the URL can open it, so treat it as a secret. Rotate it with
+`sandbox.exposePort(3000, { slug })`, and close the port with `sandbox.revokePort(3000)`.
+
+See [`preview-url.ts`](./examples/preview-url.ts) · [reference](./docs/api-reference.md#neevsandboxes)
+
+### Snapshots, fork and rollback
+
+A snapshot captures a sandbox's full state: its files and the memory of its running
+processes. Roll the sandbox back to it later, fork the
+sandbox's current state into a new one, or restore a snapshot into a new sandbox.
+
+```ts
+const snap = await sandbox.snapshot({ name: "checkpoint", waitUntilReady: true });
+await sandbox.rollback(snap.id); // back to the snapshot, in place
+const copy = await sandbox.fork("my-fork"); // a new sandbox from the current state
+const restored = await neev.sandboxes.create({ restore: snap.id }); // a new sandbox from the snapshot
+```
+
+See [`snapshot-fork-rollback.ts`](./examples/snapshot-fork-rollback.ts) · [reference](./docs/api-reference.md#snapshots-fork-and-rollback)
+
+### Network egress
+
+A sandbox has no outbound network unless you allow it, apart from any its template
+allows (the Docker template allows Docker Hub and GHCR).
+
+```ts
+await neev.sandboxes.create({ allowInternet: true });
+await neev.sandboxes.create({ allowEgress: ["github.com", "*.npmjs.org"] });
+
+// Edit a running sandbox's allow-list in place.
+await sandbox.update({ egress_add: { allow: [{ host: "pypi.org", ports: [443] }] } });
+```
+
+For ports and protocols, pass a full `egress` policy instead.
+
+See [`update-resize-egress.ts`](./examples/update-resize-egress.ts) · [reference](./docs/api-reference.md#neevsandboxes)
+
+### Labels
+
+Tag sandboxes at create time and find them again by label.
+
+```ts
+await neev.sandboxes.create({ labels: { team: "payments" } });
+const { items } = await neev.sandboxes.list({ labels: { team: "payments" } });
+```
+
+See [`labels.ts`](./examples/labels.ts) · [reference](./docs/api-reference.md#neevsandboxes)
+
+### Metrics
+
+Read CPU, memory and disk usage over a time window.
+
+```ts
+const metrics = await sandbox.metrics({ step: "60s" });
+```
+
+See [`sandbox-metrics.ts`](./examples/sandbox-metrics.ts) · [reference](./docs/api-reference.md#neevsandboxes)
+
+### Audit trail
+
+Read what was run inside a sandbox, newest first: commands, terminal and SSH sessions,
+and file and process operations. Each event says who made the call and how it ended.
+Programs are recorded by name only, never with their arguments.
+
+```ts
+const trail = await sandbox.audit({ operation: "exec", status: "failure" });
+for (const e of trail.data) {
+  console.log(new Date(e.time).toISOString(), e.api.operation, e.actor.user.uid, e.status);
+}
+```
+
+Filter with `operation`, `status`, `actorType`, `actorUid` or `credentialUid`, and page
+back with `cursor: trail.next_cursor`. Events take a few seconds to appear after a call.
+
+See [`audit-trail.ts`](./examples/audit-trail.ts) · [reference](./docs/api-reference.md#neevsandboxes)
 
 ### Code interpreter
 
-A sandbox created from the interpreter template runs Python in persistent kernels. Variables, imports and loaded data stay between runs in the same context, so each run builds on the last:
+Sandboxes created from `sb-ubuntu-26-04-interpreter` run Python in kernels that keep
+their state between runs.
 
 ```ts
 const sandbox = await neev.sandboxes.create({ sandbox_template_id: "sb-ubuntu-26-04-interpreter" });
 
 await sandbox.code.run("import pandas as pd\ndf = pd.DataFrame({'x': [1, 2, 3]})");
-const run = await sandbox.code.run("print(df.x.sum())\ndf.describe()", {
-  onStdout: (out) => process.stdout.write(out.line), // { line, timestamp, error } as it arrives
-});
-run.stdout;          // "6\n"
-run.text;            // the last expression's text, here the describe() table
-run.results[0].html; // typed accessors: text, html, markdown, svg, png, jpeg, pdf, latex, json; formats()
-run.executionCount;  // 2
-run.endReason;       // "ok"
+const run = await sandbox.code.run("int(df.x.sum())");
+console.log(run.text); // "6"
 ```
 
-Code that raises is returned, not thrown: `endReason` is `"error"` and `run.error` holds `{ name, value, traceback }`. A run that outlives `timeoutMs` is interrupted with `endReason: "deadline_exceeded"` and the context keeps its state; `"kernel_restarted"` and `"memory_exceeded"` mean the state was lost, which `run.generation` changing also tells you. A run on a context that is still busy throws an `APIError` with `reason: "context_busy"`. A run or context call on a paused sandbox wakes it and waits up to two minutes, within `requestTimeoutMs`.
+An exception in your code is returned in `run.error`, not thrown. Use
+`sandbox.code.createContext()` for separate kernels with their own state.
 
-Run options: `context` (a context or its id), `language` (`"python"`, the default context's language), `envs` (environment variables for this run only, seen by subprocesses too), `timeoutMs` (the cell's timeout; the sandbox's ceiling is the default), `requestTimeoutMs` (a bound on the whole request), `signal`, and the `onStdout` / `onStderr` / `onResult` / `onError` callbacks. `run.logs` holds the output pieces as they arrived.
+See [`code-interpreter.ts`](./examples/code-interpreter.ts) · [reference](./docs/api-reference.md#code-interpreter)
 
-```ts
-await sandbox.code.run("import os, subprocess\nprint(os.environ['STAGE'])", { envs: { STAGE: "test" } });
-```
+## Agents
 
-Each context is a separate kernel with its own state, started in its own working directory; a run sent while its kernel is still starting waits for it. Runs without a `context` use the `default` context:
+An agent is a ready-made coding agent, such as Claude Code, running on its own sandbox.
+You choose an agent template, and the SDK manages the agent's life and gives you its
+sandbox to work with.
 
-```ts
-const ctx = await sandbox.code.createContext({ cwd: "project" }); // → { contextId, generation, language, cwd }
-await sandbox.code.run("import os\nprint(os.getcwd())", { context: ctx });
-await sandbox.code.listContexts();       // → [{ contextId, state, generation, language, cwd, rssMib }]
-await sandbox.code.restartContext(ctx);  // drops its state, returns the new generation
-await sandbox.code.deleteContext(ctx);
-```
+| Capability | API | Example |
+| --- | --- | --- |
+| [Agent lifecycle](#agent-lifecycle) | `neev.agents.create / list / get / update / pause / resume / delete` | [`create-agent.ts`](./examples/create-agent.ts) |
+| [Agent templates](#agent-templates) | `neev.agentTemplates.list / get` | [`create-agent.ts`](./examples/create-agent.ts) |
+| [Preview URLs and audit trail](#preview-urls-and-audit-trail) | `agent.getUrl`, `agent.exposePort`, `agent.audit` | [`agent-ports-audit.ts`](./examples/agent-ports-audit.ts) |
+| [Working inside the agent's sandbox](#working-inside-the-agents-sandbox) | `agent.sandbox()` | [`create-agent.ts`](./examples/create-agent.ts) |
 
-The full example is [`examples/code-interpreter.ts`](./examples/code-interpreter.ts).
+### Agent lifecycle
 
-### Interactive terminal (PTY)
-
-For a fully interactive session — a shell, a REPL, anything that needs a TTY — `sandbox.pty` opens a pseudo-terminal over a WebSocket. Output streams to your `onData` callback; you send keystrokes, forward window resizes, and await the exit code:
+`create`, `get` and `list` return an `Agent` handle, and `get` accepts an id or a name.
 
 ```ts
-const pty = await sandbox.pty.create({
-  cols: 80,
-  rows: 24,
-  onData: (chunk) => process.stdout.write(chunk), // Uint8Array of terminal output
-});
-
-pty.sendInput("ls -la\n");      // string or Uint8Array → the terminal's stdin
-pty.resize(120, 40);            // on a window-size change
-pty.kill("SIGINT");             // signal the process group (default SIGTERM)
-
-const { exitCode } = await pty.wait(); // resolves when the session ends
-```
-
-If the connection drops, reattach to the same terminal — `pty.id` names it, and `create({ id })` reconnects (the sandbox replays recent scrollback, so you see what happened while you were away):
-
-```ts
-const pty = await sandbox.pty.create({ program: "sh" });
-const id = pty.id; // e.g. "pty_a79b1567…" — persist this to reconnect later
-pty.disconnect(); // the shell keeps running in the sandbox
-
-// …later, from a fresh process/connection:
-const again = await sandbox.pty.create({ id, onData: (c) => process.stdout.write(c) });
-```
-
-The PTY needs a `WebSocket`. Browsers, Deno, Bun, and Node 22+ provide one globally. **In Node, pass a WebSocket that can send the auth header** (the global one cannot), e.g. with the [`ws`](https://www.npmjs.com/package/ws) package:
-
-```ts
-import WebSocket from "ws";
-const neev = new Neev({ webSocket: (url, opts) => new WebSocket(url, opts) });
-```
-
-### SSH access
-
-Point any `ssh` client, `scp`/`rsync`, or IDE remote-dev at a sandbox — no keys to manage and no public port. `sandbox.ssh()` opens a local loopback listener that forwards each connection to the sandbox over an authenticated WebSocket, and returns its `host`/`port`:
-
-```ts
-const tunnel = await sandbox.ssh(); // binds 127.0.0.1 on a free port
-console.log(`ssh -p ${tunnel.port} neev@localhost`);
-console.log(`rsync -e "ssh -p ${tunnel.port}" -av ./src neev@localhost:/workspace/`);
-
-await tunnel.close(); // stop the listener when you're done
-```
-
-Node only — it opens a local TCP listener. It needs the [`ws`](https://www.npmjs.com/package/ws) package, which it loads automatically (no `webSocket` factory required, unlike the PTY above); `npm install ws` if you don't already have it.
-
-### Preview URLs
-
-Run a server inside the sandbox and get a public, credential-free preview URL for one of its ports. Ports are private until you expose them; `getUrl` exposes the port and waits until the URL is reachable before returning it.
-
-```ts
-// Start a web server on port 3000, then get its preview URL.
-await sandbox.processes.start(["python3", "-m", "http.server", "3000"]);
-const url = await sandbox.getUrl({ port: 3000 });
-
-// Pass { waitUntilReady: false } to skip the readiness wait, and tune it with
-// timeoutMs / pollIntervalMs.
-
-// Lower-level control if you need it:
-const ports = await sandbox.listPorts(); // → SandboxPort[] ({ port, slug, preview_url })
-await sandbox.revokePort(3000); // stop serving the port
-```
-
-The URL needs no credential: a random slug in it is the only thing gating the port, so treat the URL as a secret. If one leaks, rotate it by exposing the port again with a different slug — the old URL stops working:
-
-```ts
-const rotated = await sandbox.exposePort(3000, { slug: "k3x9q2ab" }); // 8 lowercase letters/digits
-console.log(rotated.preview_url);
-```
-
-A slug you choose is a name, not a secret — leave it out to get a random one for anything you wouldn't publish. The full example is [`examples/preview-url.ts`](./examples/preview-url.ts).
-
-### Audit trail
-
-Read what ran inside a sandbox — terminal commands, SSH, process and file operations — newest first, with who made each call and how it ended. Each entry in `data` is an [OCSF](https://schema.ocsf.io/) API Activity event. Only the program name is recorded, never its arguments, and nothing typed at a hidden password prompt is captured:
-
-```ts
-let page = await sandbox.audit({ limit: 50 }); // optional from / to (RFC3339), cursor, limit
-for (const e of page.data) {
-  console.log(new Date(e.time).toISOString(), e.api.operation, e.actor.user.name ?? e.actor.user.uid, e.status);
-}
-
-// Page back through the window with next_cursor.
-while (page.next_cursor) page = await sandbox.audit({ cursor: page.next_cursor });
-
-// Filter by call, outcome or who made it; list filters take one value or an array.
-const failedExecs = await sandbox.audit({ operation: ["exec", "pty_command"], status: "failure" });
-const byKey = await sandbox.audit({ actorType: "api_key", credentialUid: keyId });
-```
-
-`time` is in milliseconds since the Unix epoch, and `resources` names what the call touched: the sandbox, then any file, process, terminal or channel. `actor.user.type` is `"user"`, `"api_key"`, `"system"` or `"unknown"`; filters by actor don't match events recorded before actors were, so use `credentialUid` for those. The trail covers the last `retention_days` days; `window_truncated` is true when `from` reaches further back than that. The full example is [`examples/audit-trail.ts`](./examples/audit-trail.ts).
-
-### Snapshots, fork & rollback
-
-Capture a sandbox's state as a **snapshot**, then **roll back** the same sandbox to that snapshot. A snapshot is created `Pending` and must reach `Ready` before it can be rolled back to. Pass `{ waitUntilReady: true }` to block until it is `Ready` (or use `neev.sandboxes.waitForSnapshot(id)`); otherwise read `snapshot.status` yourself. **Fork** is separate: it atomically snapshots a sandbox's *current* live state into a brand-new sandbox (it does not reuse an existing snapshot), and the source keeps running:
-
-```ts
-const sandbox = await neev.sandboxes.get(id);
-
-// Capture the sandbox's filesystem state and block until it is Ready.
-const snap = await sandbox.snapshot({ name: "checkpoint", waitUntilReady: true });
-
-// Roll the original back in place to the snapshot; fork branches the current
-// live state into a brand-new sandbox (it does not consume `snap`).
-await sandbox.rollback(snap.id);            // → this sandbox, rolled back
-const fork = await sandbox.fork("my-fork"); // → a new Sandbox handle
-
-const { items } = await neev.sandboxes.listSnapshots(id); // paginated; pass { page, limit }
-await neev.sandboxes.deleteSnapshot(snap.id);
-```
-
-Prefer a two-step flow (create now, wait later)? Capture without waiting and poll explicitly:
-
-```ts
-const pending = await sandbox.snapshot({ name: "checkpoint" }); // status: "Pending"
-const ready = await neev.sandboxes.waitForSnapshot(pending.id); // resolves once Ready
-```
-
-The full snapshot example is [`examples/snapshot-fork-rollback.ts`](./examples/snapshot-fork-rollback.ts).
-
-### Agents
-
-An **agent** is a packaged coding agent (e.g. Claude Code) provisioned from a catalogue template onto its own backing sandbox (1:1). Create one from a template name, wait for it to become `Ready`, then drive its environment through the backing sandbox:
-
-```ts
-// Discover available agent templates (or pass a known name directly).
-const { items } = await neev.agentTemplates.list();
-const template = await neev.agentTemplates.get("ag-claude-code");
-
-// Provision an agent from a template. It starts `Provisioning`; wait for `Ready`.
-const agent = await neev.agents.create({
-  name: "my-coder",
-  agent_template: "claude-code",
-});
+const agent = await neev.agents.create({ name: "my-coder", agent_template: "claude-code" });
 await agent.waitUntilReady();
-console.log(agent.id, agent.status, agent.sandboxId);
 
-// Reach the agent's environment (files / exec / processes) via its backing sandbox.
-const sandbox = await agent.sandbox();
-await sandbox.files.write("notes.md", "# scratch\n");
-const { stdout } = await sandbox.exec(["ls", "-la"]);
-
-// Resize cpu/memory, change egress, or set the idle window in place (no recreate);
-// disk is not resizable.
-await agent.update({ resources: { cpu: 2, memory_gb: 4 } });
-await agent.update({ idle_timeout_seconds: 900 }); // 0 = no idle limit
-agent.idleTimeoutSeconds; // null when the account default applies
-
-// Keep a busy agent from idling out, e.g. once per agent turn.
-await agent.keepalive();
-
-// Preview URLs and the audit trail work just like they do on a sandbox.
-const url = await agent.getUrl({ port: 3000 });
-const trail = await agent.audit({ limit: 50 });
-
-// Roll the agent back in place to a snapshot of its backing sandbox.
-await agent.rollback(snapshotId);
-
-// Pause to release compute, resume on demand, delete when done.
+await agent.update({ idle_timeout_seconds: 1800 }); // also resources and egress
 await agent.pause();
 await agent.resume();
+await agent.keepalive(); // reset the idle timer
 await agent.delete();
 ```
 
-Resource methods mirror the handle: `neev.agents.list/create/get/update/keepalive/rollback/pause/resume/delete`, `neev.agents.exposePort/listPorts/revokePort/getPortUrl/audit`, and `neev.agentTemplates.list/get`. `get` and every other method take an agent id or its name. The full examples are [`examples/create-agent.ts`](./examples/create-agent.ts) and [`examples/agent-ports-audit.ts`](./examples/agent-ports-audit.ts).
+`agent.rollback(snapshotId)` restores the agent's sandbox to a snapshot in place.
 
-### Agent tools
+See [`create-agent.ts`](./examples/create-agent.ts) · [reference](./docs/api-reference.md#agents)
 
-`@neevcloud/sdk/agent-tools` ships the sandbox tool contract for agents you build yourself: `run_command`, `write_file`, `read_file`, `stat_path`, `move_path` and `delete_path`, plus opt-in `expose_port`, `checkpoint`/`rollback` and background processes (`start_process`, `read_process_output`, `stop_process`, `list_processes`). It has no framework dependency: declare `names()` to your model with `DESCRIPTIONS` and `PARAMETERS` (JSON Schema), with `TITLES` for a short display name, and hand each tool call to `call(name, args)`. Every call resolves to a plain object for the model; a failure the model can fix, including an unknown tool or bad arguments, resolves to `{ error }`, and auth, rate-limit, server and network failures throw.
+### Agent templates
+
+An agent template is the agent you run, such as `claude-code`. Pass its name as
+`agent_template` when you create an agent.
+
+```ts
+const { items } = await neev.agentTemplates.list();
+```
+
+See [`create-agent.ts`](./examples/create-agent.ts) · [reference](./docs/api-reference.md#agent-templates)
+
+### Preview URLs and audit trail
+
+Agents expose ports and keep an audit trail the same way sandboxes do.
+
+```ts
+const url = await agent.getUrl({ port: 3000 });
+const trail = await agent.audit({ limit: 50 });
+```
+
+See [`agent-ports-audit.ts`](./examples/agent-ports-audit.ts) · [reference](./docs/api-reference.md#agents)
+
+### Working inside the agent's sandbox
+
+`agent.sandbox()` returns the agent's sandbox as a `Sandbox` handle, so files, commands
+and processes work exactly as they do on any sandbox.
+
+```ts
+const sandbox = await agent.sandbox();
+await sandbox.files.write("task.md", "# scratch\n");
+const { stdout } = await sandbox.exec(["ls"]);
+```
+
+See [`create-agent.ts`](./examples/create-agent.ts) · [reference](./docs/api-reference.md#agents)
+
+## Agent tools
+
+`@neevcloud/sdk/agent-tools` gives the agent you build a ready-made set of sandbox tools,
+with descriptions and JSON schemas written for a model. Use it with any model API, or
+through an adapter for your agent framework.
+
+| Capability | API | Example |
+| --- | --- | --- |
+| [The tool contract](#the-tool-contract) | `SandboxTools`, `DESCRIPTIONS`, `PARAMETERS`, `FatalGuard` | [`agent-tools.ts`](./examples/agent-tools.ts) |
+| [Framework adapters](#framework-adapters) | `toClaude`, `toOpenAIAgents`, `toAiSdk` | [`examples/agents/`](./examples/agents/README.md) |
+
+### The tool contract
 
 ```ts
 import { DESCRIPTIONS, PARAMETERS, SandboxTools } from "@neevcloud/sdk/agent-tools";
@@ -577,68 +424,166 @@ const specs = tools.names().map((name) => ({
   parameters: PARAMETERS[name],
 }));
 
-// For each tool call the model makes, pass its name and parsed arguments through.
+// For each tool call from the model:
 const result = await tools.call(toolCall.name, toolCall.arguments);
 ```
 
-The methods (`runCommand`, `readProcessOutput`, …) are bound, so they can be handed to a framework on their own, and every tool's argument and result types are exported (`RunCommandToolArgs`, `ReadProcessOutputToolResult`, …). `read_file` reads a large file in pages: pass `offset` and `length` (up to 10000 bytes) and keep reading from the returned `next_offset` until `eof` is true. `read_process_output` takes `wait_s` (0–60 s) to wait for a running process to exit before reading. A command that prints nothing for about 2 minutes is cut off at the network edge (`run_command` then returns an error result saying so, and the command may still be running), so give the model `allowProcesses: true` for long or quiet work. The contract, its limits and its error rules are described in [the tool contract](https://docs.ai.neevcloud.com/build-your-own-agent/tool-contract).
+| Tools | Enabled |
+| --- | --- |
+| `run_command`, `write_file`, `read_file`, `stat_path`, `move_path`, `delete_path` | Always |
+| `expose_port` | `allowPreview: true` |
+| `checkpoint`, `rollback` | `allowRollback: true` |
+| `start_process`, `read_process_output`, `stop_process`, `list_processes` | `allowProcesses: true` |
 
-#### Using the tools with a framework
+Mistakes the model can fix come back as `{ error }`. Authentication, rate-limit, server
+and network failures throw. `FatalGuard` turns those into one fixed error for the model,
+stops later calls, and rethrows the first failure to you.
 
-Each adapter is a subpath export that turns a `SandboxTools` into the framework's own tools; install the framework yourself (it is an optional peer dependency). A sandbox call that throws (auth, rate limit, server, network) stops the run and is rethrown to you, and its text never reaches the model. For any other framework, `tools.specs()` gives each enabled tool's `name`, `title`, `description`, `parameters` and a bound `call`, and a `FatalGuard` gives the same stop-the-run behaviour.
+See [`agent-tools.ts`](./examples/agent-tools.ts) · [reference](./docs/api-reference.md#agent-tools)
 
-Claude Agent SDK (`@anthropic-ai/claude-agent-sdk` and `zod` 4.2 or later): the tools run in-process as an MCP server, Claude Code's own tools are switched off, and `watch` stops the run and throws if a sandbox call fails. The Claude Agent SDK is ESM-only, so use this adapter from ESM (or a Node version that can `require` ESM).
+### Framework adapters
+
+Adapters turn the tools into a framework's own tools. Install the framework yourself;
+each one is an optional dependency.
+
+| Framework | Import |
+| --- | --- |
+| Claude Agent SDK | `toClaude` from `@neevcloud/sdk/agent-tools/claude` |
+| OpenAI Agents SDK (Node 20+) | `toOpenAIAgents` from `@neevcloud/sdk/agent-tools/openai-agents` |
+| Vercel AI SDK | `toAiSdk` from `@neevcloud/sdk/agent-tools/ai-sdk` |
 
 ```ts
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import { SandboxTools } from "@neevcloud/sdk/agent-tools";
-import { toClaude } from "@neevcloud/sdk/agent-tools/claude";
-
-const claude = toClaude(new SandboxTools(sandbox));
-for await (const msg of claude.watch(query({ prompt, options: { ...claude.options(), maxTurns: 12 } }))) {
-  if (msg.type === "result") console.log(msg.result);
-}
-```
-
-OpenAI Agents SDK (`@openai/agents`, Node 20+): a sandbox call that throws ends `Runner.run`.
-
-```ts
-import { Agent, run } from "@openai/agents";
 import { SandboxTools } from "@neevcloud/sdk/agent-tools";
 import { toOpenAIAgents } from "@neevcloud/sdk/agent-tools/openai-agents";
+import { Agent, run } from "@openai/agents";
 
 const agent = new Agent({ name: "coder", tools: toOpenAIAgents(new SandboxTools(sandbox)) });
 const result = await run(agent, prompt);
 ```
 
-Vercel AI SDK (`ai`): pass the guard's signal, and call `raiseIfFailed()` after the run so a failed sandbox call surfaces instead of the abort.
+A sandbox failure that the model can't fix stops the run and is rethrown to you.
+
+See [`examples/agents/`](./examples/agents/README.md) · [reference](./docs/api-reference.md#framework-adapters)
+
+### DeepSeek Harness
+
+[`@neevcloud/dsh-sandbox`](https://github.com/NeevCloudAI/dsh-neev-sandbox) runs the
+Harness's shell, terminal, files and LSP inside a NeevCloud sandbox:
+`dsh plugin add @neevcloud/dsh-sandbox`.
+
+## Errors
+
+Every failure is a `NeevError`. API failures are `APIError` subclasses with the HTTP
+status, a machine-readable `code` and a `requestId` for support.
 
 ```ts
-import { generateText, stepCountIs } from "ai";
-import { SandboxTools } from "@neevcloud/sdk/agent-tools";
-import { toAiSdk } from "@neevcloud/sdk/agent-tools/ai-sdk";
+import { APIError, NotFoundError } from "@neevcloud/sdk";
 
-const { tools, guard } = toAiSdk(new SandboxTools(sandbox));
 try {
-  const { text } = await generateText({ model, tools, prompt, stopWhen: stepCountIs(12), abortSignal: guard.signal });
-} finally {
-  guard.raiseIfFailed();
+  await neev.sandboxes.get("missing");
+} catch (err) {
+  if (err instanceof NotFoundError) {
+    // handle a missing sandbox
+  } else if (err instanceof APIError) {
+    console.error(err.status, err.code, err.requestId);
+  }
 }
 ```
 
+| Error | When |
+| --- | --- |
+| `BadRequestError` | 400: invalid request |
+| `AuthenticationError` | 401: missing or invalid API key |
+| `PermissionDeniedError` | 403: not allowed |
+| `NotFoundError` | 404: no such resource |
+| `ConflictError` | 409: conflicting state |
+| `RateLimitError` | 429: too many requests |
+| `InternalServerError` | 5xx (`ServiceUnavailableError` for 503) |
+| `APIConnectionError`, `APITimeoutError` | The request did not complete |
+
+Branch on `err.code` rather than the message text. Network errors, 429 and 5xx are
+retried automatically. Calls inside a sandbox, such as `exec` and `files.write`, are not
+retried, because running them twice could repeat their effect.
+
+## Configuration
+
+Pass options to `new Neev({ ... })`, or set the matching environment variables. They
+apply to every product.
+
+| Option | Environment variable | Default |
+| --- | --- | --- |
+| `apiKey` | `NEEV_API_KEY` | Required |
+| `orgId` | `NEEV_ORG_ID` | Required for most calls |
+| `projectId` | `NEEV_PROJECT_ID` | Required for most calls |
+| `timeoutMs` | | `60000` |
+| `maxRetries` | | `2` |
+| `fetch` | | The runtime's `fetch` |
+| `webSocket` | | The runtime's `WebSocket` |
+
+Find your organization and project IDs as described in [Organizations and projects](https://docs.ai.neevcloud.com/getting-started/org-and-project#find-your-organization-id-and-project-id).
+
+Every method also accepts `orgId` and `projectId` to override the client's defaults for
+one call. In Node, pass a WebSocket for terminals:
+
+```ts
+import WebSocket from "ws";
+
+const neev = new Neev({ webSocket: (url, opts) => new WebSocket(url, opts) });
+```
+
+For an endpoint the SDK does not wrap yet, `neev.raw.request<T>({ method, path })` sends
+a request with the same authentication, retries and errors.
+
+## Examples
+
+Runnable scripts live in [`examples/`](./examples); see its
+[README](./examples/README.md) for setup and the full list.
+
+### Sandboxes
+
+| Example | What it shows |
+| --- | --- |
+| [`create-sandbox.ts`](./examples/create-sandbox.ts) | Create, wait, pause, resume, delete |
+| [`files.ts`](./examples/files.ts) | Write, read, list, move and remove files |
+| [`upload-download.ts`](./examples/upload-download.ts) | Large uploads with progress, local-disk transfers |
+| [`processes.ts`](./examples/processes.ts) | Background processes: start, follow, kill |
+| [`streaming-exec.ts`](./examples/streaming-exec.ts) | Live command output |
+| [`pty.ts`](./examples/pty.ts) | Interactive terminal |
+| [`ssh-tunnel.ts`](./examples/ssh-tunnel.ts) | SSH, scp and rsync through a local port |
+| [`preview-url.ts`](./examples/preview-url.ts) | Serve a port at a public URL |
+| [`snapshot-fork-rollback.ts`](./examples/snapshot-fork-rollback.ts) | Snapshot, roll back and fork |
+| [`audit-trail.ts`](./examples/audit-trail.ts) | Read and filter the audit trail |
+| [`code-interpreter.ts`](./examples/code-interpreter.ts) | Python with state kept between runs |
+| [`docker.ts`](./examples/docker.ts) | Docker inside a sandbox |
+
+### Agents
+
+| Example | What it shows |
+| --- | --- |
+| [`create-agent.ts`](./examples/create-agent.ts) | Create and drive an agent |
+| [`agent-ports-audit.ts`](./examples/agent-ports-audit.ts) | An agent's preview URL, keepalive and audit trail |
+
+### Agent tools
+
+| Example | What it shows |
+| --- | --- |
+| [`agent-tools.ts`](./examples/agent-tools.ts) | Sandbox tools for your own agent |
+| [`examples/agents/`](./examples/agents/README.md) | The sandbox as a tool in LangChain, Genkit and the Vercel AI SDK |
+
 ## Documentation
 
-SDK guides and reference live in [`docs/`](./docs):
+| Guide | For |
+| --- | --- |
+| [Getting started](./docs/getting-started.md) | Install, credentials and a first sandbox, step by step |
+| [API reference](./docs/api-reference.md) | Every product and method, with snippets |
+| [API inventory](./docs/api-inventory.md) | Full signatures, types and errors |
+| [Changelog](./CHANGELOG.md) | What changed in each release |
+| [NeevCloud documentation](https://docs.ai.neevcloud.com) | Platform guides and concepts |
 
-- [Getting started](./docs/getting-started.md) — install, credentials, first sandbox
-- [API reference](./docs/api-reference.md) — grouped API lists + snippets
-- [API inventory](./docs/api-inventory.md) — exhaustive signatures, types, errors
+## Security
 
-Full platform documentation: <https://docs.neevcloud.com>.
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md). Security reports: [SECURITY.md](./SECURITY.md).
+Report vulnerabilities as described in [SECURITY.md](./SECURITY.md). Keep your API key out
+of source control and logs. Contributions are welcome; see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## License
 

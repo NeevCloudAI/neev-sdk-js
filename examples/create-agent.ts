@@ -2,15 +2,13 @@
  * Provision an agent from a catalogue template, wait for it to become Ready,
  * drive its backing sandbox, then clean up.
  *
- * Set NEEV_AGENT_TEMPLATE to pick a template (default "claude-code") and
- * NEEV_BASE_URL to target another environment.
+ * Set NEEV_AGENT_TEMPLATE to pick a template (default "claude-code").
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/create-agent.ts
  */
 import { Neev } from "@neevcloud/sdk";
 
-// Construct the client from NEEV_* environment variables. Targets the Neev
-// production API by default.
+// Construct the client from NEEV_* environment variables.
 const neev = new Neev();
 
 async function main(): Promise<void> {
