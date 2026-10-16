@@ -8,7 +8,7 @@
  * makes a directory, moves the file in, lists the tree, and cleans up — so each
  * operation shows up as a `change:` line the moment it lands.
  *
- * Run (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/files.ts
  */

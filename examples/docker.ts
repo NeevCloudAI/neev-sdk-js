@@ -8,7 +8,7 @@
  *     `sandbox.processes.start`, not `exec`, which waits for the command to finish.
  * The template's default egress allows pulls from Docker Hub and GHCR.
  *
- * Run (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/docker.ts
  */

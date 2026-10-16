@@ -6,7 +6,7 @@
  * reads each sandbox's live metric series, and tears them all down. Demonstrates
  * isolation, concurrent lifecycle, exec, and `sandbox.metrics()` — no LLM.
  *
- * Run (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/parallel-fanout.ts
  */

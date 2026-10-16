@@ -3,7 +3,18 @@
 Runnable examples for `@neevcloud/sdk`. Run them from this repository against the
 local build — `import "@neevcloud/sdk"` resolves automatically (Node package
 self-referencing), so there is no install or link step. (To use the published
-package in your own project instead, `npm install @neevcloud/sdk@beta`.)
+package in your own project instead, `npm install @neevcloud/sdk`.)
+
+## Contents
+
+- [Quick setup](#quick-setup-once)
+- [Sandboxes](#sandboxes)
+- [Agents](#agents)
+- [Agent tools](#agent-tools)
+- [Agent frameworks (with an AI model)](#agent-frameworks-with-an-ai-model)
+- [Step-by-step: run every example](#step-by-step-run-every-example)
+- [Environment reference](#environment-reference)
+- [Notes](#notes)
 
 ## Quick setup (once)
 
@@ -23,7 +34,9 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 
 > Re-run `pnpm build` whenever you change SDK source.
 
-## Examples — no model needed (pure SDK)
+## Sandboxes
+
+No model needed: these use only the SDK.
 
 | File | What it shows | Run |
 |------|---------------|-----|
@@ -31,14 +44,11 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 | [`lifecycle-keepalive.ts`](./lifecycle-keepalive.ts) | Capped-lifetime sandbox (`lifecycle` windows) held past its idle deadline with a `keepalive()` loop, then `updateTimeout()` | `npx tsx examples/lifecycle-keepalive.ts` |
 | [`labels.ts`](./labels.ts) | Label two sandboxes at create, `list({ labels })` by one label and by two, print `sandbox.labels`, delete both | `npx tsx examples/labels.ts` |
 | [`byoi-create.ts`](./byoi-create.ts) | Bring Your Own Image: `create({ image, command })` from a public OCI image → wait for Ready → exec | `npx tsx examples/byoi-create.ts` |
-| [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
-| [`agent-tools.ts`](./agent-tools.ts) | The sandbox tool contract for your own agent: declare tools from `DESCRIPTIONS` + `PARAMETERS`, then run scripted model tool calls through `tools.call(name, args)`, including `wait_s` and error results | `npx tsx examples/agent-tools.ts` |
 | [`snapshot-fork-rollback.ts`](./snapshot-fork-rollback.ts) | Snapshot a sandbox → fork a new one from it → roll the original back in place | `npx tsx examples/snapshot-fork-rollback.ts` |
 | [`update-resize-egress.ts`](./update-resize-egress.ts) | Update a running sandbox in place: resize cpu/memory + re-scope egress in one `update()` call (single PATCH), then edit the allow-list with `egress_add` / `egress_remove` | `npx tsx examples/update-resize-egress.ts` |
 | [`docker.ts`](./docker.ts) | Docker template: `start-docker`, then `docker run --network=host hello-world` | `npx tsx examples/docker.ts` |
 | [`upload-download.ts`](./upload-download.ts) | `files.uploadFile` a large local file in resumable chunks with progress, then `files.downloadFile` it back | `npx tsx examples/upload-download.ts` |
 | [`audit-trail.ts`](./audit-trail.ts) | `sandbox.audit()` — page through what ran inside a sandbox, newest first | `npx tsx examples/audit-trail.ts` |
-| [`agent-ports-audit.ts`](./agent-ports-audit.ts) | Agent preview port with a slug → list → audit page → `keepalive()` → revoke | `npx tsx examples/agent-ports-audit.ts` |
 | [`last-crash.ts`](./last-crash.ts) | `sandbox.lastCrash` — seed a file, force an OOM kill, then use `storage_reset` to tell a wiped `/workspace` from one that survived | `npx tsx examples/last-crash.ts` |
 | [`streaming-exec.ts`](./streaming-exec.ts) | `sandbox.exec(cmd, { stream: true })` — output streamed line-by-line as it is produced | `npx tsx examples/streaming-exec.ts` |
 | [`files.ts`](./files.ts) | `sandbox.files` — write, read, stat/exists, mkdir, move, list, remove, and a live `watch` of changes | `npx tsx examples/files.ts` |
@@ -51,7 +61,20 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 | [`preview-url.ts`](./preview-url.ts) | `sandbox.getUrl({ port })` — serve on a port, get its preview URL, rotate its slug, list and revoke ports | `npx tsx examples/preview-url.ts` |
 | [`ssh-tunnel.ts`](./ssh-tunnel.ts) | `sandbox.ssh()` over a BYOI image — exec, `rsync` upload, and `ssh -L` port-forward through one tunnel (needs `pnpm add -D ws`) | `npx tsx examples/ssh-tunnel.ts` |
 
-## Examples — with an AI model
+## Agents
+
+| File | What it shows | Run |
+|------|---------------|-----|
+| [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
+| [`agent-ports-audit.ts`](./agent-ports-audit.ts) | Agent preview port with a slug → list → audit page → `keepalive()` → revoke | `npx tsx examples/agent-ports-audit.ts` |
+
+## Agent tools
+
+| File | What it shows | Run |
+|------|---------------|-----|
+| [`agent-tools.ts`](./agent-tools.ts) | The sandbox tool contract for your own agent: declare tools from `DESCRIPTIONS` + `PARAMETERS`, then run scripted model tool calls through `tools.call(name, args)`, including `wait_s` and error results | `npx tsx examples/agent-tools.ts` |
+
+## Agent frameworks (with an AI model)
 
 These drive NeevCloud `gpt-oss-120b` over the OpenAI-compatible inference
 endpoint, so add an inference key (falls back to `NEEV_API_KEY` if your sandbox
@@ -186,11 +209,11 @@ npx tsx examples/agents/genkit.ts
 | `NEEV_PROJECT_ID` | all | — (required) |
 | `NEEV_AGENT_TEMPLATE` | `create-agent.ts` | `claude-code` |
 | `NEEV_INFERENCE_API_KEY` | model examples | falls back to `NEEV_API_KEY` |
-| `NEEV_INFERENCE_BASE_URL` | model examples | production inference endpoint |
+| `NEEV_INFERENCE_BASE_URL` | model examples | `https://inference.ai.neevcloud.com/v1` |
 
 ## Notes
 
 - Sandbox file paths are relative to the workspace, or absolute inside it — a path outside the workspace is refused.
-- The standard templates ship `sh` only (no `bash`, no `python3`); `sh -c` works
-  on every template. `runPython` needs a python-capable template.
+- `sb-ubuntu-26-04-dev` ships `bash`, `python3` and `node`. `sh -c` works on every
+  template; find the others with `neev.templates.list()`.
 - Progress/transcript output goes to **stderr**; an example's result goes to **stdout**.

@@ -10,7 +10,7 @@
  * The PTY needs a WebSocket that can send the auth header. In Node, install `ws`
  * (`pnpm add -D ws @types/ws`) and pass it to the client, as below.
  *
- * Run (targets the Neev production API by default; override with NEEV_BASE_URL):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/pty.ts
  */

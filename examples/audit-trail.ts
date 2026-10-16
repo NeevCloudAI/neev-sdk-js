@@ -6,7 +6,7 @@
  * `pty_command`, …), who made it, what it touched — a program is recorded
  * without its arguments — and how it ended.
  *
- * Run (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/audit-trail.ts
  */

@@ -7,7 +7,7 @@
  * write a file, run it, start a background build, follow it with `wait_s`, and
  * show the error results a model gets back for a bad call.
  *
- * Run (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/agent-tools.ts
  */

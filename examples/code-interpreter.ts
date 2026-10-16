@@ -5,7 +5,7 @@
  * uses it in the next, shows that an exception comes back as a result rather than a
  * throw, then runs in a second context to show contexts do not share state.
  *
- * Run (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/code-interpreter.ts
  */

@@ -11,7 +11,7 @@
  * on the environment's metrics pipeline; some collectors (e.g. cpu/memory in a
  * non-production environment) may report zero while disk usage is populated.
  *
- * Run (targets the Neev production API by default):
+ * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/sandbox-metrics.ts
  */
