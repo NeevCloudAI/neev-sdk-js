@@ -77,9 +77,27 @@ export type MetricSeries = components["schemas"]["MetricSeries"];
 // A port exposed for credential-free preview URLs, with its slug and public URL.
 export type SandboxPort = components["schemas"]["SandboxPort"];
 
-// One operation recorded in a sandbox's audit trail: the program that ran (never
-// its arguments) or the file/process it acted on, and how it ended.
-export type AuditRecord = components["schemas"]["AuditRecord"];
+// One call recorded in an audit trail, as an OCSF API Activity event: who made it
+// (`actor`), what it was (`api.operation`), what it touched and how it ended.
+export type AuditEvent = components["schemas"]["AuditEvent"];
+
+// Who made an audited call; `user.type` is "user", "api_key", "system" or "unknown".
+export type AuditActor = components["schemas"]["AuditActor"];
+
+// The principal behind an audited call.
+export type AuditActorUser = components["schemas"]["AuditActorUser"];
+
+// The audited call itself, such as `exec` or `fs.read`.
+export type AuditAPI = components["schemas"]["AuditAPI"];
+
+// Something an audited call touched: the sandbox, a file, a process, a terminal.
+export type AuditResource = components["schemas"]["AuditResource"];
+
+// Kind of principal to filter an audit read by.
+export type AuditActorType = components["schemas"]["AuditActorTypeFilterValue"];
+
+// Outcome to filter an audit read by.
+export type AuditStatusFilter = components["schemas"]["AuditStatusFilter"];
 
 // One page of a sandbox's audit trail, newest first. Pass `next_cursor` as
 // `cursor` to read the next page; it is absent when the window is exhausted.
@@ -98,17 +116,24 @@ export type SandboxTemplateStatus = components["schemas"]["SandboxTemplateStatus
 // Paginated list payload returned by `templates.list`.
 export type SandboxTemplateListResponse = components["schemas"]["SandboxTemplateListResponse"];
 
-// A snapshot captured from a sandbox's filesystem.
-export type SnapshotData = components["schemas"]["Snapshot"];
+// A snapshot captured from a sandbox's filesystem. trigger is optional because an API that predates it omits it.
+export type SnapshotData = Omit<components["schemas"]["Snapshot"], "trigger"> & {
+  trigger?: SnapshotTrigger;
+};
 
 // Lifecycle status of a snapshot ("Pending" | "Running" | "Ready" | "Failed").
 export type SnapshotStatus = components["schemas"]["SnapshotStatus"];
+
+// Why a snapshot was taken: "manual" or "memory_pressure".
+export type SnapshotTrigger = components["schemas"]["SnapshotTrigger"];
 
 // Caller-facing options for `sandbox.snapshot` / `sandboxes.createSnapshot`.
 export type CreateSnapshotParams = components["schemas"]["CreateSnapshotRequest"];
 
 // Paginated list payload returned by `sandboxes.listSnapshots`.
-export type SnapshotListResponse = components["schemas"]["SnapshotListResponse"];
+export type SnapshotListResponse = Omit<components["schemas"]["SnapshotListResponse"], "items"> & {
+  items: SnapshotData[];
+};
 
 // An agent as returned by the API. The Agent handle class wraps this shape.
 export type AgentData = components["schemas"]["Agent"];

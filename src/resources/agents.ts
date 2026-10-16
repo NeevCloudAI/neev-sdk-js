@@ -14,6 +14,7 @@ import type {
   SandboxPort,
   UpdateAgentParams,
 } from "../types.js";
+import { auditQuerySerializer, auditRequest } from "./sandboxes.js";
 import type { AuditParams, Sandboxes } from "./sandboxes.js";
 
 // Spec path templates for the aiagent agent endpoints. openapi-fetch type-checks
@@ -216,16 +217,13 @@ export class Agents {
     return preview_url;
   }
 
-  // Reads one page of the agent's audit trail, newest first. The response's
-  // `sandbox_id` is the agent's backing sandbox, not the agent id.
+  // Reads one page of the agent's audit trail, newest first.
   async audit(id: string, params: AuditParams = {}): Promise<AuditTrail> {
-    const { from, to, cursor, limit, ...scope } = params;
+    const { scope, query } = auditRequest(params);
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.GET(AUDIT, {
-      params: {
-        path: { org_id: orgId, project_id: projectId, agent_id: id },
-        query: { from, to, cursor, limit },
-      },
+      params: { path: { org_id: orgId, project_id: projectId, agent_id: id }, query },
+      querySerializer: auditQuerySerializer,
     });
     return unwrap<AuditTrail>(res);
   }

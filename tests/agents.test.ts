@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Agent, Neev, NeevError, NotFoundError } from "../src/index.js";
-import { agentData, json, mockFetch } from "./helpers.js";
+import { agentData, auditEvent, json, mockFetch } from "./helpers.js";
 
 // Builds a client backed by the given queued responses.
 function client(queue: Array<Response | Error>) {
@@ -330,23 +330,32 @@ describe("agent audit trail", () => {
     const { neev, calls } = client([
       json(200, agentData()),
       json(200, {
-        sandbox_id: "11111111-1111-1111-1111-111111111111",
         from: "2026-10-01T00:00:00Z",
         to: "2026-10-02T00:00:00Z",
         retention_days: 30,
         window_truncated: true,
-        records: [{ at: "2026-10-01T12:00:00Z", id: "r1", tool: "fs.read", outcome: "success" }],
+        data: [auditEvent()],
       }),
     ]);
     const agent = await neev.agents.get("ag-1");
     const page = await agent.audit({ cursor: "c1", limit: 10 });
     expect(page.window_truncated).toBe(true);
-    expect(page.records[0]?.tool).toBe("fs.read");
+    expect(page.data[0]?.api.operation).toBe("fs.read");
     const url = new URL(calls[1]?.url ?? "");
     expect(calls[1]?.method).toBe("GET");
     expect(url.pathname).toMatch(/\/agents\/33333333-3333-3333-3333-333333333333\/audit$/);
     expect(url.searchParams.get("cursor")).toBe("c1");
     expect(url.searchParams.get("limit")).toBe("10");
     expect(url.searchParams.has("from")).toBe(false);
+  });
+
+  it("sends the filters on the agent route", async () => {
+    const { neev, calls } = client([
+      json(200, { from: "a", to: "b", retention_days: 30, window_truncated: false, data: [] }),
+    ]);
+    await neev.agents.audit("ag-1", { operation: ["exec", "ssh"], actorType: "user" });
+    const url = new URL(calls[0]?.url ?? "");
+    expect(url.searchParams.get("operation")).toBe("exec,ssh");
+    expect(url.searchParams.get("actor_type")).toBe("user");
   });
 });

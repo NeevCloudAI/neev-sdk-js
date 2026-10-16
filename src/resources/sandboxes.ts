@@ -9,6 +9,8 @@ import type { ExposePortParams, GetPortUrlOptions } from "../preview.js";
 import type { SandboxConnection } from "../runtime.js";
 import { Sandbox } from "../sandbox.js";
 import type {
+  AuditActorType,
+  AuditStatusFilter,
   AuditTrail,
   CreateSandboxParams,
   CreateSnapshotParams,
@@ -139,12 +141,53 @@ export interface AuditQuery {
   to?: string;
   // The previous page's `next_cursor`, to read the next (older) page.
   cursor?: string;
-  // Records per page (1-200, default 50).
+  // Events per page (1-200, default 50).
   limit?: number;
+  // Only these calls (`api.operation`), such as "exec" or ["exec", "pty_command"].
+  operation?: string | string[];
+  // Only calls that ended this way.
+  status?: AuditStatusFilter;
+  // Only calls by these kinds of principal (`actor.user.type`).
+  actorType?: AuditActorType | AuditActorType[];
+  // Only calls by this principal (`actor.user.uid`), such as a user id or an API key id.
+  actorUid?: string;
+  // Only calls made with this API key (`actor.user.credential_uid`).
+  credentialUid?: string;
 }
 
 // Audit-trail query plus an optional scope override.
 export interface AuditParams extends Scope, AuditQuery {}
+
+// Splits audit params into the scope and the wire query, joining list filters with commas.
+export function auditRequest(params: AuditParams) {
+  const {
+    from,
+    to,
+    cursor,
+    limit,
+    operation,
+    status,
+    actorType,
+    actorUid,
+    credentialUid,
+    ...scope
+  } = params;
+  const query = {
+    from,
+    to,
+    cursor,
+    limit,
+    operation: Array.isArray(operation) ? operation.join(",") : operation,
+    status,
+    actor_type: actorType === undefined ? undefined : [actorType].flat(),
+    actor_uid: actorUid,
+    credential_uid: credentialUid,
+  };
+  return { scope, query };
+}
+
+// The API reads list filters as one comma-separated value, not repeated params.
+export const auditQuerySerializer = { array: { style: "form", explode: false } } as const;
 
 // Sandbox lifecycle operations. Exposed as `client.sandboxes`. Every method
 // returns a Sandbox handle (or page of handles) so callers can chain lifecycle
@@ -295,16 +338,14 @@ export class Sandboxes {
     return unwrap<SandboxMetricsResponse>(res);
   }
 
-  // Reads one page of the sandbox's audit trail, newest first: what ran inside it
-  // (program names only, never arguments) and the file and process operations made.
+  // Reads one page of the sandbox's audit trail, newest first: each call made to it,
+  // who made it and how it ended (program names only, never arguments).
   async audit(id: string, params: AuditParams = {}): Promise<AuditTrail> {
-    const { from, to, cursor, limit, ...scope } = params;
+    const { scope, query } = auditRequest(params);
     const { orgId, projectId } = this.ctx.resolveScope(scope);
     const res = await this.api.GET(AUDIT, {
-      params: {
-        path: { org_id: orgId, project_id: projectId, sandbox_id: id },
-        query: { from, to, cursor, limit },
-      },
+      params: { path: { org_id: orgId, project_id: projectId, sandbox_id: id }, query },
+      querySerializer: auditQuerySerializer,
     });
     return unwrap<AuditTrail>(res);
   }

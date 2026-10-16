@@ -125,7 +125,13 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `AgentListResponse` | type alias | `types.ts` |
 | `AgentTemplate` | type alias | `types.ts` |
 | `AgentTemplateListResponse` | type alias | `types.ts` |
-| `AuditRecord` | type alias | `types.ts` |
+| `AuditAPI` | type alias | `types.ts` |
+| `AuditActor` | type alias | `types.ts` |
+| `AuditActorType` | type alias | `types.ts` |
+| `AuditActorUser` | type alias | `types.ts` |
+| `AuditEvent` | type alias | `types.ts` |
+| `AuditResource` | type alias | `types.ts` |
+| `AuditStatusFilter` | type alias | `types.ts` |
 | `AuditTrail` | type alias | `types.ts` |
 | `CreateSandboxParams` | type alias | `types.ts` |
 | `UpdateSandboxParams` | type alias | `types.ts` |
@@ -152,6 +158,7 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `SnapshotData` | type alias | `types.ts` |
 | `SnapshotListResponse` | type alias | `types.ts` |
 | `SnapshotStatus` | type alias | `types.ts` |
+| `SnapshotTrigger` | type alias | `types.ts` |
 | `NeevError` … `InternalServerError`, `ServiceUnavailableError` | classes | `errors.ts` |
 | `ApiErrorBody` | interface (type) | `errors.ts` |
 | `ErrorCode` | type alias (union) | `errors.ts` |
@@ -459,17 +466,19 @@ for (const s of metrics.series) {
 audit(id: string, params?: AuditParams): Promise<AuditTrail>
 ```
 
-Reads one page of the sandbox's audit trail, newest first: terminal commands, SSH, process and file operations, with the credential each was made under (`caller_source`) and how it ended (`outcome`, `reason_code`). Only the program name is recorded, never its arguments, and input at a hidden password prompt is not captured.
+Reads one page of the sandbox's audit trail, newest first: terminal commands, SSH, process and file operations, each as an OCSF API Activity event with who made the call (`actor`) and how it ended (`status`, `status_code`). Only the program name is recorded, never its arguments, and input at a hidden password prompt is not captured.
 
-`AuditParams` = `{ from?: string; to?: string; cursor?: string; limit?: number; orgId?; projectId? }` — `from` / `to` are RFC3339 (default: the 24 hours before now), `limit` is 1–200 (default 50).
+`AuditParams` = `{ from?: string; to?: string; cursor?: string; limit?: number; operation?: string | string[]; status?: AuditStatusFilter; actorType?: AuditActorType | AuditActorType[]; actorUid?: string; credentialUid?: string; orgId?; projectId? }` — `from` / `to` are RFC3339 (default: the 24 hours before now), `limit` is 1–200 (default 50). The filters narrow by call (`api.operation`, e.g. `"exec"`), outcome (`"success"` / `"failure"`), kind of principal (`"user"`, `"api_key"`, `"system"`), principal id, or API key; arrays are sent comma-separated. Actor filters don't match events recorded before actors were; use `credentialUid` for those.
 
-**Returns:** `AuditTrail` = `{ sandbox_id; from; to; retention_days; window_truncated; next_cursor?; records: AuditRecord[] }`. `window_truncated` is true when `from` reaches past the `retention_days` window. Pass `next_cursor` as `cursor` for the next page; it is absent when the window is exhausted.
+**Returns:** `AuditTrail` = `{ from; to; retention_days; window_truncated; next_cursor?; data: AuditEvent[] }`. `window_truncated` is true when `from` reaches past the `retention_days` window. Pass `next_cursor` as `cursor` for the next page; it is absent when the window is exhausted.
 
 **Raises:** `BadRequestError` (400) for an invalid cursor or window, `ServiceUnavailableError` (503) when the trail is temporarily unreadable, plus scope/auth/transport errors.
 
 ```ts
 let page = await client.sandboxes.audit(id, { limit: 50 });
 while (page.next_cursor) page = await client.sandboxes.audit(id, { cursor: page.next_cursor });
+
+const failed = await client.sandboxes.audit(id, { operation: "exec", status: "failure" });
 ```
 
 ### `client.sandboxes.createSnapshot(id, params?, scope?)`
@@ -773,7 +782,7 @@ Preview URLs for an agent's ports, with the same semantics as the sandbox method
 audit(id: string, params?: AuditParams): Promise<AuditTrail>
 ```
 
-One page of what the agent ran inside its sandbox, newest first — same shape and recording rules as [`sandboxes.audit`](#clientsandboxesauditid-params). The response's `sandbox_id` is the agent's backing sandbox, not the agent id.
+One page of what the agent ran inside its sandbox, newest first — same shape and recording rules as [`sandboxes.audit`](#clientsandboxesauditid-params).
 
 ### `client.agents.pause(id, scope?)` / `resume(id, scope?)` / `delete(id, scope?)`
 
@@ -839,7 +848,7 @@ Fetches a single agent template by id (e.g. `"ag-claude-code"`).
 | `rollback(snapshotId)` | `Promise<this>` | Rolls the agent back in place to a snapshot and updates the handle. |
 | `getUrl(options)` | `Promise<string>` | Exposes `options.port` and returns its preview URL once routable; `options` = `{ port, slug?, waitUntilReady?, timeoutMs?, pollIntervalMs? }`. |
 | `exposePort(port, options?)` / `listPorts()` / `revokePort(port)` | — | Preview-port control, as on the sandbox handle. |
-| `audit(params?)` | `Promise<AuditTrail>` | One page of the agent's audit trail; `params` = `{ from?, to?, cursor?, limit? }`. |
+| `audit(params?)` | `Promise<AuditTrail>` | One page of the agent's audit trail; `params` = `AuditQuery` (window, paging and filters, as in `sandboxes.audit`). |
 | `delete()` | `Promise<void>` | Deletes the agent. |
 | `waitUntilReady(options?)` | `Promise<this>` | Polls until the status is Ready. `options` = `{ timeoutMs?; pollIntervalMs? }`. |
 | `toJSON()` | `AgentData` | The raw server record (for `JSON.stringify`). |
@@ -1784,34 +1793,37 @@ Paginated list payload returned by `templates.list`.
 | `page` | `number` |
 | `limit` | `number` |
 
-### `AuditTrail` / `AuditRecord`
+### `AuditTrail` / `AuditEvent`
 
 `AuditTrail` (the generated `AuditTrailResponse`) is one page of an audit trail, returned by `sandboxes.audit` / `agents.audit` and the handle `audit()` methods.
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
-| `sandbox_id` | `string` | yes — for an agent trail, the agent's backing sandbox |
 | `from` / `to` | `string` (RFC3339) | yes |
 | `retention_days` | `number` | yes |
 | `window_truncated` | `boolean` | yes — `from` reached further back than the available trail |
 | `next_cursor` | `string` | no — absent when the window is exhausted |
-| `records` | `AuditRecord[]` | yes |
+| `data` | `AuditEvent[]` | yes — newest first |
 
-`AuditRecord` fields:
+`AuditEvent` is one call, as an [OCSF](https://schema.ocsf.io/) 1.9.0 API Activity event (`class_uid` 6003). The fields you'll usually read:
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
-| `at` | `string` | yes |
-| `id` | `string` | yes |
-| `tool` | `string` | yes — e.g. `pty_command`, `ssh`, `exec`, `process.start`, `fs.read` |
-| `command` | `string` | no — program name only, never arguments; `[redacted]` when unknown, `[Ctrl-C]`-prefixed when interrupted |
-| `target` | `string` | no — the path or process acted on; a move reads `source -> destination` |
-| `outcome` | `"success" \| "error"` | yes |
-| `reason_code` | `string` | no — `ok`, `permission_denied`, `internal` |
-| `request_id` | `string` | no |
-| `caller_source` | `string` | no — the credential, not a person |
-| `pty_id` / `seq` | `string` / `number` | no — only on `pty_command` |
-| `duration_ms` | `number` | no |
+| `time` | `number` | yes — milliseconds since the Unix epoch |
+| `api.operation` | `string` | yes — e.g. `pty_command`, `ssh`, `exec`, `process.start`, `fs.read`, `interpreter.run` |
+| `api.request.uid` | `string` | no — the request that caused the call |
+| `actor.user` | `AuditActorUser` | yes — `type` (`"user"`, `"api_key"`, `"system"`, `"unknown"`), `uid`, `name?`, `credential_uid?` (the API key, absent for a user) |
+| `actor.session.uid` | `string` | no — the console session a user's call came from |
+| `status` / `status_id` | `string` / `1 \| 2` | yes — `"Success"` (1) or `"Failure"` (2) |
+| `status_code` | `string` | no — `ok`, `permission_denied`, `internal` |
+| `status_detail` | `string` | no — how a code-interpreter run ended |
+| `activity_id` / `activity_name` | `1 \| 2 \| 3 \| 4 \| 99` / `string` | yes — Create, Read, Update, Delete, Other |
+| `duration` | `number` | no — milliseconds; absent on a terminal command |
+| `resources` | `AuditResource[]` | no — what the call touched: `type` (`sandbox`, `file`, `process`, `channel`, `terminal`, `interpreter_context`), `uid?`, `name?` (a path, a program name without arguments, or an SSH channel) |
+| `metadata.uid` | `string` | yes — stable id of the event within the trail |
+| `metadata.sequence` | `number` | no — ordinal of a terminal command within its terminal |
+
+> The remaining OCSF fields (`class_*`, `category_*`, `type_*`, `severity*`, `cloud`, `src_endpoint`, `osint`, `metadata.product`) are present per the generated schema.
 
 ### `SnapshotData`
 
@@ -1830,6 +1842,7 @@ Alias for the generated `Snapshot` schema — a snapshot captured from a sandbox
 | `size_bytes` | `number \| null` | no |
 | `error_message` | `string \| null` | no |
 | `expires_at` | `string \| null` | no |
+| `trigger` | `SnapshotTrigger` | no (absent from an API that predates it) — `"manual"` (requested through the API) or `"memory_pressure"` (taken automatically as the sandbox neared its memory limit; only the latest is kept, for 48 hours) |
 | `restorability` | `SnapshotRestorability` | yes |
 | `created_at` | `string` | yes |
 | `updated_at` | `string` | yes |

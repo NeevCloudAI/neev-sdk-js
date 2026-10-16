@@ -429,17 +429,23 @@ A slug you choose is a name, not a secret — leave it out to get a random one f
 
 ### Audit trail
 
-Read what ran inside a sandbox — terminal commands, SSH, process and file operations — newest first, with the credential each was made under and how it ended. Only the program name is recorded, never its arguments, and nothing typed at a hidden password prompt is captured:
+Read what ran inside a sandbox — terminal commands, SSH, process and file operations — newest first, with who made each call and how it ended. Each entry in `data` is an [OCSF](https://schema.ocsf.io/) API Activity event. Only the program name is recorded, never its arguments, and nothing typed at a hidden password prompt is captured:
 
 ```ts
 let page = await sandbox.audit({ limit: 50 }); // optional from / to (RFC3339), cursor, limit
-for (const r of page.records) console.log(r.at, r.tool, r.command ?? r.target ?? "", r.outcome);
+for (const e of page.data) {
+  console.log(new Date(e.time).toISOString(), e.api.operation, e.actor.user.name ?? e.actor.user.uid, e.status);
+}
 
 // Page back through the window with next_cursor.
 while (page.next_cursor) page = await sandbox.audit({ cursor: page.next_cursor });
+
+// Filter by call, outcome or who made it; list filters take one value or an array.
+const failedExecs = await sandbox.audit({ operation: ["exec", "pty_command"], status: "failure" });
+const byKey = await sandbox.audit({ actorType: "api_key", credentialUid: keyId });
 ```
 
-The trail covers the last `retention_days` days; `window_truncated` is true when `from` reaches further back than that. The full example is [`examples/audit-trail.ts`](./examples/audit-trail.ts).
+`time` is in milliseconds since the Unix epoch, and `resources` names what the call touched: the sandbox, then any file, process, terminal or channel. `actor.user.type` is `"user"`, `"api_key"`, `"system"` or `"unknown"`; filters by actor don't match events recorded before actors were, so use `credentialUid` for those. The trail covers the last `retention_days` days; `window_truncated` is true when `from` reaches further back than that. The full example is [`examples/audit-trail.ts`](./examples/audit-trail.ts).
 
 ### Snapshots, fork & rollback
 
@@ -502,7 +508,7 @@ await agent.keepalive();
 
 // Preview URLs and the audit trail work just like they do on a sandbox.
 const url = await agent.getUrl({ port: 3000 });
-const trail = await agent.audit({ limit: 50 }); // trail.sandbox_id is the backing sandbox
+const trail = await agent.audit({ limit: 50 });
 
 // Roll the agent back in place to a snapshot of its backing sandbox.
 await agent.rollback(snapshotId);
