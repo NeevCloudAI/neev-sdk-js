@@ -25,7 +25,7 @@ async function readySandbox(connectUrl: string | null, daemonQueue: Array<Respon
   });
   const sandbox = await neev.sandboxes.create({
     name: "demo",
-    sandbox_template_id: "sb-ubuntu-26-04-minimal",
+    sandbox_template_id: "sb-ubuntu-26-04-dev",
   });
   return { sandbox, calls: mock.calls };
 }
@@ -109,7 +109,7 @@ describe("runtime", () => {
       });
       const sandbox = await neev.sandboxes.create({
         name: "demo",
-        sandbox_template_id: "sb-ubuntu-26-04-minimal",
+        sandbox_template_id: "sb-ubuntu-26-04-dev",
       });
       // Kick off a file write while still Pending; it should poll until Ready,
       // then issue the daemon call against the resolved connect_url.
@@ -142,7 +142,7 @@ describe("runtime", () => {
     });
     const sandbox = await neev.sandboxes.create({
       name: "demo",
-      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+      sandbox_template_id: "sb-ubuntu-26-04-dev",
     });
     await sandbox.files.write("/a", "x");
     await sandbox.resume();
@@ -172,7 +172,7 @@ describe("runtime", () => {
       });
       const sandbox = await neev.sandboxes.create({
         name: "demo",
-        sandbox_template_id: "sb-ubuntu-26-04-minimal",
+        sandbox_template_id: "sb-ubuntu-26-04-dev",
       });
       const run = sandbox.exec(["true"]);
       // Advance one poll interval (DEFAULT_POLL_INTERVAL_MS) to let the readiness

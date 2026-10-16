@@ -175,7 +175,7 @@ while (page.next_cursor) page = await neev.sandboxes.audit(id, { cursor: page.ne
 
 ### `neev.templates`
 
-Read-only catalogue. A template id (e.g. `"sb-ubuntu-26-04-minimal"`) is optional at create time; use this resource to discover valid ids.
+Read-only catalogue. A template id (e.g. `"sb-ubuntu-26-04-dev"`) is optional at create time; use this resource to discover valid ids.
 
 | Method | Returns | Summary |
 | ------ | ------- | ------- |
@@ -184,7 +184,7 @@ Read-only catalogue. A template id (e.g. `"sb-ubuntu-26-04-minimal"`) is optiona
 
 ```ts
 const { items } = await neev.templates.list({ limit: 10 });
-const template = await neev.templates.get("sb-ubuntu-26-04-minimal");
+const template = await neev.templates.get("sb-ubuntu-26-04-dev");
 ```
 
 ### `neev.raw`
@@ -626,7 +626,7 @@ Minimal one-liners for each public API.
 | `neev.sandboxes.rollback(id, snapshotId)` | `await neev.sandboxes.rollback(id, snapshotId);` |
 | `neev.sandboxes.fork(id, name)` | `const fork = await neev.sandboxes.fork(id, "my-fork");` |
 | `neev.templates.list(...)` | `const { items } = await neev.templates.list({ limit: 10 });` |
-| `neev.templates.get(id)` | `const tpl = await neev.templates.get("sb-ubuntu-26-04-minimal");` |
+| `neev.templates.get(id)` | `const tpl = await neev.templates.get("sb-ubuntu-26-04-dev");` |
 | `neev.agents.create(...)` | `const agent = await neev.agents.create({ name: "reviewer", agent_template: "claude-code" });` |
 | `neev.agents.keepalive(id)` | `await neev.agents.keepalive(id);` |
 | `neev.agents.rollback(id, snapshotId)` | `await neev.agents.rollback(id, snapshotId);` |

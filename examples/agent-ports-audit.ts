@@ -41,7 +41,7 @@ async function main(): Promise<void> {
     // Serve something on port 3000 inside the agent's backing sandbox.
     const sandbox = await agent.sandbox();
     await sandbox.files.write("index.html", "<h1>hello from the agent</h1>\n");
-    await sandbox.processes.start(["busybox", "httpd", "-f", "-p", "3000"]);
+    await sandbox.processes.start(["python3", "-m", "http.server", "3000"]);
 
     // Expose the port with a slug of our choosing, then wait until it is routable.
     const port = await agent.exposePort(3000, { slug: randomSlug() });

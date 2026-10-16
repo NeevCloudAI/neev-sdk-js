@@ -1,0 +1,44 @@
+/**
+ * Run Docker inside a sandbox.
+ *
+ * The `sb-ubuntu-26-04-docker` template runs its own Docker daemon. Start it with
+ * `start-docker`, then use `docker` as usual, with two rules:
+ *   - run and build with `--network=host` (compose: `network_mode: host`);
+ *   - start containers that keep running, such as `docker compose up`, with
+ *     `sandbox.processes.start`, not `exec`, which waits for the command to finish.
+ * The template's default egress allows pulls from Docker Hub and GHCR.
+ *
+ * Run (targets the Neev production API by default):
+ *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
+ *     npx tsx examples/docker.ts
+ */
+import { Neev } from "@neevcloud/sdk";
+
+async function main(): Promise<void> {
+  const neev = new Neev();
+  const sandbox = await neev.sandboxes.create({
+    sandbox_template_id: "sb-ubuntu-26-04-docker",
+  });
+
+  try {
+    await sandbox.waitUntilReady();
+
+    const started = await sandbox.exec(["start-docker"]);
+    console.log(started.stdout.trim());
+    if (started.exitCode !== 0) throw new Error(`start-docker failed: ${started.stderr}`);
+
+    // The first run pulls the image, so allow it a couple of minutes.
+    const run = await sandbox.exec(["docker", "run", "--rm", "--network=host", "hello-world"], {
+      timeoutMs: 180_000,
+    });
+    console.log(run.stdout.trim());
+    if (run.exitCode !== 0) throw new Error(`docker run failed: ${run.stderr}`);
+  } finally {
+    await sandbox.delete();
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});

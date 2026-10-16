@@ -23,16 +23,16 @@ describe("sandboxes resource", () => {
     const { neev, calls } = client([json(201, sandboxData({ name: "demo" }))]);
     const sb = await neev.sandboxes.create({
       name: "demo",
-      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+      sandbox_template_id: "sb-ubuntu-26-04-dev",
     });
     expect(sb).toBeInstanceOf(Sandbox);
     expect(sb.name).toBe("demo");
-    expect(sb.templateId).toBe("sb-ubuntu-26-04-minimal");
+    expect(sb.templateId).toBe("sb-ubuntu-26-04-dev");
     expect(calls[0]?.method).toBe("POST");
     expect(calls[0]?.url).toContain("/api/v1beta1/orgs/org_test/projects/proj_test/sandboxes");
     expect(calls[0]?.body).toEqual({
       name: "demo",
-      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+      sandbox_template_id: "sb-ubuntu-26-04-dev",
     });
   });
 
@@ -218,14 +218,14 @@ describe("sandboxes resource", () => {
         200,
         sandboxData({
           region: "dev",
-          sandbox_template_id: "sb-ubuntu-26-04-minimal",
+          sandbox_template_id: "sb-ubuntu-26-04-dev",
           resources: { cpu: 2, memory_gb: 4, disk_gb: 20 },
         }),
       ),
     ]);
     const sb = await neev.sandboxes.get("sb-1");
     expect(sb.region).toBe("dev");
-    expect(sb.templateId).toBe("sb-ubuntu-26-04-minimal");
+    expect(sb.templateId).toBe("sb-ubuntu-26-04-dev");
     expect(sb.resources).toEqual({ cpu: 2, memory_gb: 4, disk_gb: 20 });
   });
 

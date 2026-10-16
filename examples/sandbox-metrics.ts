@@ -19,7 +19,7 @@ import { Neev, type Sandbox, type SandboxMetricsResponse } from "@neevcloud/sdk"
 
 const neev = new Neev();
 
-const TEMPLATE = "sb-ubuntu-26-04-minimal";
+const TEMPLATE = "sb-ubuntu-26-04-dev";
 // Drive load in BURSTS slices of BURST_SECONDS each, reading metrics between them.
 const BURSTS = 8;
 const BURST_SECONDS = 15;
@@ -29,8 +29,7 @@ function log(message: string): void {
   console.error(`[metrics] ${message}`);
 }
 
-// Burns CPU for `seconds` with a POSIX-sh busy loop (runs on the minimal template,
-// which has no stress tool). exec blocks until the loop ends.
+// Burns CPU for `seconds` with a shell busy loop; exec blocks until the loop ends.
 async function burn(sandbox: Sandbox, seconds: number): Promise<void> {
   const script = `end=$(( $(date +%s) + ${seconds} )); while [ $(date +%s) -lt $end ]; do :; done`;
   await sandbox.exec(["sh", "-c", script], { timeoutMs: (seconds + 10) * 1000 });
