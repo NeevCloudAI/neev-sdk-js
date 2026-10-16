@@ -25,8 +25,8 @@ export interface SandboxTemplatePage {
 }
 
 // Read-only access to the platform's sandbox-template catalogue. Exposed as
-// `client.templates`. A template id (e.g. "sb-ubuntu-26-04-minimal") is required
-// by `sandboxes.create`, so callers use this resource to discover valid ids.
+// `client.templates`. Pass a template id (e.g. "sb-ubuntu-26-04-dev") to
+// `sandboxes.create`; this resource lists the valid ones.
 export class SandboxTemplates {
   private readonly api: Client<paths>;
 

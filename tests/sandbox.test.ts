@@ -38,7 +38,7 @@ describe("Sandbox handle", () => {
     const neev = client([json(201, sandboxData({ connect_url: "https://sb.sandboxes.example" }))]);
     const sb = await neev.sandboxes.create({
       name: "demo",
-      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+      sandbox_template_id: "sb-ubuntu-26-04-dev",
     });
     expect(sb.id).toBe("11111111-1111-1111-1111-111111111111");
     expect(sb.connectUrl).toBe("https://sb.sandboxes.example");
@@ -102,7 +102,7 @@ describe("Sandbox handle", () => {
     ]);
     const sb = await neev.sandboxes.create({
       name: "demo",
-      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+      sandbox_template_id: "sb-ubuntu-26-04-dev",
     });
     expect(sb.phase).toBe("Ready");
     await sb.pause();
@@ -116,7 +116,7 @@ describe("Sandbox handle", () => {
     ]);
     const sb = await neev.sandboxes.create({
       name: "demo",
-      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+      sandbox_template_id: "sb-ubuntu-26-04-dev",
     });
     const ready = await sb.waitUntilReady({ pollIntervalMs: 1, timeoutMs: 1000 });
     expect(ready.phase).toBe("Ready");
@@ -130,7 +130,7 @@ describe("Sandbox handle", () => {
     ]);
     const sb = await neev.sandboxes.create({
       name: "demo",
-      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+      sandbox_template_id: "sb-ubuntu-26-04-dev",
     });
     const ready = await sb.waitUntilReady({ pollIntervalMs: 1, timeoutMs: 1000 });
     expect(ready.phase).toBe("Ready");
@@ -157,7 +157,7 @@ describe("Sandbox handle", () => {
     const neev = alwaysPhaseClient("Pending");
     const sb = await neev.sandboxes.create({
       name: "demo",
-      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+      sandbox_template_id: "sb-ubuntu-26-04-dev",
     });
     await expect(sb.waitUntilReady({ pollIntervalMs: 1, timeoutMs: 10 })).rejects.toThrow(
       NeevError,
@@ -168,7 +168,7 @@ describe("Sandbox handle", () => {
     const neev = client([json(201, sandboxData({ phase: "Paused" }))]);
     const sb = await neev.sandboxes.create({
       name: "demo",
-      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+      sandbox_template_id: "sb-ubuntu-26-04-dev",
     });
     await expect(sb.waitUntilReady()).rejects.toThrow(/Paused/);
   });
@@ -177,7 +177,7 @@ describe("Sandbox handle", () => {
     const neev = alwaysPhaseClient("Pending");
     const sb = await neev.sandboxes.create({
       name: "demo",
-      sandbox_template_id: "sb-ubuntu-26-04-minimal",
+      sandbox_template_id: "sb-ubuntu-26-04-dev",
     });
     await expect(sb.waitUntilReady({ timeoutMs: Number.NaN })).rejects.toThrow(/timeoutMs/);
     await expect(sb.waitUntilReady({ pollIntervalMs: 0 })).rejects.toThrow(/pollIntervalMs/);

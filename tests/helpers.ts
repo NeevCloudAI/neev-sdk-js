@@ -90,7 +90,7 @@ export function sandboxData(overrides: Partial<SandboxData> = {}): SandboxData {
     name: "test-sandbox",
     region: "as-south-1",
     image: "ghcr.io/neevcloud/sandbox-python:3.12",
-    sandbox_template_id: "sb-ubuntu-26-04-minimal",
+    sandbox_template_id: "sb-ubuntu-26-04-dev",
     phase: "Pending",
     created_at: "2026-06-05T00:00:00Z",
     updated_at: "2026-06-05T00:00:00Z",
@@ -120,9 +120,9 @@ export function snapshotData(overrides: Partial<SnapshotData> = {}): SnapshotDat
 // Builds a SandboxTemplate record with sensible defaults, overridable per field.
 export function templateData(overrides: Partial<SandboxTemplate> = {}): SandboxTemplate {
   return {
-    id: "sb-ubuntu-26-04-minimal",
-    name: "Ubuntu 26.04 Minimal",
-    description: "Minimal Ubuntu 26.04 sandbox runtime.",
+    id: "sb-ubuntu-26-04-dev",
+    name: "ubuntu-26.04-dev",
+    description: "Ubuntu 26.04 with common developer tools.",
     category: "standard",
     status: "active",
     created_at: "2026-06-05T00:00:00Z",

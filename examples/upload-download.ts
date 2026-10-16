@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "neev-upload-"));
   const neev = new Neev();
   const sandbox = await neev.sandboxes.create({
-    sandbox_template_id: "sb-ubuntu-24-04-minimal",
+    sandbox_template_id: "sb-ubuntu-26-04-dev",
   });
 
   try {

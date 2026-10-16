@@ -35,6 +35,7 @@ By default the examples use your account's defaults; a few (`parallel-fanout`,
 | [`agent-tools.ts`](./agent-tools.ts) | The sandbox tool contract for your own agent: declare tools from `DESCRIPTIONS` + `PARAMETERS`, then run scripted model tool calls through `tools.call(name, args)`, including `wait_s` and error results | `npx tsx examples/agent-tools.ts` |
 | [`snapshot-fork-rollback.ts`](./snapshot-fork-rollback.ts) | Snapshot a sandbox → fork a new one from it → roll the original back in place | `npx tsx examples/snapshot-fork-rollback.ts` |
 | [`update-resize-egress.ts`](./update-resize-egress.ts) | Update a running sandbox in place: resize cpu/memory + re-scope egress in one `update()` call (single PATCH), then edit the allow-list with `egress_add` / `egress_remove` | `npx tsx examples/update-resize-egress.ts` |
+| [`docker.ts`](./docker.ts) | Docker template: `start-docker`, then `docker run --network=host hello-world` | `npx tsx examples/docker.ts` |
 | [`upload-download.ts`](./upload-download.ts) | `files.uploadFile` a large local file in resumable chunks with progress, then `files.downloadFile` it back | `npx tsx examples/upload-download.ts` |
 | [`audit-trail.ts`](./audit-trail.ts) | `sandbox.audit()` — page through what ran inside a sandbox, newest first | `npx tsx examples/audit-trail.ts` |
 | [`agent-ports-audit.ts`](./agent-ports-audit.ts) | Agent preview port with a slug → list → audit page → `keepalive()` → revoke | `npx tsx examples/agent-ports-audit.ts` |

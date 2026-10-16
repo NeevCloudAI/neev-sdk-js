@@ -27,8 +27,7 @@ import { NEEV_INFERENCE_BASE_URL, NEEV_MODEL, neevInferenceApiKey } from "./mode
 // The task the model solves by running shell in the sandbox.
 const TASK =
   "Print every prime number below 50, one per line, then on the last line print " +
-  "'count: N' with how many there were. Use the run_shell tool; the sandbox has " +
-  "busybox sh only (no bash, no python).";
+  "'count: N' with how many there were. Use the run_shell tool.";
 
 const MAX_STEPS = 6;
 
@@ -101,9 +100,9 @@ async function main(): Promise<void> {
   line(bold("AI code-interpreter (gpt-oss-120b → Neev sandbox)"));
   line(dim(`task: ${TASK}`));
 
-  line(dim("\n[sandbox] creating (template=sb-ubuntu-26-04-minimal)…"));
+  line(dim("\n[sandbox] creating (template=sb-ubuntu-26-04-dev)…"));
   const sandbox = await neev.sandboxes.create({
-    sandbox_template_id: "sb-ubuntu-26-04-minimal",
+    sandbox_template_id: "sb-ubuntu-26-04-dev",
   });
 
   const messages: ChatMessage[] = [
@@ -111,7 +110,7 @@ async function main(): Promise<void> {
       role: "system",
       content:
         "You are a coding assistant. You have a run_shell tool that executes POSIX sh " +
-        "in a secure sandbox (busybox sh; no bash, no python). Use as few commands as " +
+        "in a secure sandbox (bash and python3 are available). Use as few commands as " +
         "possible — never re-run a command that already succeeded — then reply with a " +
         "single concise final line.",
     },
