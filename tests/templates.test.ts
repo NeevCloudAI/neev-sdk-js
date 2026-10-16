@@ -38,11 +38,11 @@ describe("templates resource", () => {
   });
 
   it("fetches a single template by id", async () => {
-    const { neev, calls } = client([json(200, templateData({ id: "sb-ubuntu-26-04-minimal" }))]);
-    const tpl = await neev.templates.get("sb-ubuntu-26-04-minimal");
-    expect(tpl.id).toBe("sb-ubuntu-26-04-minimal");
+    const { neev, calls } = client([json(200, templateData({ id: "sb-ubuntu-26-04-dev" }))]);
+    const tpl = await neev.templates.get("sb-ubuntu-26-04-dev");
+    expect(tpl.id).toBe("sb-ubuntu-26-04-dev");
     expect(tpl.status).toBe("active");
-    expect(calls[0]?.url).toMatch(/\/sandbox-templates\/sb-ubuntu-26-04-minimal$/);
+    expect(calls[0]?.url).toMatch(/\/sandbox-templates\/sb-ubuntu-26-04-dev$/);
   });
 
   it("throws a typed error when a template is missing", async () => {

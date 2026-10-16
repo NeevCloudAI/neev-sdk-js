@@ -17,7 +17,7 @@ async function readySandbox(connectUrl: string, daemonQueue: Array<Response | Er
   });
   const sandbox = await neev.sandboxes.create({
     name: "demo",
-    sandbox_template_id: "sb-ubuntu-26-04-minimal",
+    sandbox_template_id: "sb-ubuntu-26-04-dev",
   });
   return { sandbox, calls: mock.calls };
 }
@@ -107,7 +107,7 @@ describe("processes", () => {
         });
         const sandbox = await neev.sandboxes.create({
           name: "demo",
-          sandbox_template_id: "sb-ubuntu-26-04-minimal",
+          sandbox_template_id: "sb-ubuntu-26-04-dev",
         });
         const starting = sandbox.processes.start("sleep", { args: ["1"] });
         await vi.advanceTimersByTimeAsync(2000);

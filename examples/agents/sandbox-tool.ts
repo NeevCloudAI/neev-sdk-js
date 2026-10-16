@@ -39,7 +39,7 @@ export class SandboxCodeExecutor {
     // Reads NEEV_API_KEY / NEEV_ORG_ID / NEEV_PROJECT_ID from the environment
     // and targets the Neev production API by default.
     this.neev = new Neev();
-    this.templateId = options.templateId ?? "sb-ubuntu-26-04-minimal";
+    this.templateId = options.templateId ?? "sb-ubuntu-26-04-dev";
     this.namePrefix = options.namePrefix ?? "agent-demo";
   }
 
@@ -61,16 +61,14 @@ export class SandboxCodeExecutor {
   }
 
   // Writes the given Python source into the sandbox and runs it with python3.
-  // Paths are relative to the workspace (absolute paths must stay inside it). Requires a
-  // python-capable template; the minimal catalogue images do not ship python3.
+  // Paths are relative to the workspace (absolute paths must stay inside it).
   async runPython(code: string): Promise<RunResult> {
     const sandbox = await this.ensure();
     await sandbox.files.write("snippet.py", code);
     return this.logged("python3 snippet.py", () => sandbox.exec(["python3", "snippet.py"]));
   }
 
-  // Runs a shell command inside the sandbox. Uses `sh`, which is present on the
-  // minimal catalogue images (they do not ship bash).
+  // Runs a shell command inside the sandbox.
   async runShell(command: string): Promise<RunResult> {
     const sandbox = await this.ensure();
     return this.logged(command, () => sandbox.exec(["sh", "-c", command]));

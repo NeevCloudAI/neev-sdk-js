@@ -248,7 +248,7 @@ await sandbox.waitUntilReady();
 
 // Explicit template and environment.
 const configured = await client.sandboxes.create({
-  sandbox_template_id: "sb-ubuntu-26-04-minimal",
+  sandbox_template_id: "sb-ubuntu-26-04-dev",
   env: [{ name: "LOG_LEVEL", value: "debug" }],
 });
 
@@ -660,7 +660,7 @@ const result = await conn.exec(["uname", "-a"]);
 
 ## Templates resource
 
-Access via `client.templates` (a `SandboxTemplates` instance). Read-only catalogue, platform-managed, with no org/project scope. A template id (e.g. `"sb-ubuntu-26-04-minimal"`) can be passed as `sandbox_template_id` to `sandboxes.create`.
+Access via `client.templates` (a `SandboxTemplates` instance). Read-only catalogue, platform-managed, with no org/project scope. A template id (e.g. `"sb-ubuntu-26-04-dev"`) can be passed as `sandbox_template_id` to `sandboxes.create`. The catalogue changes over time, so discover ids with `list()` rather than hard-coding them; a retired template drops out of the list and can no longer be created from, while sandboxes already built from it keep running.
 
 ### `client.templates.list(params?)`
 
@@ -701,7 +701,7 @@ Fetches a single sandbox template by id.
 **Raises:** `NotFoundError` if the template id is unknown, plus auth/transport errors.
 
 ```ts
-const tmpl = await client.templates.get("sb-ubuntu-26-04-minimal");
+const tmpl = await client.templates.get("sb-ubuntu-26-04-dev");
 console.log(tmpl.description);
 ```
 
@@ -1026,7 +1026,7 @@ Exposes `options.port` for preview URLs and returns its public URL. A preview UR
 **Returns:** `Promise<string>` — the preview URL.
 
 ```ts
-await sandbox.processes.start(["busybox", "httpd", "-f", "-p", "3000"]);
+await sandbox.processes.start(["python3", "-m", "http.server", "3000"]);
 const url = await sandbox.getUrl({ port: 3000 });
 ```
 
@@ -1806,7 +1806,7 @@ Paginated list payload returned by `sandboxes.list` (before the SDK wraps items 
 
 ### `SandboxTemplate`
 
-A platform-managed sandbox runtime template, referenced as `sandbox_template_id` at create time. Includes `id`, `name`, `description`, `icon` (a display icon such as an SVG document, or `null`), `category` (`SandboxTemplateCategory`), `status` (`SandboxTemplateStatus`), and timestamps. Shape per the generated schema.
+A platform-managed sandbox runtime template, referenced as `sandbox_template_id` at create time. Includes `id`, `name`, `description`, `icon` (a display icon such as an SVG document, or `null`), `category` (`SandboxTemplateCategory`), `status` (`SandboxTemplateStatus`), `interpreter` (true when sandboxes from it run the code interpreter), `min_memory_gb` (the smallest memory a sandbox from it may have, or `null`), and timestamps. Shape per the generated schema.
 
 ### `SandboxTemplateCategory`
 
