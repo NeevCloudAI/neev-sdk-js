@@ -47,6 +47,21 @@ export type {
   StartProcessOptions,
 } from "./processes.js";
 
+export { CodeResult, SandboxCode } from "./code.js";
+export type {
+  CodeContext,
+  CodeContextOptions,
+  CodeContextRef,
+  CodeEndReason,
+  CodeError,
+  CodeLanguage,
+  CreateCodeContextOptions,
+  CreatedCodeContext,
+  Execution,
+  OutputMessage,
+  RunCodeOptions,
+} from "./code.js";
+
 export { PtyHandle, SandboxPty } from "./pty.js";
 export type {
   PtyCreateOptions,
