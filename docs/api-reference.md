@@ -437,6 +437,7 @@ for await (const event of sandbox.exec(["sh", "-c", "for i in 1 2 3; do echo $i;
 await sandbox.files.write("main.py", "print('hi')"); // → { bytesWritten }
 const bytes = await sandbox.files.read("main.py");    // → Uint8Array
 const text = await sandbox.files.readText("main.py"); // → string
+const head = await sandbox.files.read("big.log", { offset: 0, length: 4096 }); // → first 4 KiB only
 const entries = await sandbox.files.list(".", { recursive: true }); // → FileEntry[]
 
 const info = await sandbox.files.stat("main.py");        // → FileEntry
@@ -540,16 +541,19 @@ Listed for completeness; prefer the handle methods above.
 
 ## Agent tools
 
-`@neevcloud/sdk/agent-tools` is the sandbox tool contract for agents you build on any framework. Declare the enabled tools with `DESCRIPTIONS` and `PARAMETERS` (JSON Schema), then pass each tool call to `call(name, args)`. Full symbol list: [api-inventory.md](./api-inventory.md#agent-tools).
+`@neevcloud/sdk/agent-tools` is the sandbox tool contract for agents you build on any framework. Declare the enabled tools with `DESCRIPTIONS` and `PARAMETERS` (JSON Schema), plus `TITLES` for display, then pass each tool call to `call(name, args)`. Full symbol list: [api-inventory.md](./api-inventory.md#agent-tools).
 
 | Tool | Method | Opt-in |
 | ---- | ------ | ------ |
 | `run_command` | `runCommand({ command, cwd?, timeout_s? })` | — |
 | `write_file` | `writeFile({ path, content })` | — |
-| `read_file` | `readFile({ path })` | — |
+| `read_file` | `readFile({ path, offset?, length? })` | — |
+| `stat_path` | `statPath({ path })` | — |
+| `move_path` | `movePath({ source, destination })` | — |
+| `delete_path` | `deletePath({ path, recursive? })` | — |
 | `expose_port` | `exposePort({ port })` | `allowPreview` |
 | `checkpoint` / `rollback` | `checkpoint({ label? })` / `rollback({ checkpoint_id })` | `allowRollback` |
-| `start_process` / `read_process_output` / `stop_process` | `startProcess({ command, cwd? })` / `readProcessOutput({ process_id, cursor?, wait_s? })` / `stopProcess({ process_id })` | `allowProcesses` |
+| `start_process` / `read_process_output` / `stop_process` / `list_processes` | `startProcess({ command, cwd? })` / `readProcessOutput({ process_id, cursor?, wait_s? })` / `stopProcess({ process_id })` / `listProcesses()` | `allowProcesses` |
 
 ```ts
 import { DESCRIPTIONS, PARAMETERS, SandboxTools } from "@neevcloud/sdk/agent-tools";

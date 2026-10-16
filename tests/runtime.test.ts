@@ -298,6 +298,88 @@ describe("runtime", () => {
       ]);
       await expect(sandbox.files.read("/missing")).rejects.toBeInstanceOf(NotFoundError);
     });
+
+    // A body of 4-byte chunks 0..n-1 that records how many chunks were pulled and
+    // whether the reader cancelled it.
+    function chunkedBody(n: number) {
+      const seen = { pulled: 0, cancelled: false };
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (seen.pulled === n) return controller.close();
+          const at = seen.pulled++ * 4;
+          controller.enqueue(new Uint8Array([at, at + 1, at + 2, at + 3]));
+        },
+        cancel() {
+          seen.cancelled = true;
+        },
+      });
+      return { body, seen };
+    }
+
+    it.each([
+      [{ offset: 5, length: 6 }, [5, 6, 7, 8, 9, 10]],
+      [{ offset: 0, length: 3 }, [0, 1, 2]],
+      [{ offset: 38 }, [38, 39]],
+      [{ length: 2 }, [0, 1]],
+      [{ offset: 40, length: 5 }, []],
+      [{ offset: 99 }, []],
+      [{ offset: 36, length: 10 }, [36, 37, 38, 39]],
+    ])("reads the range %j", async (range, want) => {
+      const { body } = chunkedBody(10);
+      const { sandbox, calls } = await readySandbox("https://sbx.sandboxes.example", [
+        new Response(body, { status: 200 }),
+      ]);
+      expect(Array.from(await sandbox.files.read("a.bin", range))).toEqual(want);
+      expect(calls[1]?.body).toEqual({ path: "a.bin" });
+    });
+
+    it("stops downloading once the range has arrived", async () => {
+      const { body, seen } = chunkedBody(1_000);
+      const { sandbox } = await readySandbox("https://sbx.sandboxes.example", [
+        new Response(body, { status: 200 }),
+      ]);
+      expect(Array.from(await sandbox.files.read("a.bin", { offset: 6, length: 4 }))).toEqual([
+        6, 7, 8, 9,
+      ]);
+      expect(seen.cancelled).toBe(true);
+      expect(seen.pulled).toBeLessThan(10);
+    });
+
+    it("rejects a ranged read whose body fails mid-stream", async () => {
+      let sent = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (sent) {
+            controller.error(new Error("connection reset"));
+            return;
+          }
+          sent = true;
+          controller.enqueue(new Uint8Array([1, 2, 3]));
+        },
+      });
+      const { sandbox } = await readySandbox("https://sbx.sandboxes.example", [
+        new Response(body, { status: 200 }),
+      ]);
+      await expect(sandbox.files.read("a.bin", { offset: 0, length: 10 })).rejects.toThrow(
+        "connection reset",
+      );
+    });
+
+    it("readText passes the range through", async () => {
+      const { sandbox } = await readySandbox("https://sbx.sandboxes.example", [
+        new Response("héllo world", { status: 200 }),
+      ]);
+      expect(await sandbox.files.readText("a.txt", { offset: 7, length: 3 })).toBe("wor");
+    });
+
+    it.each([{ offset: -1 }, { offset: 1.5 }, { length: 0 }, { length: -2 }, { length: 2.5 }])(
+      "rejects the range %j before any request",
+      async (range) => {
+        const { sandbox, calls } = await readySandbox("https://sbx.sandboxes.example", []);
+        await expect(sandbox.files.read("a.bin", range)).rejects.toBeInstanceOf(NeevError);
+        expect(calls).toHaveLength(1);
+      },
+    );
   });
 
   describe("files.list", () => {
