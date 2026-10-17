@@ -70,11 +70,14 @@ export async function waitForPreviewUrl(
   }
 }
 
+// Set by the edge proxy on a response that came from the sandbox, never on one it answered itself.
+const UPSTREAM_HEADER = "x-envoy-upstream-service-time";
+
 // Probes a preview URL to decide whether it is routed yet.
 // Right after a port is exposed the route is not yet live: the request either
-// fails to connect or answers 403/404 for the not-yet-routed URL.
-// Once routed, requests reach the sandbox (any other status, including a
-// 502 when nothing is listening yet), which counts as reachable.
+// fails to connect or the edge answers 403/404 itself. Any other status counts
+// as routed (including a 5xx while nothing listens yet), and so does a 403/404
+// the app itself returned, such as from an API-only or sign-in-gated root.
 async function previewUrlReachable(
   fetch: FetchLike,
   url: string,
@@ -84,6 +87,7 @@ async function previewUrlReachable(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { method: "GET", redirect: "manual", signal: controller.signal });
+    if (res.headers.get(UPSTREAM_HEADER) !== null) return true;
     return res.status !== 403 && res.status !== 404;
   } catch {
     // A connection error, DNS failure, or an abort when the budget ran out — not reachable yet.

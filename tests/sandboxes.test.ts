@@ -775,6 +775,21 @@ describe("preview ports", () => {
     expect(calls[1]?.method).toBe("GET");
   });
 
+  // 404: an API-only app with nothing at its root; 403: a sign-in-gated root.
+  it.each([404, 403])("getPortUrl treats the app's own %i as routed", async (status) => {
+    const { neev, calls } = client([
+      json(200, { port: 3000, preview_url: "https://p.example/app" }),
+      // The edge marks a response the app produced; its own 403/404 carry no mark.
+      new Response(null, { status, headers: { "x-envoy-upstream-service-time": "3" } }),
+    ]);
+    const url = await neev.sandboxes.getPortUrl("sb-1", 3000, {
+      pollIntervalMs: 1,
+      timeoutMs: 5000,
+    });
+    expect(url).toBe("https://p.example/app");
+    expect(calls).toHaveLength(2);
+  });
+
   it("getPortUrl throws when the preview URL never becomes routable", async () => {
     const notReady = Array.from({ length: 20 }, () => new Response(null, { status: 404 }));
     const { neev } = client([
