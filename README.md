@@ -143,7 +143,7 @@ Templates you can start from:
 | Template | Use it for |
 | --- | --- |
 | `sb-ubuntu-26-04-dev` | General development: git, gh, Python 3, Node 24 LTS |
-| `sb-ubuntu-26-04-docker` | Docker, Compose and Buildx; run `start-docker` first, and run containers with `--network=host` |
+| `sb-ubuntu-26-04-docker` | Docker, Compose and Buildx, with Docker started at boot; run containers with `--network=host` |
 | `sb-ubuntu-26-04-interpreter` | The [code interpreter](#code-interpreter): Python kernels that keep their state |
 | `sb-ubuntu-26-04-playwright` | Browser testing: a desktop with Node 24, Playwright and Chromium, headless or headed (`DISPLAY=:1`) |
 
