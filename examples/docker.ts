@@ -1,8 +1,8 @@
 /**
  * Run Docker inside a sandbox.
  *
- * The `sb-ubuntu-26-04-docker` template runs its own Docker daemon. Start it with
- * `start-docker`, then use `docker` as usual, with two rules:
+ * The `sb-ubuntu-26-04-docker` template starts its own Docker daemon at boot, so
+ * use `docker` as usual (run `start-docker` if the daemon ever stops), with two rules:
  *   - run and build with `--network=host` (compose: `network_mode: host`);
  *   - start containers that keep running, such as `docker compose up`, with
  *     `sandbox.processes.start`, not `exec`, which waits for the command to finish.
@@ -22,10 +22,6 @@ async function main(): Promise<void> {
 
   try {
     await sandbox.waitUntilReady();
-
-    const started = await sandbox.exec(["start-docker"]);
-    console.log(started.stdout.trim());
-    if (started.exitCode !== 0) throw new Error(`start-docker failed: ${started.stderr}`);
 
     // The first run pulls the image, so allow it a couple of minutes.
     const run = await sandbox.exec(["docker", "run", "--rm", "--network=host", "hello-world"], {
