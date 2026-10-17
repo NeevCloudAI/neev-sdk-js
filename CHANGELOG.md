@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.9.0
+
+### Breaking changes
+
+- The audit trail returns OCSF events. `AuditTrail.records` is now `data: AuditEvent[]`, and `AuditRecord` and `AuditTrail.sandbox_id` are removed. Each event has `time` (ms), `actor`, `status`, `device` and `cloud.org`; `api` and `resources` are set on API Activity events only, so read `e.api?.operation`.
+- `sandbox.replicas` is removed. Read `sandbox.phase` instead, which is `"Paused"` while a sandbox is paused.
+
+### Added
+
+- Agent tools: `SandboxTools` from `@neevcloud/sdk/agent-tools` gives a model sandbox tools to run commands, read, write, stat, move and delete files, expose ports, checkpoint and roll back, and run background processes. Descriptions, schemas and error text match the Python SDK.
+- `tools.specs()` and `FatalGuard` plug the tools into any framework, with ready adapters for the Claude Agent SDK, OpenAI Agents and the AI SDK (`@neevcloud/sdk/agent-tools/claude`, `/openai-agents`, `/ai-sdk`).
+- Code interpreter: `sandbox.code.run(code)` runs Python in a persistent kernel on the interpreter template, and `sandbox.code.createContext()`, `listContexts`, `restartContext` and `deleteContext` manage separate kernels.
+- Sandbox labels: `labels` on create, `sandbox.labels`, and a `labels` filter on list.
+- The audit trail records the programs a sandbox runs (Process Activity, `class_uid` 1007) and the connections they open (Network Activity, 4001) alongside API calls (API Activity, 6003), with new `AuditProcess`, `AuditFile`, `AuditDstEndpoint` and `AuditDevice` types. `sandboxes.update(id, { execution_trace: false })` turns this off without a restart, and `sandbox.executionTrace` reports the setting.
+- Audit filters: `operation`, `status`, `actorType`, `actorUid` and `credentialUid`.
+- Agent snapshots and forks: `neev.agents.createSnapshot`, `listSnapshots` and `fork`, and `snapshot()`, `snapshots()` and `fork(name)` on the `Agent` handle.
+- `files.read` and `files.readText` take `offset` and `length` to read a byte range.
+- Snapshots have an optional `trigger` (`"manual"` or `"memory_pressure"`), and `snapshot_type` adds `"filesystem"` for a /workspace-only snapshot that restores onto any sandbox image. Templates have `interpreter` and `min_memory_gb`.
+
+### Changed
+
+- Runtime calls (`exec`, `files`, `processes`, `code`, `pty`) on a `Paused` sandbox that still has a `connect_url` are sent instead of failing with "call resume() first"; where automatic wake-up is enabled, the sandbox wakes and the call completes. `examples/auto-resume.ts` is new.
+- HTTP 425, such as calling an agent that is still provisioning, throws the new `TooEarlyError` (an `APIError`).
+- API errors are read from the body whatever its `Content-Type`. `code` falls back to the sandbox's `reason_code`, and a body that isn't a JSON object is kept in `details`.
+- `exec`, `processes.follow` and `files.readText` keep a leading byte order mark.
+- Examples and docs use the `sb-ubuntu-26-04-dev` template, and `examples/docker.ts` is new.
+
+### Fixed
+
+- A caller's `AbortSignal` now also cancels a response body still streaming after the headers arrive; the read throws `APIConnectionError`, except in `processes.follow` and `files.watch`, which end cleanly.
+- `exec` with a `timeoutMs` above the client timeout, and `processes.get(id, { wait: true })`, no longer fail with `APITimeoutError` at the client timeout.
+- `getUrl` / `getPortUrl` no longer wait out their timeout when the app itself answers 403 or 404.
+
 ## 0.8.2
 
 ### Patch Changes
