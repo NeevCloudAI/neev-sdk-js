@@ -340,7 +340,7 @@ describe("agent audit trail", () => {
     const agent = await neev.agents.get("ag-1");
     const page = await agent.audit({ cursor: "c1", limit: 10 });
     expect(page.window_truncated).toBe(true);
-    expect(page.data[0]?.api.operation).toBe("fs.read");
+    expect(page.data[0]?.api?.operation).toBe("fs.read");
     const url = new URL(calls[1]?.url ?? "");
     expect(calls[1]?.method).toBe("GET");
     expect(url.pathname).toMatch(/\/agents\/33333333-3333-3333-3333-333333333333\/audit$/);

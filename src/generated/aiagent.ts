@@ -825,6 +825,12 @@ export interface components {
             rootfs_disk_gb?: number;
         };
         Sandbox: {
+            /**
+             * @description Whether this sandbox records every program that runs inside it, which
+             *     is on unless it was turned off. False means it records only the
+             *     operations you request.
+             */
+            execution_trace?: boolean;
             /** Format: uuid */
             id: string;
             org_id: string;
@@ -1018,9 +1024,9 @@ export interface components {
             ports: components["schemas"]["SandboxPort"][];
         };
         /**
-         * @description Request to update a running sandbox's CPU/memory and/or egress rules.
-         *     At least one of `resources`, `egress`, `egress_add` or `egress_remove`
-         *     must be provided. `egress` replaces the policy in full; `egress_add` and
+         * @description Request to update a running sandbox's CPU/memory, egress rules, or whether
+         *     it records what runs inside it. At least one of `resources`, `egress`,
+         *     `egress_add`, `egress_remove` or `execution_trace` must be provided. `egress` replaces the policy in full; `egress_add` and
          *     `egress_remove` edit the allow-list in place and cannot be combined with it.
          */
         UpdateSandboxRequest: {
@@ -1036,6 +1042,14 @@ export interface components {
              *     restart is required.
              */
             egress?: components["schemas"]["SandboxEgressConfig"];
+            /**
+             * @description Record every program that runs inside this sandbox, not only the
+             *     operations you request. On by default; false turns it off, and true
+             *     turns it back on. Takes effect on the running sandbox without a
+             *     restart. Recording costs a little processor time on each program
+             *     started.
+             */
+            execution_trace?: boolean;
             /**
              * @description Destinations to add to the existing allow-list, leaving every other
              *     rule in place. Adding a host already allowed replaces its ports and
@@ -1262,35 +1276,35 @@ export interface components {
             /** @description Token lifetime in seconds. */
             expires_in: number;
         };
-        /** @description One call to the sandbox, as an OCSF 1.9.0 API Activity event (class_uid 6003). Program names are recorded without their arguments, and input typed at a hidden password prompt is never recorded. */
+        /** @description One thing that happened in the sandbox, as an OCSF 1.9.0 event: an API Activity event (class_uid 6003) for a call to the sandbox. Unless its `execution_trace` is turned off, a sandbox also records every program that runs inside it, whether or not anything requested it: a Process Activity event (1007) for a program starting or ending, and a Network Activity event (4001) for a connection a program opened. Program names are recorded without their arguments, and input typed at a hidden password prompt is never recorded. */
         AuditEvent: {
             /**
-             * @description OCSF class, API Activity.
+             * @description OCSF class, API Activity, Process Activity or Network Activity.
              * @enum {integer}
              */
-            class_uid: 6003;
-            /** @description Always API Activity. */
+            class_uid: 6003 | 1007 | 4001;
+            /** @description The name of class_uid, such as API Activity. */
             class_name: string;
             /**
-             * @description OCSF category, Application Activity.
+             * @description OCSF category: Application Activity for an API call, System Activity for a program, Network Activity for a connection.
              * @enum {integer}
              */
-            category_uid: 6;
-            /** @description Always Application Activity. */
+            category_uid: 6 | 1 | 4;
+            /** @description The name of category_uid, such as Application Activity. */
             category_name: string;
             /**
-             * @description 1 Create (a write, a started process, a terminal), 2 Read, 3 Update (a move), 4 Delete (a removed file, a killed process), 99 Other.
+             * @description Read with class_uid. For an API call: 1 Create (a write, a started process, a terminal), 2 Read, 3 Update (a move), 4 Delete (a removed file, a killed process), 99 Other. For a program: 1 Launch, 2 Terminate, 99 Other (the sandbox starting). For a connection: 1 Open.
              * @enum {integer}
              */
             activity_id: 1 | 2 | 3 | 4 | 99;
-            /** @description The name of activity_id, such as Create. */
+            /** @description The name of activity_id within its class, such as Create or Launch. */
             activity_name: string;
             /**
              * Format: int64
-             * @description class_uid * 100 + activity_id, such as 600301.
+             * @description class_uid * 100 + activity_id, such as 600301 or 100701.
              */
             type_uid: number;
-            /** @description Such as API Activity: Create. */
+            /** @description Such as API Activity: Create or Process Activity: Launch. */
             type_name: string;
             /**
              * Format: int64
@@ -1318,19 +1332,52 @@ export interface components {
             status: string;
             /** @description Why it ended that way: `ok`, `permission_denied`, `internal`. */
             status_code?: string;
-            /** @description How a code-interpreter cell ended: `ok`, `error`, `deadline_exceeded`, `kernel_restarted`, `memory_exceeded`, `unavailable`, `invalid_response`, or `client_gone` when the caller disconnected first. */
+            /** @description How a code-interpreter cell ended: `ok`, `error`, `deadline_exceeded`, `kernel_restarted`, `memory_exceeded`, `unavailable`, `invalid_response`, or `client_gone` when the caller disconnected first. On a program that was stopped rather than ending on its own, such as one out of memory or told to stop, `signal <n>` names the signal that stopped it. */
             status_detail?: string;
             actor: components["schemas"]["AuditActor"];
-            api: components["schemas"]["AuditAPI"];
+            api?: components["schemas"]["AuditAPI"];
+            process?: components["schemas"]["AuditProcess"];
+            /** @description What a program returned when it ended. Zero means it succeeded. Present on a Process Activity Terminate event unless a signal stopped the program. */
+            exit_code?: number;
+            dst_endpoint?: components["schemas"]["AuditDstEndpoint"];
             /** @description What the call touched: the sandbox, then any file or process it named, the program it ran, and the terminal it ran in. */
             resources?: components["schemas"]["AuditResource"][];
             cloud: components["schemas"]["AuditCloud"];
-            src_endpoint: components["schemas"]["AuditEndpoint"];
-            /** @description Threat intelligence about the call. Always empty. */
+            src_endpoint?: components["schemas"]["AuditEndpoint"];
+            /** @description Threat intelligence about the event. Always empty. */
             osint: Record<string, never>[];
             metadata: components["schemas"]["AuditMetadata"];
         };
-        /** @description The call made to the sandbox, as OCSF api. */
+        /** @description A program that ran inside the sandbox, as an OCSF process. On a Process Activity event it is the program that started or ended; on a Network Activity event it is actor.process, the program that opened the connection. */
+        AuditProcess: {
+            /** @description Identifies the program within the sandbox. */
+            pid?: number;
+            /** @description The program, without its arguments. A program can name itself freely, so file.path is the stronger field. */
+            name?: string;
+            /** @description The working directory the program ran in. */
+            cwd?: string;
+            file?: components["schemas"]["AuditFile"];
+            parent_process?: components["schemas"]["AuditParentProcess"];
+        };
+        /** @description The process that started this one, so a run can be traced back to what caused it. Its own Launch event names it. */
+        AuditParentProcess: {
+            /** @description Identifies the parent within the sandbox. */
+            pid?: number;
+        };
+        AuditFile: {
+            /** @description The file that actually executed, after symlinks and interpreters were resolved. */
+            path: string;
+        };
+        /** @description Where a program tried to connect, as OCSF dst_endpoint. It records the attempt and where it was aimed, not what was sent. */
+        AuditDstEndpoint: {
+            /** @description The address reached for. */
+            ip?: string;
+            /** @description The port reached for. */
+            port?: number;
+            /** @description A local socket, as `unix:<path>`, in place of ip and port. */
+            name?: string;
+        };
+        /** @description The call made to the sandbox, as OCSF api. Present on API Activity only. */
         AuditAPI: {
             /** @description The call, such as `pty_command`, `ssh`, `exec`, `process.start`, `fs.read` or `interpreter.run`. */
             operation: string;
@@ -1360,7 +1407,7 @@ export interface components {
             /** @description The organization id. */
             uid: string;
         };
-        /** @description Where the call came from. The caller's address is not recorded yet, so name is Platform for the platform's own calls and unknown otherwise. */
+        /** @description Where the call came from. The caller's address is not recorded yet, so name is Platform for the platform's own calls and unknown otherwise. Present on API Activity only. */
         AuditEndpoint: {
             name: string;
         };
@@ -1381,10 +1428,11 @@ export interface components {
             /** @description Always NeevCloud. */
             vendor_name: string;
         };
-        /** @description Who made the call, as an OCSF actor. A console record from before actors were recorded names only its session, so its user is unknown. */
+        /** @description Who made the call, as an OCSF actor. A console record from before actors were recorded names only its session, so its user is unknown. A program's event records no user, so its user is unknown too. */
         AuditActor: {
             user: components["schemas"]["AuditActorUser"];
             session?: components["schemas"]["AuditActorSession"];
+            process?: components["schemas"]["AuditProcess"];
         };
         /** @description The principal that acted, as OCSF actor.user. */
         AuditActorUser: {
@@ -1784,7 +1832,7 @@ export interface components {
         AuditCursor: string;
         /** @description Records per page. Clamped server-side. */
         AuditLimit: number;
-        /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. */
+        /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. A recorded program matches `exec` when it starts, `exit` when it ends and `connect` when it opens a connection. */
         AuditOperation: string;
         /** @description Only calls that ended this way. */
         AuditStatus: components["schemas"]["AuditStatusFilter"];
@@ -2534,7 +2582,7 @@ export interface operations {
                 cursor?: components["parameters"]["AuditCursor"];
                 /** @description Records per page. Clamped server-side. */
                 limit?: components["parameters"]["AuditLimit"];
-                /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. */
+                /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. A recorded program matches `exec` when it starts, `exit` when it ends and `connect` when it opens a connection. */
                 operation?: components["parameters"]["AuditOperation"];
                 /** @description Only calls that ended this way. */
                 status?: components["parameters"]["AuditStatus"];
@@ -3183,7 +3231,7 @@ export interface operations {
                 cursor?: components["parameters"]["AuditCursor"];
                 /** @description Records per page. Clamped server-side. */
                 limit?: components["parameters"]["AuditLimit"];
-                /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. */
+                /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. A recorded program matches `exec` when it starts, `exit` when it ends and `connect` when it opens a connection. */
                 operation?: components["parameters"]["AuditOperation"];
                 /** @description Only calls that ended this way. */
                 status?: components["parameters"]["AuditStatus"];
