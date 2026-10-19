@@ -47,7 +47,13 @@ const TIMEOUT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{san
 const AUDIT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/audit";
 
 // The fields an in-place sandbox update can carry; at least one must be set.
-const SANDBOX_UPDATE_FIELDS = ["resources", "egress", "egress_add", "egress_remove"] as const;
+const SANDBOX_UPDATE_FIELDS = [
+  "resources",
+  "egress",
+  "egress_add",
+  "egress_remove",
+  "execution_trace",
+] as const;
 
 // The on_idle values the API accepts. Kept in sync with the generated OnIdleAction
 // enum; used to reject a bad value locally before a request goes out.

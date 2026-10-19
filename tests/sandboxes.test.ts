@@ -408,9 +408,16 @@ describe("sandbox update (in-place resize + egress)", () => {
   it("rejects an empty update locally, naming every accepted field", async () => {
     const { neev, calls } = client([]);
     await expect(neev.sandboxes.update("sb-1", {})).rejects.toThrow(
-      /`resources`, `egress`, `egress_add` or `egress_remove`/,
+      /`resources`, `egress`, `egress_add`, `egress_remove` or `execution_trace`/,
     );
     expect(calls).toHaveLength(0);
+  });
+
+  it("turns program recording off with execution_trace alone", async () => {
+    const { neev, calls } = client([json(200, sandboxData({ execution_trace: false }))]);
+    const sb = await neev.sandboxes.update("sb-1", { execution_trace: false });
+    expect(calls[0]?.body).toEqual({ execution_trace: false });
+    expect(sb.data.execution_trace).toBe(false);
   });
 
   it("replaces the egress policy in full via a PATCH", async () => {
@@ -876,7 +883,7 @@ describe("audit trail", () => {
       cursor: "c1",
       limit: 50,
     });
-    expect(page.data[0]?.api.operation).toBe("exec");
+    expect(page.data[0]?.api?.operation).toBe("exec");
     expect(page.data[0]?.actor.user.type).toBe("api_key");
     expect(page.next_cursor).toBe("c2");
     const url = new URL(calls[0]?.url ?? "");
@@ -930,5 +937,51 @@ describe("audit trail", () => {
     await neev.sandboxes.audit("sb-1", params);
     const url = new URL(calls[0]?.url ?? "");
     expect(Object.fromEntries(url.searchParams)).toEqual(expected);
+  });
+
+  it("carries program and connection events, which have no api", async () => {
+    const launch = auditEvent({
+      class_uid: 1007,
+      class_name: "Process Activity",
+      category_uid: 1,
+      category_name: "System Activity",
+      activity_id: 1,
+      activity_name: "Launch",
+      type_uid: 100701,
+      type_name: "Process Activity: Launch",
+      actor: { user: { type: "unknown", type_id: 0, uid: "unknown" } },
+      api: undefined,
+      src_endpoint: undefined,
+      process: {
+        pid: 31,
+        name: "curl",
+        cwd: "/workspace",
+        file: { path: "/usr/bin/curl" },
+        parent_process: { pid: 12 },
+      },
+    });
+    const connect = auditEvent({
+      class_uid: 4001,
+      class_name: "Network Activity",
+      category_uid: 4,
+      category_name: "Network Activity",
+      activity_id: 1,
+      activity_name: "Open",
+      type_uid: 400101,
+      type_name: "Network Activity: Open",
+      actor: {
+        user: { type: "unknown", type_id: 0, uid: "unknown" },
+        process: { pid: 31, name: "curl" },
+      },
+      api: undefined,
+      src_endpoint: undefined,
+      dst_endpoint: { ip: "169.254.25.10", port: 53 },
+    });
+    const { neev } = client([json(200, { ...trail, data: [launch, connect] })]);
+    const page = await neev.sandboxes.audit("sb-1");
+    expect(page.data[0]?.api).toBeUndefined();
+    expect(page.data[0]?.process?.parent_process?.pid).toBe(12);
+    expect(page.data[1]?.actor.process?.name).toBe("curl");
+    expect(page.data[1]?.dst_endpoint?.port).toBe(53);
   });
 });
