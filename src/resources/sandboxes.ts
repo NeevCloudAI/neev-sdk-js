@@ -47,7 +47,13 @@ const TIMEOUT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{san
 const AUDIT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/sandboxes/{sandbox_id}/audit";
 
 // The fields an in-place sandbox update can carry; at least one must be set.
-const SANDBOX_UPDATE_FIELDS = ["resources", "egress", "egress_add", "egress_remove"] as const;
+const SANDBOX_UPDATE_FIELDS = [
+  "resources",
+  "egress",
+  "egress_add",
+  "egress_remove",
+  "execution_trace",
+] as const;
 
 // The on_idle values the API accepts. Kept in sync with the generated OnIdleAction
 // enum; used to reject a bad value locally before a request goes out.
@@ -144,14 +150,16 @@ export interface AuditQuery {
   // Events per page (1-200, default 50).
   limit?: number;
   // Only these calls (`api.operation`), such as "exec" or ["exec", "pty_command"].
+  // Programs and connections have no operation, so this leaves them out.
   operation?: string | string[];
-  // Only calls that ended this way.
+  // Only events that ended this way; applies to programs and connections too.
   status?: AuditStatusFilter;
-  // Only calls by these kinds of principal (`actor.user.type`).
+  // Only calls by these kinds of principal. Leaves out programs and connections.
   actorType?: AuditActorType | AuditActorType[];
-  // Only calls by this principal (`actor.user.uid`), such as a user id or an API key id.
+  // Only calls by this principal (`actor.user.uid`). Leaves out programs and connections.
   actorUid?: string;
-  // Only calls made with this API key (`actor.user.credential_uid`).
+  // Only calls made with this API key (`actor.user.programmatic_credentials[].uid`).
+  // Leaves out programs and connections.
   credentialUid?: string;
 }
 
@@ -285,8 +293,9 @@ export class Sandboxes {
   // allow-list in place (removals apply first, so one call can swap a host) and
   // cannot be combined with `egress`. `disk_gb` is not resizable in place and is
   // rejected by the server if changed. The `allowInternet` / `allowEgress`
-  // convenience maps to `egress` exactly as it does on create. Rejects an empty
-  // or conflicting patch locally rather than letting the server 400 on it.
+  // convenience maps to `egress` exactly as it does on create. `execution_trace`
+  // turns recording of every program the sandbox runs off (false) or back on (true)
+  // with no restart. Rejects an empty or conflicting patch locally.
   async update(id: string, params: UpdateSandboxParams, scope?: Scope): Promise<Sandbox> {
     const body = withEgressConvenience(params);
     assertUpdateBody(body, "sandboxes.update", SANDBOX_UPDATE_FIELDS);

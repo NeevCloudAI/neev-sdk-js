@@ -388,6 +388,19 @@ describe("sandbox update (in-place resize + egress)", () => {
     });
   });
 
+  it("turns program recording off and reports it on the handle", async () => {
+    const { neev, calls } = client([json(200, sandboxData({ execution_trace: false }))]);
+    const sb = await neev.sandboxes.update("sb-1", { execution_trace: false });
+    expect(calls[0]?.method).toBe("PATCH");
+    expect(calls[0]?.body).toEqual({ execution_trace: false });
+    expect(sb.executionTrace).toBe(false);
+  });
+
+  it("reports program recording on when the sandbox does not say", () => {
+    const { neev } = client([]);
+    expect(new Sandbox(neev.sandboxes, sandboxData()).executionTrace).toBe(true);
+  });
+
   it("rejects egress combined with egress_add/egress_remove locally", async () => {
     const { neev, calls } = client([]);
     await expect(
@@ -408,7 +421,7 @@ describe("sandbox update (in-place resize + egress)", () => {
   it("rejects an empty update locally, naming every accepted field", async () => {
     const { neev, calls } = client([]);
     await expect(neev.sandboxes.update("sb-1", {})).rejects.toThrow(
-      /`resources`, `egress`, `egress_add` or `egress_remove`/,
+      /`resources`, `egress`, `egress_add`, `egress_remove` or `execution_trace`/,
     );
     expect(calls).toHaveLength(0);
   });
@@ -858,6 +871,82 @@ describe("preview ports", () => {
   });
 });
 
+describe("audit event classes", () => {
+  const launch = auditEvent({
+    class_uid: 1007,
+    class_name: "Process Activity",
+    category_uid: 1,
+    category_name: "System Activity",
+    activity_id: 1,
+    activity_name: "Launch",
+    type_uid: 100701,
+    type_name: "Process Activity: Launch",
+    actor: { user: { type: "Unknown", type_id: 0, uid: "unknown" }, process: { pid: 39 } },
+    api: undefined,
+    process: {
+      pid: 40,
+      name: "curl",
+      working_directory: "/workspace",
+      file: { name: "curl", path: "/usr/bin/curl", type_id: 8, type: "Executable File" },
+      parent_process: { pid: 39 },
+    },
+    device: { type_id: 6, type: "Virtual", uid: "sb-1" },
+  });
+  const killed = auditEvent({
+    class_uid: 1007,
+    class_name: "Process Activity",
+    category_uid: 1,
+    category_name: "System Activity",
+    activity_id: 2,
+    activity_name: "Terminate",
+    type_uid: 100702,
+    type_name: "Process Activity: Terminate",
+    status_id: 2,
+    status: "Failure",
+    status_detail: "signal 9",
+    actor: { user: { type: "Unknown", type_id: 0, uid: "unknown" } },
+    api: undefined,
+    process: { pid: 40, name: "curl", parent_process: { pid: 39 } },
+  });
+  const connect = auditEvent({
+    class_uid: 4001,
+    class_name: "Network Activity",
+    category_uid: 4,
+    category_name: "Network Activity",
+    activity_id: 1,
+    activity_name: "Open",
+    type_uid: 400101,
+    type_name: "Network Activity: Open",
+    actor: {
+      user: { type: "Unknown", type_id: 0, uid: "unknown" },
+      process: { pid: 40, name: "curl", parent_process: { pid: 39 } },
+    },
+    api: undefined,
+    dst_endpoint: { ip: "10.0.0.5", port: 443 },
+  });
+
+  it("returns API, process and network events in one page", async () => {
+    const { neev } = client([
+      json(200, {
+        from: "2026-10-01T00:00:00Z",
+        to: "2026-10-02T00:00:00Z",
+        retention_days: 30,
+        window_truncated: false,
+        data: [connect, killed, launch, auditEvent({ api: { operation: "exec" } })],
+      }),
+    ]);
+    const page = await neev.sandboxes.audit("sb-1");
+    expect(page.data.map((e) => e.class_uid)).toEqual([4001, 1007, 1007, 6003]);
+    expect(page.data[0]?.dst_endpoint).toEqual({ ip: "10.0.0.5", port: 443 });
+    expect(page.data[0]?.actor.process?.name).toBe("curl");
+    expect(page.data[1]?.exit_code).toBeUndefined();
+    expect(page.data[1]?.status_detail).toBe("signal 9");
+    expect(page.data[2]?.process?.file?.path).toBe("/usr/bin/curl");
+    expect(page.data[2]?.process?.parent_process?.pid).toBe(39);
+    expect(page.data[3]?.api?.operation).toBe("exec");
+  });
+});
+
 describe("audit trail", () => {
   const trail = {
     from: "2026-10-01T00:00:00Z",
@@ -876,8 +965,8 @@ describe("audit trail", () => {
       cursor: "c1",
       limit: 50,
     });
-    expect(page.data[0]?.api.operation).toBe("exec");
-    expect(page.data[0]?.actor.user.type).toBe("api_key");
+    expect(page.data[0]?.api?.operation).toBe("exec");
+    expect(page.data[0]?.actor.user.type).toBe("API Key");
     expect(page.next_cursor).toBe("c2");
     const url = new URL(calls[0]?.url ?? "");
     expect(calls[0]?.method).toBe("GET");

@@ -128,6 +128,12 @@ export class Sandbox {
     return this.state.addressable !== false;
   }
 
+  // Whether every program the sandbox runs is recorded in its audit trail. True
+  // unless turned off with `update({ execution_trace: false })`.
+  get executionTrace(): boolean {
+    return this.state.execution_trace !== false;
+  }
+
   // Most recent unexpected stop as last seen from the server, or null if this
   // sandbox has never had one. Historical: it is not cleared when the sandbox
   // recovers, so compare `at` against when you last trusted the filesystem

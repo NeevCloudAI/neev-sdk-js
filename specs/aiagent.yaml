@@ -952,7 +952,9 @@ paths:
             const sandbox = await neev.sandboxes.get(sandboxId);
             const trail = await sandbox.audit({ limit: 50 });
             for (const e of trail.data) {
-              console.log(new Date(e.time).toISOString(), e.api.operation, e.actor.user.name ?? e.actor.user.uid, e.status);
+              // A recorded program has no api; its process names it instead.
+              const what = e.api?.operation ?? e.process?.name ?? e.actor.process?.name;
+              console.log(new Date(e.time).toISOString(), e.type_name, what, e.status);
             }
         - lang: Python
           source: |
@@ -963,7 +965,10 @@ paths:
             sandbox = neev.sandboxes.get(sandbox_id)
             trail = sandbox.audit(limit=50)
             for e in trail.data:
-                print(e.time, e.api.operation, e.actor.user.name or e.actor.user.uid, e.status)
+                # A recorded program has no api; its process names it instead.
+                proc = e.process or e.actor.process
+                what = e.api.operation if e.api else (proc.name if proc else None)
+                print(e.time, e.type_name, what, e.status)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -1685,7 +1690,9 @@ paths:
             const agent = await neev.agents.get(agentId);
             const trail = await agent.audit({ limit: 50 });
             for (const e of trail.data) {
-              console.log(new Date(e.time).toISOString(), e.api.operation, e.actor.user.name ?? e.actor.user.uid, e.status);
+              // A recorded program has no api; its process names it instead.
+              const what = e.api?.operation ?? e.process?.name ?? e.actor.process?.name;
+              console.log(new Date(e.time).toISOString(), e.type_name, what, e.status);
             }
         - lang: Python
           source: |
@@ -1696,7 +1703,10 @@ paths:
             agent = neev.agents.get(agent_id)
             trail = agent.audit(limit=50)
             for e in trail.data:
-                print(e.time, e.api.operation, e.actor.user.name or e.actor.user.uid, e.status)
+                # A recorded program has no api; its process names it instead.
+                proc = e.process or e.actor.process
+                what = e.api.operation if e.api else (proc.name if proc else None)
+                print(e.time, e.type_name, what, e.status)
       parameters:
         - {$ref: '#/components/parameters/OrgID'}
         - {$ref: '#/components/parameters/ProjectID'}
@@ -1904,7 +1914,7 @@ components:
       in: query
       required: false
       description: >-
-        Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`.
+        Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. Recorded programs and connections are not calls and have no operation, so this filter leaves them out.
       schema: {type: string}
     AuditStatus:
       name: status
@@ -1917,7 +1927,7 @@ components:
       in: query
       required: false
       description: >-
-        Only calls by this kind of principal (actor.user.type), one or several separated by commas. Records from before actors were recorded are not matched; use credential_uid for those.
+        Only calls by this kind of principal, one or several separated by commas: `user`, `api_key` or `system`, matching actor.user.type User, API Key or System. Records from before actors were recorded are not matched; use credential_uid for those.
       style: form
       explode: false
       schema:
@@ -1934,7 +1944,7 @@ components:
       name: credential_uid
       in: query
       required: false
-      description: Only calls made with this API key (actor.user.credential_uid).
+      description: Only calls made with this API key (actor.user.programmatic_credentials[].uid).
       schema: {type: string}
     AgentTemplateID:
       name: template_id
@@ -2075,6 +2085,12 @@ components:
       type: object
       required: [id, org_id, project_id, name, region, image, phase, created_at, updated_at]
       properties:
+        execution_trace:
+          type: boolean
+          description: |
+            Whether this sandbox records every program that runs inside it, which
+            is on unless it was turned off. False means it records only the
+            operations you request.
         id: {type: string, format: uuid}
         org_id: {type: string}
         project_id: {type: string}
@@ -2285,9 +2301,9 @@ components:
       type: object
       additionalProperties: false
       description: |
-        Request to update a running sandbox's CPU/memory and/or egress rules.
-        At least one of `resources`, `egress`, `egress_add` or `egress_remove`
-        must be provided. `egress` replaces the policy in full; `egress_add` and
+        Request to update a running sandbox's CPU/memory, egress rules, or whether
+        it records what runs inside it. At least one of `resources`, `egress`,
+        `egress_add`, `egress_remove` or `execution_trace` must be provided. `egress` replaces the policy in full; `egress_add` and
         `egress_remove` edit the allow-list in place and cannot be combined with it.
       properties:
         resources:
@@ -2304,6 +2320,14 @@ components:
             New egress policy for the sandbox. Replaces the existing policy
             in full and takes effect immediately for new connections — no sandbox
             restart is required.
+        execution_trace:
+          type: boolean
+          description: |
+            Record every program that runs inside this sandbox, not only the
+            operations you request. On by default; false turns it off, and true
+            turns it back on. Takes effect on the running sandbox without a
+            restart. Recording costs a little processor time on each program
+            started.
         egress_add:
           allOf:
             - $ref: '#/components/schemas/SandboxEgressRules'
@@ -2351,7 +2375,7 @@ components:
       enum: [manual, memory_pressure]
     Snapshot:
       type: object
-      required: [id, sandbox_id, org_id, project_id, status, snapshot_type, trigger, source_region, created_at, updated_at, sandbox_format_version, restorability]
+      required: [id, sandbox_id, org_id, project_id, status, snapshot_type, source_region, created_at, updated_at, sandbox_format_version, restorability]
       description: Metadata for a sandbox memory+filesystem snapshot.
       properties:
         id: {type: string, format: uuid, description: Snapshot UUID.}
@@ -2587,33 +2611,34 @@ components:
     AuditEvent:
       type: object
       description: >-
-        One call to the sandbox, as an OCSF 1.9.0 API Activity event (class_uid 6003). Program names are recorded without their arguments, and input typed at a hidden password prompt is never recorded.
-      required: [class_uid, class_name, category_uid, category_name, activity_id, activity_name, type_uid, type_name, time, severity_id, severity, status_id, status, actor, api, cloud, src_endpoint, osint, metadata]
+        One thing that happened in the sandbox, as an OCSF 1.9.0 event: an API Activity event (class_uid 6003) for a call to the sandbox. Unless its `execution_trace` is turned off, a sandbox also records every program that runs inside it, whether or not anything requested it: a Process Activity event (1007) for a program starting or ending, and a Network Activity event (4001) for a connection a program opened. Program names are recorded without their arguments, and input typed at a hidden password prompt is never recorded.
+      required: [class_uid, class_name, category_uid, category_name, activity_id, activity_name, type_uid, type_name, time, severity_id, severity, status_id, status, actor, cloud, osint, metadata]
       properties:
         class_uid:
           type: integer
-          enum: [6003]
-          x-enum-varnames: [AuditClassAPIActivity]
-          description: OCSF class, API Activity.
-        class_name: {type: string, description: Always API Activity.}
+          enum: [6003, 1007, 4001]
+          x-enum-varnames: [AuditClassAPIActivity, AuditClassProcessActivity, AuditClassNetworkActivity]
+          description: OCSF class, API Activity, Process Activity or Network Activity.
+        class_name: {type: string, description: "The name of class_uid, such as API Activity."}
         category_uid:
           type: integer
-          enum: [6]
-          x-enum-varnames: [AuditCategoryApplicationActivity]
-          description: OCSF category, Application Activity.
-        category_name: {type: string, description: Always Application Activity.}
+          enum: [6, 1, 4]
+          x-enum-varnames: [AuditCategoryApplicationActivity, AuditCategorySystemActivity, AuditCategoryNetworkActivity]
+          description: >-
+            OCSF category: Application Activity for an API call, System Activity for a program, Network Activity for a connection.
+        category_name: {type: string, description: "The name of category_uid, such as Application Activity."}
         activity_id:
           type: integer
           enum: [1, 2, 3, 4, 99]
           x-enum-varnames: [AuditActivityCreate, AuditActivityRead, AuditActivityUpdate, AuditActivityDelete, AuditActivityOther]
           description: >-
-            1 Create (a write, a started process, a terminal), 2 Read, 3 Update (a move), 4 Delete (a removed file, a killed process), 99 Other.
-        activity_name: {type: string, description: "The name of activity_id, such as Create."}
+            Read with class_uid. For an API call: 1 Create (a write, a started process, a terminal), 2 Read, 3 Update (a move), 4 Delete (a removed file, a killed process), 99 Other. For a program: 1 Launch, 2 Terminate, 99 Sandbox Start. For a connection: 1 Open.
+        activity_name: {type: string, description: "The name of activity_id within its class, such as Create or Launch."}
         type_uid:
           type: integer
           format: int64
-          description: class_uid * 100 + activity_id, such as 600301.
-        type_name: {type: string, description: "Such as API Activity: Create."}
+          description: class_uid * 100 + activity_id, such as 600301 or 100701.
+        type_name: {type: string, description: "Such as API Activity: Create or Process Activity: Launch."}
         time:
           type: integer
           format: int64
@@ -2641,24 +2666,87 @@ components:
         status_detail:
           type: string
           description: >-
-            How a code-interpreter cell ended: `ok`, `error`, `deadline_exceeded`, `kernel_restarted`, `memory_exceeded`, `unavailable`, `invalid_response`, or `client_gone` when the caller disconnected first.
+            How a code-interpreter cell ended: `ok`, `error`, `deadline_exceeded`, `kernel_restarted`, `memory_exceeded`, `unavailable`, `invalid_response`, or `client_gone` when the caller disconnected first. On a program that was stopped rather than ending on its own, such as one out of memory or told to stop, `signal <n>` names the signal that stopped it.
         actor: {$ref: '#/components/schemas/AuditActor'}
         api: {$ref: '#/components/schemas/AuditAPI'}
+        process: {$ref: '#/components/schemas/AuditProcess'}
+        exit_code:
+          type: integer
+          description: >-
+            What a program returned when it ended. Zero means it succeeded. Present on a Process Activity Terminate event unless a signal stopped the program.
+        dst_endpoint: {$ref: '#/components/schemas/AuditDstEndpoint'}
+        device: {$ref: '#/components/schemas/AuditDevice'}
         resources:
           type: array
           description: >-
-            What the call touched: the sandbox, then any file or process it named, the program it ran, and the terminal it ran in.
+            What the call touched: the sandbox, then any file or process it named, the program it ran, and the terminal it ran in. Present on API Activity only; Process and Network events name the sandbox in device.
           items: {$ref: '#/components/schemas/AuditResource'}
         cloud: {$ref: '#/components/schemas/AuditCloud'}
         src_endpoint: {$ref: '#/components/schemas/AuditEndpoint'}
         osint:
           type: array
-          description: Threat intelligence about the call. Always empty.
+          description: Threat intelligence about the event. Always empty.
           items: {type: object}
         metadata: {$ref: '#/components/schemas/AuditMetadata'}
+    AuditDevice:
+      type: object
+      description: >-
+        The sandbox the event happened in, as OCSF device. Present on every event.
+      required: [type_id]
+      properties:
+        type_id:
+          type: integer
+          enum: [6]
+          x-enum-varnames: [AuditDeviceTypeVirtual]
+          description: Always 6, Virtual.
+        type: {type: string, description: Always Virtual.}
+        uid: {type: string, description: The sandbox id.}
+    AuditProcess:
+      type: object
+      description: >-
+        A program that ran inside the sandbox, as an OCSF process. On a Process Activity event it is the program that started or ended. As actor.process it is the program that opened a connection (Network Activity) or the parent that launched this program (Process Activity Launch, pid only).
+      properties:
+        pid: {type: integer, description: Identifies the program within the sandbox.}
+        name:
+          type: string
+          description: >-
+            The program, without its arguments. A program can name itself freely, so file.path is the stronger field.
+        working_directory: {type: string, description: The working directory the program ran in.}
+        file: {$ref: '#/components/schemas/AuditFile'}
+        parent_process: {$ref: '#/components/schemas/AuditParentProcess'}
+    AuditParentProcess:
+      type: object
+      description: >-
+        The process that started this one, so a run can be traced back to what caused it. Its own Launch event names it.
+      properties:
+        pid: {type: integer, description: Identifies the parent within the sandbox.}
+    AuditFile:
+      type: object
+      required: [name, path, type_id]
+      properties:
+        name: {type: string, description: "The file name, the last element of path."}
+        path:
+          type: string
+          description: The file that actually executed, after symlinks and interpreters were resolved.
+        type_id:
+          type: integer
+          enum: [8]
+          x-enum-varnames: [AuditFileTypeExecutable]
+          description: Always 8, Executable File.
+        type: {type: string, description: Always Executable File.}
+    AuditDstEndpoint:
+      type: object
+      description: >-
+        Where a program tried to connect, as OCSF dst_endpoint. It records the attempt and where it was aimed, not what was sent.
+      properties:
+        ip: {type: string, description: The address reached for.}
+        port: {type: integer, description: The port reached for.}
+        name:
+          type: string
+          description: A local socket, as `unix:<path>`, in place of ip and port.
     AuditAPI:
       type: object
-      description: The call made to the sandbox, as OCSF api.
+      description: The call made to the sandbox, as OCSF api. Present on API Activity only.
       required: [operation]
       properties:
         operation:
@@ -2680,27 +2768,44 @@ components:
           type: string
           enum: [sandbox, file, process, channel, terminal, interpreter_context]
           x-enum-varnames: [AuditResourceSandbox, AuditResourceFile, AuditResourceProcess, AuditResourceChannel, AuditResourceTerminal, AuditResourceInterpreterContext]
-        uid: {type: string, description: "The sandbox, terminal or interpreter context id."}
+        uid: {type: string, description: "The sandbox, terminal or interpreter context id, or the pid of a started process that has no name."}
+        data: {$ref: '#/components/schemas/AuditResourceData'}
         name:
           type: string
           description: >-
             A file path (a move reads `source -> destination`), a program name without its arguments, or an SSH channel such as `direct-tcpip db.internal:5432`, `tcpip-forward 0.0.0.0:8080` or `auth-agent <socket>`. A program reads `[redacted]` where its name could not be established, and a terminal command interrupted with Ctrl-C is prefixed `[Ctrl-C]`. Truncated with a trailing `...` if unusually long.
+    AuditResourceData:
+      type: object
+      description: >-
+        Set on the resource a call started a process for: the program it ran, or the terminal whose shell runs typed commands.
+      properties:
+        pid:
+          type: integer
+          description: >-
+            The process the call started. A Process Activity event whose pid, or any ancestor's pid through parent_process, equals it was started by this call, so its actor.user is who ran that program.
     AuditCloud:
       type: object
       required: [provider]
       properties:
         provider: {type: string, description: Always NeevCloud.}
         account: {$ref: '#/components/schemas/AuditAccount'}
-        project_uid: {type: string, description: The project id.}
+        org: {$ref: '#/components/schemas/AuditOrg'}
     AuditAccount:
       type: object
+      description: The project, as OCSF cloud.account.
+      required: [uid]
+      properties:
+        uid: {type: string, description: The project id.}
+    AuditOrg:
+      type: object
+      description: The organization, as OCSF cloud.org.
       required: [uid]
       properties:
         uid: {type: string, description: The organization id.}
     AuditEndpoint:
       type: object
       description: >-
-        Where the call came from. The caller's address is not recorded yet, so name is Platform for the platform's own calls and unknown otherwise.
+        Where the call came from. The caller's address is not recorded yet, so name is Platform for the platform's own calls and unknown otherwise. Present on API Activity only.
       required: [name]
       properties:
         name: {type: string}
@@ -2712,6 +2817,10 @@ components:
         product: {$ref: '#/components/schemas/AuditProduct'}
         uid: {type: string, description: "Stable id of this event, unique within the trail."}
         tenant_uid: {type: string, description: The organization id.}
+        profiles:
+          type: array
+          items: {type: string}
+          description: The OCSF profiles the event uses, always cloud, osint and host.
         sequence:
           type: integer
           description: Ordinal of a terminal command within its terminal. Absent otherwise.
@@ -2724,11 +2833,12 @@ components:
     AuditActor:
       type: object
       description: >-
-        Who made the call, as an OCSF actor. A console record from before actors were recorded names only its session, so its user is unknown.
+        Who made the call, as an OCSF actor. A console record from before actors were recorded names only its session, so its user is unknown. A program's event records no user, so its user is unknown too.
       required: [user]
       properties:
         user: {$ref: '#/components/schemas/AuditActorUser'}
         session: {$ref: '#/components/schemas/AuditActorSession'}
+        process: {$ref: '#/components/schemas/AuditProcess'}
     AuditActorUser:
       type: object
       description: The principal that acted, as OCSF actor.user.
@@ -2736,15 +2846,15 @@ components:
       properties:
         type:
           type: string
-          enum: [user, api_key, system, unknown]
+          enum: [User, API Key, System, Unknown]
           x-enum-varnames: [AuditActorTypeUser, AuditActorTypeAPIKey, AuditActorTypeSystem, AuditActorTypeUnknown]
           description: >-
-            A user in the console, an API key, the platform acting on its own, such as pairing a device, or unknown.
+            The OCSF caption of type_id: User for a user in the console, System for the platform acting on its own, such as pairing a device, Unknown when no principal can be named, and API Key (type_id 99, Other) for an API key.
         type_id:
           type: integer
           enum: [0, 1, 3, 99]
           x-enum-varnames: [AuditActorTypeIDUnknown, AuditActorTypeIDUser, AuditActorTypeIDSystem, AuditActorTypeIDOther]
-          description: "OCSF user.type_id: 0 (Unknown), 1 (User), 3 (System), 99 (Other) for api_key."
+          description: "OCSF user.type_id: 0 (Unknown), 1 (User), 3 (System), 99 (Other) for an API key."
         uid:
           type: string
           description: >-
@@ -2752,9 +2862,16 @@ components:
         name:
           type: string
           description: The user's or the API key's name when the call ran.
-        credential_uid:
-          type: string
-          description: The API key the call was made with. Absent for a user.
+        programmatic_credentials:
+          type: array
+          description: The API key the call was made with, as OCSF programmatic_credentials. Absent for a user.
+          items: {$ref: '#/components/schemas/AuditProgrammaticCredential'}
+    AuditProgrammaticCredential:
+      type: object
+      required: [uid]
+      properties:
+        uid: {type: string, description: The API key's id.}
+        type: {type: string, description: Always API Key.}
     AuditActorSession:
       type: object
       description: The console session a user's call came from, as OCSF actor.session.

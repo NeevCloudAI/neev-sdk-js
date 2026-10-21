@@ -128,7 +128,11 @@ Everything re-exported from `@neevcloud/sdk` (`src/index.ts`). Values are export
 | `AuditActor` | type alias | `types.ts` |
 | `AuditActorType` | type alias | `types.ts` |
 | `AuditActorUser` | type alias | `types.ts` |
+| `AuditDevice` | type alias | `types.ts` |
+| `AuditDstEndpoint` | type alias | `types.ts` |
 | `AuditEvent` | type alias | `types.ts` |
+| `AuditFile` | type alias | `types.ts` |
+| `AuditProcess` | type alias | `types.ts` |
 | `AuditResource` | type alias | `types.ts` |
 | `AuditStatusFilter` | type alias | `types.ts` |
 | `AuditTrail` | type alias | `types.ts` |
@@ -318,12 +322,13 @@ console.log(sandbox.phase, sandbox.connectUrl);
 update(id: string, params: UpdateSandboxParams, scope?: Scope): Promise<Sandbox>
 ```
 
-Updates a **running** sandbox in place and returns the updated handle; the id, name, and preview URLs are unchanged. `UpdateSandboxParams` = the generated `UpdateSandboxRequest` (`{ resources?: SandboxResources; egress?: SandboxEgressConfig; egress_add?: SandboxEgressRules; egress_remove?: SandboxEgressRules }`) plus the SDK-only `EgressConvenience` fields (`allowInternet` / `allowEgress`). **At least one of `resources`, `egress`, `egress_add` or `egress_remove` is required.**
+Updates a **running** sandbox in place and returns the updated handle; the id, name, and preview URLs are unchanged. `UpdateSandboxParams` = the generated `UpdateSandboxRequest` (`{ resources?: SandboxResources; egress?: SandboxEgressConfig; egress_add?: SandboxEgressRules; egress_remove?: SandboxEgressRules; execution_trace?: boolean }`) plus the SDK-only `EgressConvenience` fields (`allowInternet` / `allowEgress`). **At least one of `resources`, `egress`, `egress_add`, `egress_remove` or `execution_trace` is required.**
 
 - `resources` resizes `cpu` / `memory_gb` in place. `disk_gb` is **not** resizable in place — if changed, the server rejects the patch (surfaced as a typed error, not silently dropped).
 - `egress` replaces the policy in full and takes effect for new connections with **no restart**. The `allowInternet` / `allowEgress` convenience maps to `egress` exactly as it does on `create` (byte-identical JSON); an explicit `egress` wins.
 - `egress_add` / `egress_remove` (`{ allow: SandboxEgressRule[] }`) edit the existing allow-list in place, leaving every other rule alone. Removals apply first, so one call can swap a host; adding a host already allowed replaces its ports and protocol. They cannot be combined with `egress` or the convenience fields, and `egress_add` is rejected while the policy is `deny_all`.
 - Passing both `resources` and `egress` sends a single `PATCH` and both take effect.
+- `execution_trace: false` stops recording every program the sandbox runs (and its connections) in the audit trail; `true` turns it back on. On by default, takes effect with no restart, and the change is written to your organization's audit log.
 
 **Returns:** `Promise<Sandbox>` — the updated handle.
 
@@ -336,6 +341,7 @@ await client.sandboxes.update(id, {
   egress_remove: { allow: [{ host: "old.example.com" }] },
   egress_add: { allow: [{ host: "api.example.com", ports: [443] }] },
 });
+await client.sandboxes.update(id, { execution_trace: false });
 // or via handle (updates state in place):
 await sandbox.update({ resources: { cpu: 4 }, allowInternet: true });
 ```
@@ -465,7 +471,7 @@ for (const s of metrics.series) {
 audit(id: string, params?: AuditParams): Promise<AuditTrail>
 ```
 
-Reads one page of the sandbox's audit trail, newest first: terminal commands, SSH, process and file operations, each as an OCSF API Activity event with who made the call (`actor`) and how it ended (`status`, `status_code`). Only the program name is recorded, never its arguments, and input at a hidden password prompt is not captured.
+Reads one page of the sandbox's audit trail, newest first, as OCSF 1.9.0 events: calls made to the sandbox (API Activity, 6003), programs that ran in it (Process Activity, 1007) and connections they opened (Network Activity, 4001). Only the program name is recorded, never its arguments; the environment and input at a hidden password prompt are never recorded.
 
 `AuditParams`:
 
@@ -474,11 +480,11 @@ Reads one page of the sandbox's audit trail, newest first: terminal commands, SS
 | `from`, `to` | `string` | RFC3339; default is the 24 hours before now |
 | `cursor` | `string` | The previous page's `next_cursor` |
 | `limit` | `number` | 1–200, default 50 |
-| `operation` | `string \| string[]` | Only these calls (`api.operation`), such as `"exec"` |
-| `status` | `AuditStatusFilter` | `"success"` or `"failure"` |
-| `actorType` | `AuditActorType \| AuditActorType[]` | `"user"`, `"api_key"` or `"system"` |
-| `actorUid` | `string` | One principal: a user id or an API key id |
-| `credentialUid` | `string` | Calls made with this API key |
+| `operation` | `string \| string[]` | Only these calls (`api.operation`), such as `"exec"`. Leaves out programs and connections |
+| `status` | `AuditStatusFilter` | `"success"` or `"failure"`; applies to every class |
+| `actorType` | `AuditActorType \| AuditActorType[]` | `"user"`, `"api_key"` or `"system"`. Calls only |
+| `actorUid` | `string` | One principal: a user id or an API key id. Calls only |
+| `credentialUid` | `string` | Calls made with this API key. Calls only |
 | `orgId`, `projectId` | `string` | Scope override |
 
 Arrays are sent comma-separated. Actor filters don't match events recorded before actors were; use `credentialUid` for those.
@@ -901,6 +907,7 @@ Returned by `create()`, `get()`, `list().items`, `pause()`, `resume()`, `rollbac
 | `resources` | `SandboxResources \| undefined` | Compute size, or `undefined` when defaulted. |
 | `labels` | `SandboxLabels` | Labels set at create time; `{}` when the sandbox has none. |
 | `addressable` | `boolean` | Whether the sandbox can be reached yet. Briefly `false` after create; `waitUntilReady` and runtime calls wait for it. `true` when not reported. |
+| `executionTrace` | `boolean` | Whether every program the sandbox runs is recorded in its audit trail. `true` unless turned off. |
 | `lastCrash` | `SandboxLastCrash \| null` | Most recent unexpected stop as last seen from the server, or `null` if the sandbox has never had one. `storage_reset: true` means it restarted with an empty filesystem. Historical — not cleared when the sandbox recovers; restoring from a snapshot taken before that stop brings the files back and clears it. |
 | `files` | `SandboxFiles` | Filesystem facade; resolves its connection lazily on first use (waits for Ready). |
 | `processes` | `SandboxProcesses` | Process-supervisor facade; resolves its connection lazily on first use (waits for Ready). |
@@ -1685,6 +1692,7 @@ Alias for the generated `Sandbox` schema — the full lifecycle sandbox record w
 | `command` | `string[]` | no |
 | `phase` | `SandboxPhase` | yes |
 | `addressable` | `boolean` | no — briefly `false` right after create; a runtime call made before it turns `true` is refused. Absent reads as `true`. |
+| `execution_trace` | `boolean` | no — whether every program the sandbox runs is recorded; `true` unless turned off. |
 | `replicas` | `number` | no — deprecated; read `phase` instead |
 | `connect_url` | `string \| null` | no |
 | `sandbox_template_id` | `string \| null` | no |
@@ -1893,21 +1901,27 @@ Paginated list payload returned by `templates.list`.
 | `next_cursor` | `string` | no — absent when the window is exhausted |
 | `data` | `AuditEvent[]` | yes — newest first |
 
-`AuditEvent` is one call, as an [OCSF](https://schema.ocsf.io/) 1.9.0 API Activity event (`class_uid` 6003). The fields you'll usually read:
+`AuditEvent` is one [OCSF](https://schema.ocsf.io/) 1.9.0 event: API Activity (`class_uid` 6003), Process Activity (1007) or Network Activity (4001). The fields you'll usually read:
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
 | `time` | `number` | yes — milliseconds since the Unix epoch |
-| `api.operation` | `string` | yes — e.g. `pty_command`, `ssh`, `exec`, `process.start`, `fs.read`, `interpreter.run` |
+| `class_uid` / `type_name` | `6003 \| 1007 \| 4001` / `string` | yes — e.g. `"Process Activity: Launch"` |
+| `api.operation` | `string` | API Activity only — e.g. `pty_command`, `ssh`, `exec`, `process.start`, `fs.read`, `interpreter.run` |
 | `api.request.uid` | `string` | no — the request that caused the call |
-| `actor.user` | `AuditActorUser` | yes — `type` (`"user"`, `"api_key"`, `"system"`, `"unknown"`), `uid`, `name?`, `credential_uid?` (the API key, absent for a user) |
+| `actor.user` | `AuditActorUser` | yes — `type` (`"User"`, `"API Key"`, `"System"`, `"Unknown"`), `uid`, `name?`, `programmatic_credentials?` (the API key, absent for a user). `Unknown` on program and connection events |
+| `actor.process` | `AuditProcess` | no — on a Launch, the parent that started the program; on a connection, the program that opened it |
+| `process` | `AuditProcess` | Process Activity only — `pid`, `name` (no arguments), `working_directory`, `file.path` (what actually executed), `parent_process.pid` |
+| `exit_code` | `number` | no — on a Terminate, unless a signal stopped the program |
+| `dst_endpoint` | `AuditDstEndpoint` | Network Activity only — `ip` and `port`, or `name` (`unix:<path>`) |
+| `device.uid` | `string` | no — the sandbox id |
 | `actor.session.uid` | `string` | no — the console session a user's call came from |
 | `status` / `status_id` | `string` / `1 \| 2` | yes — `"Success"` (1) or `"Failure"` (2) |
 | `status_code` | `string` | no — `ok`, `permission_denied`, `internal` |
-| `status_detail` | `string` | no — how a code-interpreter run ended |
-| `activity_id` / `activity_name` | `1 \| 2 \| 3 \| 4 \| 99` / `string` | yes — Create, Read, Update, Delete, Other |
+| `status_detail` | `string` | no — how a code-interpreter run ended, or `signal <n>` for a program a signal stopped |
+| `activity_id` / `activity_name` | `1 \| 2 \| 3 \| 4 \| 99` / `string` | yes — API Activity: Create, Read, Update, Delete, Other; Process Activity: Launch, Terminate, Sandbox Start; Network Activity: Open |
 | `duration` | `number` | no — milliseconds; absent on a terminal command |
-| `resources` | `AuditResource[]` | no — what the call touched: `type` (`sandbox`, `file`, `process`, `channel`, `terminal`, `interpreter_context`), `uid?`, `name?` (a path, a program name without arguments, or an SSH channel) |
+| `resources` | `AuditResource[]` | API Activity only — what the call touched: `type` (`sandbox`, `file`, `process`, `channel`, `terminal`, `interpreter_context`), `uid?`, `name?`, and `data.pid` on the process or terminal the call started. A program whose pid, or an ancestor's through `parent_process`, equals it was started by that call |
 | `metadata.uid` | `string` | yes — stable id of the event within the trail |
 | `metadata.sequence` | `number` | no — ordinal of a terminal command within its terminal |
 

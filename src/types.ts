@@ -77,12 +77,24 @@ export type MetricSeries = components["schemas"]["MetricSeries"];
 // A port exposed for credential-free preview URLs, with its slug and public URL.
 export type SandboxPort = components["schemas"]["SandboxPort"];
 
-// One call recorded in an audit trail, as an OCSF API Activity event: who made it
-// (`actor`), what it was (`api.operation`), what it touched and how it ended.
+// One OCSF event in an audit trail: an API call (class_uid 6003), a program that
+// ran (1007) or a connection a program opened (4001).
 export type AuditEvent = components["schemas"]["AuditEvent"];
 
-// Who made an audited call; `user.type` is "user", "api_key", "system" or "unknown".
+// Who acted; `user.type` is "User", "API Key", "System" or "Unknown".
 export type AuditActor = components["schemas"]["AuditActor"];
+
+// A program that ran in the sandbox, with its parent for tracing what started it.
+export type AuditProcess = components["schemas"]["AuditProcess"];
+
+// The executable a program ran, after symlinks and interpreters were resolved.
+export type AuditFile = components["schemas"]["AuditFile"];
+
+// Where a program tried to connect: `ip` and `port`, or `name` for a local socket.
+export type AuditDstEndpoint = components["schemas"]["AuditDstEndpoint"];
+
+// The sandbox an event happened in; `uid` is the sandbox id.
+export type AuditDevice = components["schemas"]["AuditDevice"];
 
 // The principal behind an audited call.
 export type AuditActorUser = components["schemas"]["AuditActorUser"];
