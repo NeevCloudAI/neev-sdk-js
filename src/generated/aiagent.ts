@@ -825,6 +825,12 @@ export interface components {
             rootfs_disk_gb?: number;
         };
         Sandbox: {
+            /**
+             * @description Whether this sandbox records every program that runs inside it, which
+             *     is on unless it was turned off. False means it records only the
+             *     operations you request.
+             */
+            execution_trace?: boolean;
             /** Format: uuid */
             id: string;
             org_id: string;
@@ -1018,9 +1024,9 @@ export interface components {
             ports: components["schemas"]["SandboxPort"][];
         };
         /**
-         * @description Request to update a running sandbox's CPU/memory and/or egress rules.
-         *     At least one of `resources`, `egress`, `egress_add` or `egress_remove`
-         *     must be provided. `egress` replaces the policy in full; `egress_add` and
+         * @description Request to update a running sandbox's CPU/memory, egress rules, or whether
+         *     it records what runs inside it. At least one of `resources`, `egress`,
+         *     `egress_add`, `egress_remove` or `execution_trace` must be provided. `egress` replaces the policy in full; `egress_add` and
          *     `egress_remove` edit the allow-list in place and cannot be combined with it.
          */
         UpdateSandboxRequest: {
@@ -1036,6 +1042,14 @@ export interface components {
              *     restart is required.
              */
             egress?: components["schemas"]["SandboxEgressConfig"];
+            /**
+             * @description Record every program that runs inside this sandbox, not only the
+             *     operations you request. On by default; false turns it off, and true
+             *     turns it back on. Takes effect on the running sandbox without a
+             *     restart. Recording costs a little processor time on each program
+             *     started.
+             */
+            execution_trace?: boolean;
             /**
              * @description Destinations to add to the existing allow-list, leaving every other
              *     rule in place. Adding a host already allowed replaces its ports and
@@ -1097,7 +1111,7 @@ export interface components {
             name?: string;
             status: components["schemas"]["SnapshotStatus"];
             snapshot_type: components["schemas"]["SnapshotType"];
-            trigger: components["schemas"]["SnapshotTrigger"];
+            trigger?: components["schemas"]["SnapshotTrigger"];
             /** @description Region where the snapshot is stored. */
             source_region: string;
             /**
@@ -1262,35 +1276,35 @@ export interface components {
             /** @description Token lifetime in seconds. */
             expires_in: number;
         };
-        /** @description One call to the sandbox, as an OCSF 1.9.0 API Activity event (class_uid 6003). Program names are recorded without their arguments, and input typed at a hidden password prompt is never recorded. */
+        /** @description One thing that happened in the sandbox, as an OCSF 1.9.0 event: an API Activity event (class_uid 6003) for a call to the sandbox. Unless its `execution_trace` is turned off, a sandbox also records every program that runs inside it, whether or not anything requested it: a Process Activity event (1007) for a program starting or ending, and a Network Activity event (4001) for a connection a program opened. Program names are recorded without their arguments, and input typed at a hidden password prompt is never recorded. */
         AuditEvent: {
             /**
-             * @description OCSF class, API Activity.
+             * @description OCSF class, API Activity, Process Activity or Network Activity.
              * @enum {integer}
              */
-            class_uid: 6003;
-            /** @description Always API Activity. */
+            class_uid: 6003 | 1007 | 4001;
+            /** @description The name of class_uid, such as API Activity. */
             class_name: string;
             /**
-             * @description OCSF category, Application Activity.
+             * @description OCSF category: Application Activity for an API call, System Activity for a program, Network Activity for a connection.
              * @enum {integer}
              */
-            category_uid: 6;
-            /** @description Always Application Activity. */
+            category_uid: 6 | 1 | 4;
+            /** @description The name of category_uid, such as Application Activity. */
             category_name: string;
             /**
-             * @description 1 Create (a write, a started process, a terminal), 2 Read, 3 Update (a move), 4 Delete (a removed file, a killed process), 99 Other.
+             * @description Read with class_uid. For an API call: 1 Create (a write, a started process, a terminal), 2 Read, 3 Update (a move), 4 Delete (a removed file, a killed process), 99 Other. For a program: 1 Launch, 2 Terminate, 99 Sandbox Start. For a connection: 1 Open.
              * @enum {integer}
              */
             activity_id: 1 | 2 | 3 | 4 | 99;
-            /** @description The name of activity_id, such as Create. */
+            /** @description The name of activity_id within its class, such as Create or Launch. */
             activity_name: string;
             /**
              * Format: int64
-             * @description class_uid * 100 + activity_id, such as 600301.
+             * @description class_uid * 100 + activity_id, such as 600301 or 100701.
              */
             type_uid: number;
-            /** @description Such as API Activity: Create. */
+            /** @description Such as API Activity: Create or Process Activity: Launch. */
             type_name: string;
             /**
              * Format: int64
@@ -1318,19 +1332,74 @@ export interface components {
             status: string;
             /** @description Why it ended that way: `ok`, `permission_denied`, `internal`. */
             status_code?: string;
-            /** @description How a code-interpreter cell ended: `ok`, `error`, `deadline_exceeded`, `kernel_restarted`, `memory_exceeded`, `unavailable`, `invalid_response`, or `client_gone` when the caller disconnected first. */
+            /** @description How a code-interpreter cell ended: `ok`, `error`, `deadline_exceeded`, `kernel_restarted`, `memory_exceeded`, `unavailable`, `invalid_response`, or `client_gone` when the caller disconnected first. On a program that was stopped rather than ending on its own, such as one out of memory or told to stop, `signal <n>` names the signal that stopped it. */
             status_detail?: string;
             actor: components["schemas"]["AuditActor"];
-            api: components["schemas"]["AuditAPI"];
-            /** @description What the call touched: the sandbox, then any file or process it named, the program it ran, and the terminal it ran in. */
+            api?: components["schemas"]["AuditAPI"];
+            process?: components["schemas"]["AuditProcess"];
+            /** @description What a program returned when it ended. Zero means it succeeded. Present on a Process Activity Terminate event unless a signal stopped the program. */
+            exit_code?: number;
+            dst_endpoint?: components["schemas"]["AuditDstEndpoint"];
+            device?: components["schemas"]["AuditDevice"];
+            /** @description What the call touched: the sandbox, then any file or process it named, the program it ran, and the terminal it ran in. Present on API Activity only; Process and Network events name the sandbox in device. */
             resources?: components["schemas"]["AuditResource"][];
             cloud: components["schemas"]["AuditCloud"];
-            src_endpoint: components["schemas"]["AuditEndpoint"];
-            /** @description Threat intelligence about the call. Always empty. */
+            src_endpoint?: components["schemas"]["AuditEndpoint"];
+            /** @description Threat intelligence about the event. Always empty. */
             osint: Record<string, never>[];
             metadata: components["schemas"]["AuditMetadata"];
         };
-        /** @description The call made to the sandbox, as OCSF api. */
+        /** @description The sandbox the event happened in, as OCSF device. Present on every event. */
+        AuditDevice: {
+            /**
+             * @description Always 6, Virtual.
+             * @enum {integer}
+             */
+            type_id: 6;
+            /** @description Always Virtual. */
+            type?: string;
+            /** @description The sandbox id. */
+            uid?: string;
+        };
+        /** @description A program that ran inside the sandbox, as an OCSF process. On a Process Activity event it is the program that started or ended. As actor.process it is the program that opened a connection (Network Activity) or the parent that launched this program (Process Activity Launch, pid only). */
+        AuditProcess: {
+            /** @description Identifies the program within the sandbox. */
+            pid?: number;
+            /** @description The program, without its arguments. A program can name itself freely, so file.path is the stronger field. */
+            name?: string;
+            /** @description The working directory the program ran in. */
+            working_directory?: string;
+            file?: components["schemas"]["AuditFile"];
+            parent_process?: components["schemas"]["AuditParentProcess"];
+        };
+        /** @description The process that started this one, so a run can be traced back to what caused it. Its own Launch event names it. */
+        AuditParentProcess: {
+            /** @description Identifies the parent within the sandbox. */
+            pid?: number;
+        };
+        AuditFile: {
+            /** @description The file name, the last element of path. */
+            name: string;
+            /** @description The file that actually executed, after symlinks and interpreters were resolved. */
+            path: string;
+            /**
+             * @description Always 8, Executable File.
+             * @enum {integer}
+             */
+            type_id: 8;
+            /** @description Always Executable File. */
+            type?: string;
+        };
+        /** @description Where a program tried to connect, as OCSF dst_endpoint. It records the attempt and where it was aimed, not what was sent. */
+        AuditDstEndpoint: {
+            /** @description The address reached for. */
+            ip?: string;
+            /** @description The port reached for. */
+            port?: number;
+            /** @description A local socket, as `unix:<path>`, in place of ip and port. */
+            name?: string;
+        };
+        /** @description The call made to the sandbox, as OCSF api. Present on API Activity only. */
         AuditAPI: {
             /** @description The call, such as `pty_command`, `ssh`, `exec`, `process.start`, `fs.read` or `interpreter.run`. */
             operation: string;
@@ -1344,23 +1413,34 @@ export interface components {
         AuditResource: {
             /** @enum {string} */
             type: "sandbox" | "file" | "process" | "channel" | "terminal" | "interpreter_context";
-            /** @description The sandbox, terminal or interpreter context id. */
+            /** @description The sandbox, terminal or interpreter context id, or the pid of a started process that has no name. */
             uid?: string;
+            data?: components["schemas"]["AuditResourceData"];
             /** @description A file path (a move reads `source -> destination`), a program name without its arguments, or an SSH channel such as `direct-tcpip db.internal:5432`, `tcpip-forward 0.0.0.0:8080` or `auth-agent <socket>`. A program reads `[redacted]` where its name could not be established, and a terminal command interrupted with Ctrl-C is prefixed `[Ctrl-C]`. Truncated with a trailing `...` if unusually long. */
             name?: string;
+        };
+        /** @description Set on the resource a call started a process for: the program it ran, or the terminal whose shell runs typed commands. */
+        AuditResourceData: {
+            /** @description The process the call started. A Process Activity event whose pid, or any ancestor's pid through parent_process, equals it was started by this call, so its actor.user is who ran that program. */
+            pid?: number;
         };
         AuditCloud: {
             /** @description Always NeevCloud. */
             provider: string;
             account?: components["schemas"]["AuditAccount"];
-            /** @description The project id. */
-            project_uid?: string;
+            org?: components["schemas"]["AuditOrg"];
         };
+        /** @description The project, as OCSF cloud.account. */
         AuditAccount: {
+            /** @description The project id. */
+            uid: string;
+        };
+        /** @description The organization, as OCSF cloud.org. */
+        AuditOrg: {
             /** @description The organization id. */
             uid: string;
         };
-        /** @description Where the call came from. The caller's address is not recorded yet, so name is Platform for the platform's own calls and unknown otherwise. */
+        /** @description Where the call came from. The caller's address is not recorded yet, so name is Platform for the platform's own calls and unknown otherwise. Present on API Activity only. */
         AuditEndpoint: {
             name: string;
         };
@@ -1372,6 +1452,8 @@ export interface components {
             uid: string;
             /** @description The organization id. */
             tenant_uid?: string;
+            /** @description The OCSF profiles the event uses, always cloud, osint and host. */
+            profiles?: string[];
             /** @description Ordinal of a terminal command within its terminal. Absent otherwise. */
             sequence?: number;
         };
@@ -1381,20 +1463,21 @@ export interface components {
             /** @description Always NeevCloud. */
             vendor_name: string;
         };
-        /** @description Who made the call, as an OCSF actor. A console record from before actors were recorded names only its session, so its user is unknown. */
+        /** @description Who made the call, as an OCSF actor. A console record from before actors were recorded names only its session, so its user is unknown. A program's event records no user, so its user is unknown too. */
         AuditActor: {
             user: components["schemas"]["AuditActorUser"];
             session?: components["schemas"]["AuditActorSession"];
+            process?: components["schemas"]["AuditProcess"];
         };
         /** @description The principal that acted, as OCSF actor.user. */
         AuditActorUser: {
             /**
-             * @description A user in the console, an API key, the platform acting on its own, such as pairing a device, or unknown.
+             * @description The OCSF caption of type_id: User for a user in the console, System for the platform acting on its own, such as pairing a device, Unknown when no principal can be named, and API Key (type_id 99, Other) for an API key.
              * @enum {string}
              */
-            type: "user" | "api_key" | "system" | "unknown";
+            type: "User" | "API Key" | "System" | "Unknown";
             /**
-             * @description OCSF user.type_id: 0 (Unknown), 1 (User), 3 (System), 99 (Other) for api_key.
+             * @description OCSF user.type_id: 0 (Unknown), 1 (User), 3 (System), 99 (Other) for an API key.
              * @enum {integer}
              */
             type_id: 0 | 1 | 3 | 99;
@@ -1402,8 +1485,14 @@ export interface components {
             uid: string;
             /** @description The user's or the API key's name when the call ran. */
             name?: string;
-            /** @description The API key the call was made with. Absent for a user. */
-            credential_uid?: string;
+            /** @description The API key the call was made with, as OCSF programmatic_credentials. Absent for a user. */
+            programmatic_credentials?: components["schemas"]["AuditProgrammaticCredential"][];
+        };
+        AuditProgrammaticCredential: {
+            /** @description The API key's id. */
+            uid: string;
+            /** @description Always API Key. */
+            type?: string;
         };
         /** @description The console session a user's call came from, as OCSF actor.session. */
         AuditActorSession: {
@@ -1784,15 +1873,15 @@ export interface components {
         AuditCursor: string;
         /** @description Records per page. Clamped server-side. */
         AuditLimit: number;
-        /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. */
+        /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. Recorded programs and connections are not calls and have no operation, so this filter leaves them out. */
         AuditOperation: string;
         /** @description Only calls that ended this way. */
         AuditStatus: components["schemas"]["AuditStatusFilter"];
-        /** @description Only calls by this kind of principal (actor.user.type), one or several separated by commas. Records from before actors were recorded are not matched; use credential_uid for those. */
+        /** @description Only calls by this kind of principal, one or several separated by commas: `user`, `api_key` or `system`, matching actor.user.type User, API Key or System. Records from before actors were recorded are not matched; use credential_uid for those. */
         AuditActorTypeFilter: components["schemas"]["AuditActorTypeFilterValue"][];
         /** @description Only calls by this principal (actor.user.uid), such as a user id or an API key id. Records from before actors were recorded are not matched; use credential_uid for those. */
         AuditActorUID: string;
-        /** @description Only calls made with this API key (actor.user.credential_uid). */
+        /** @description Only calls made with this API key (actor.user.programmatic_credentials[].uid). */
         AuditCredentialUID: string;
         AgentTemplateID: string;
     };
@@ -2534,15 +2623,15 @@ export interface operations {
                 cursor?: components["parameters"]["AuditCursor"];
                 /** @description Records per page. Clamped server-side. */
                 limit?: components["parameters"]["AuditLimit"];
-                /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. */
+                /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. Recorded programs and connections are not calls and have no operation, so this filter leaves them out. */
                 operation?: components["parameters"]["AuditOperation"];
                 /** @description Only calls that ended this way. */
                 status?: components["parameters"]["AuditStatus"];
-                /** @description Only calls by this kind of principal (actor.user.type), one or several separated by commas. Records from before actors were recorded are not matched; use credential_uid for those. */
+                /** @description Only calls by this kind of principal, one or several separated by commas: `user`, `api_key` or `system`, matching actor.user.type User, API Key or System. Records from before actors were recorded are not matched; use credential_uid for those. */
                 actor_type?: components["parameters"]["AuditActorTypeFilter"];
                 /** @description Only calls by this principal (actor.user.uid), such as a user id or an API key id. Records from before actors were recorded are not matched; use credential_uid for those. */
                 actor_uid?: components["parameters"]["AuditActorUID"];
-                /** @description Only calls made with this API key (actor.user.credential_uid). */
+                /** @description Only calls made with this API key (actor.user.programmatic_credentials[].uid). */
                 credential_uid?: components["parameters"]["AuditCredentialUID"];
             };
             header?: never;
@@ -3183,15 +3272,15 @@ export interface operations {
                 cursor?: components["parameters"]["AuditCursor"];
                 /** @description Records per page. Clamped server-side. */
                 limit?: components["parameters"]["AuditLimit"];
-                /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. */
+                /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. Recorded programs and connections are not calls and have no operation, so this filter leaves them out. */
                 operation?: components["parameters"]["AuditOperation"];
                 /** @description Only calls that ended this way. */
                 status?: components["parameters"]["AuditStatus"];
-                /** @description Only calls by this kind of principal (actor.user.type), one or several separated by commas. Records from before actors were recorded are not matched; use credential_uid for those. */
+                /** @description Only calls by this kind of principal, one or several separated by commas: `user`, `api_key` or `system`, matching actor.user.type User, API Key or System. Records from before actors were recorded are not matched; use credential_uid for those. */
                 actor_type?: components["parameters"]["AuditActorTypeFilter"];
                 /** @description Only calls by this principal (actor.user.uid), such as a user id or an API key id. Records from before actors were recorded are not matched; use credential_uid for those. */
                 actor_uid?: components["parameters"]["AuditActorUID"];
-                /** @description Only calls made with this API key (actor.user.credential_uid). */
+                /** @description Only calls made with this API key (actor.user.programmatic_credentials[].uid). */
                 credential_uid?: components["parameters"]["AuditCredentialUID"];
             };
             header?: never;

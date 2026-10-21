@@ -5,7 +5,7 @@ Every product and method in `@neevcloud/sdk`, grouped by product, with copy-past
 ## Contents
 
 - [Client and configuration](#client-and-configuration)
-- [Sandboxes](#sandboxes): [`neev.sandboxes`](#neevsandboxes), [Templates](#templates), [Snapshots, fork and rollback](#snapshots-fork-and-rollback), [Sandbox handle](#sandbox-handle), [Commands and processes](#commands-and-processes), [Files](#files), [Terminals and SSH](#terminals-and-ssh), [Code interpreter](#code-interpreter)
+- [Sandboxes](#sandboxes): [`neev.sandboxes`](#neevsandboxes), [Audit trail](#audit-trail), [Templates](#templates), [Snapshots, fork and rollback](#snapshots-fork-and-rollback), [Sandbox handle](#sandbox-handle), [Commands and processes](#commands-and-processes), [Files](#files), [Terminals and SSH](#terminals-and-ssh), [Code interpreter](#code-interpreter)
 - [Agents](#agents): [`neev.agents`](#neevagents), [Agent templates](#agent-templates), [`Agent` handle](#agent-handle)
 - [Agent tools](#agent-tools): [The tool contract](#the-tool-contract), [Framework adapters](#framework-adapters)
 - [Errors](#errors)
@@ -75,14 +75,14 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `create(params, scope?)` | `Promise<Sandbox>` | Creates a sandbox in the resolved org/project. The handle may still be `Pending` — call `waitUntilReady`. |
 | `list(params?)` | `Promise<SandboxPage>` | Lists sandboxes with pagination; items are wrapped handles. |
 | `get(id, scope?)` | `Promise<Sandbox>` | Fetches the current record for a sandbox by id or by name. Every method that takes an `id` accepts a name too. |
-| `update(id, params, scope?)` | `Promise<Sandbox>` | Updates a running sandbox **in place** — `resources` (cpu/memory), `egress`, or an in-place `egress_add` / `egress_remove` edit. At least one is required. |
+| `update(id, params, scope?)` | `Promise<Sandbox>` | Updates a running sandbox **in place** — `resources` (cpu/memory), `egress`, an in-place `egress_add` / `egress_remove` edit, or `execution_trace`. At least one is required. |
 | `pause(id, scope?)` | `Promise<Sandbox>` | Pauses a sandbox: it stops running and keeps its state. |
 | `resume(id, scope?)` | `Promise<Sandbox>` | Resumes a paused sandbox from its kept state. |
 | `keepalive(id, scope?)` | `Promise<Sandbox>` | Resets the idle timer, holding a busy sandbox alive without an open connection. |
 | `updateTimeout(id, windows, scope?)` | `Promise<Sandbox>` | Changes the idle/lifetime windows (seconds); only the fields passed change. |
 | `delete(id, scope?)` | `Promise<void>` | Permanently deletes a sandbox. |
 | `metrics(id, params?)` | `Promise<SandboxMetricsResponse>` | Reads the live, tenant-scoped metric series over an optional time window. |
-| `audit(id, params?)` | `Promise<AuditTrail>` | Reads one page of the audit trail, newest first; `params` is `{ from?, to?, cursor?, limit? }`. |
+| `audit(id, params?)` | `Promise<AuditTrail>` | Reads one page of the audit trail, newest first: calls, programs and connections. See [Audit trail](#audit-trail). |
 | `exposePort(id, port, params?)` | `Promise<SandboxPort>` | Exposes a port for preview URLs; `params.slug` chooses or rotates the URL's slug. |
 | `listPorts(id, scope?)` | `Promise<SandboxPort[]>` | Lists the exposed preview ports. |
 | `revokePort(id, port, scope?)` | `Promise<void>` | Stops serving a preview port. |
@@ -132,8 +132,9 @@ await neev.sandboxes.create({ labels: { team: "payments", "ci-run": "4821" } });
 | `resources` | Resize cpu and memory in place. `disk_gb` can't be resized; the server rejects it with a typed error |
 | `egress` (or `allowInternet` / `allowEgress`) | Replace the egress policy in full. New connections use it at once, with no restart |
 | `egress_add`, `egress_remove` | Edit the existing allow-list in place (`{ allow: SandboxEgressRule[] }`). Removals apply first, so one call can swap a host. `egress_add` needs the sandbox to already be in `allow_list` mode |
+| `execution_trace` | `false` stops recording every program the sandbox runs; `true` turns it back on. On by default, no restart. The change is written to your organization's audit log |
 
-- Pass at least one of `resources`, `egress`, `egress_add` or `egress_remove`.
+- Pass at least one of `resources`, `egress`, `egress_add`, `egress_remove` or `execution_trace`.
 - `egress_add` / `egress_remove` can't be combined with `egress` or the convenience fields.
 - An empty or conflicting patch throws `NeevError` before any request is sent.
 - `resources` and `egress` together are sent as one request, and both take effect.
@@ -147,6 +148,8 @@ await neev.sandboxes.update(id, { allowEgress: ["api.github.com"] });
 await neev.sandboxes.update(id, { resources: { cpu: 4 }, allowInternet: true });
 // Edit the allow-list in place, leaving every other rule alone.
 await neev.sandboxes.update(id, { egress_add: { allow: [{ host: "pypi.org", ports: [443] }] } });
+// Stop recording programs; API calls are still recorded.
+await neev.sandboxes.update(id, { execution_trace: false });
 ```
 
 **`list(params?)`** — `params` is `{ page?, limit?, name?, status?, sandboxId?, labels?, orgId?, projectId? }`; returns `SandboxPage` = `{ items: Sandbox[]; total; page; limit }`. `labels` keeps only sandboxes carrying every given label; each is sent as a repeated `label=key=value` query param, and a malformed one is rejected with `BadRequestError`.
@@ -189,12 +192,47 @@ await neev.sandboxes.updateTimeout(id, { max_lifetime_seconds: 0 });
 const metrics = await neev.sandboxes.metrics(id, { step: "60s" });
 ```
 
-**`audit(id, params?)`** — `params` is `{ from?, to?, cursor?, limit?, orgId?, projectId? }`; `from` defaults to 24 hours before `to` (now), `limit` is 1–200 (default 50). Returns one page: `{ sandbox_id, from, to, retention_days, window_truncated, next_cursor?, records }`. Pass `next_cursor` back as `cursor` for the next page. Only program names are recorded, never arguments.
+**`audit(id, params?)`** — one page of the audit trail, newest first. See [Audit trail](#audit-trail) for the events and filters.
 
 ```ts
 let page = await neev.sandboxes.audit(id, { limit: 50 });
 while (page.next_cursor) page = await neev.sandboxes.audit(id, { cursor: page.next_cursor });
 ```
+
+### Audit trail
+
+`audit()` returns `{ from, to, retention_days, window_truncated, next_cursor?, data: AuditEvent[] }`, newest first. Each event is an [OCSF 1.9.0](https://schema.ocsf.io/1.9.0/) event, so it can go straight into a SIEM.
+
+| `class_uid` | `class_name` | What it records | `activity_name` |
+| --- | --- | --- | --- |
+| `6003` | API Activity | A call made to the sandbox: `exec`, a terminal command, a file operation, a process start, SSH, a code-interpreter cell | Create, Read, Update, Delete, Other |
+| `1007` | Process Activity | A program that ran inside the sandbox, whether or not a call asked for it: scripts, generated code, child processes | Launch, Terminate, Sandbox Start |
+| `4001` | Network Activity | A connection a program opened | Open |
+
+Every event has `time` (milliseconds since the Unix epoch), `type_name` (such as `Process Activity: Launch`), `status` (`Success` or `Failure`), `device.uid` (the sandbox id) and `metadata.uid` (a stable event id).
+
+| Class | Key fields |
+| --- | --- |
+| API Activity | `api.operation`, `api.request.uid`, `actor.user` (`type` is `User`, `API Key`, `System` or `Unknown`; an API key also has `programmatic_credentials[].uid`), `resources[]`, `duration`, `status_code` |
+| Process Activity | `process.pid`, `process.name` (no arguments), `process.file.path` (what actually executed), `process.working_directory`, `process.parent_process.pid`. On Launch, `actor.process` is the parent. On Terminate, `exit_code`, or `status_detail` such as `signal 9` when a signal stopped it |
+| Network Activity | `actor.process` (the program), `dst_endpoint.ip` and `dst_endpoint.port`, or `dst_endpoint.name` (`unix:<path>`) for a local socket |
+
+Program and connection events don't name who acted. To find the call that started a program, take the API Activity event whose `resources[].data.pid` equals the program's pid, or the pid of an ancestor reached through `parent_process.pid` (each ancestor's own Launch event names its parent). A terminal command's programs lead back to the terminal's shell pid.
+
+| Filter | Applies to |
+| --- | --- |
+| `from`, `to` (RFC 3339), `limit` (1–200, default 50), `cursor` | Every event |
+| `status` (`"success"` or `"failure"`) | Every event |
+| `operation` (one name or an array) | API Activity only; programs and connections are left out |
+| `actorType`, `actorUid`, `credentialUid` | API Activity only |
+| `orgId`, `projectId` | Overrides the client's scope for this call |
+
+- Program names are recorded without their arguments, the environment is never recorded, and input typed at a hidden password prompt is never recorded.
+- Programs and connections can take about a minute to appear. The first programs a newly started sandbox runs may be missing.
+- `update(id, { execution_trace: false })` stops recording programs and connections; calls are still recorded. `sandbox.executionTrace` reports the current setting.
+- The trail covers the last `retention_days` days; `window_truncated` is `true` when `from` reaches further back.
+
+[examples/audit-trail.ts](../examples/audit-trail.ts) prints all three classes and ties each program to the call that started it.
 
 ### Templates
 
@@ -275,6 +313,7 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | `labels` | `SandboxLabels` | Labels set at create time; `{}` when the sandbox has none. |
 | `connectUrl` | `string \| null` | Runtime address, or `null` when not yet configured. |
 | `addressable` | `boolean` | Whether the sandbox can be reached yet; briefly `false` after create. `waitUntilReady` and runtime calls wait for it. |
+| `executionTrace` | `boolean` | Whether every program the sandbox runs is recorded in its audit trail. `true` unless turned off. |
 | `lastCrash` | `SandboxLastCrash \| null` | Most recent unexpected stop, or `null` if the sandbox has never had one. `storage_reset: true` means it restarted with an empty filesystem — files under `/workspace`, and anything installed since create, are gone. Historical: not cleared when the sandbox recovers; restoring from a snapshot taken before that stop brings the files back and clears it. |
 | `data` | `SandboxData` | Full raw API record. |
 
@@ -284,14 +323,14 @@ const snap = await neev.sandboxes.waitForSnapshot(pending.id);  // resolves once
 | ------ | ------- | ------- |
 | `waitUntilReady(options?)` | `Promise<this>` | Polls until phase is `"Ready"` and the sandbox is addressable. Throws fast if `"Paused"`, or on timeout. |
 | `refresh()` | `Promise<this>` | Re-fetches the record and updates the handle in place. |
-| `update(params)` | `Promise<this>` | Updates in place (`resources`, `egress`, or `egress_add` / `egress_remove`) and updates the handle. |
+| `update(params)` | `Promise<this>` | Updates in place (`resources`, `egress`, `egress_add` / `egress_remove`, or `execution_trace`) and updates the handle. |
 | `pause()` | `Promise<this>` | Pauses (stops running, keeps state) and updates the handle. |
 | `resume()` | `Promise<this>` | Resumes from the kept state and updates the handle. |
 | `keepalive()` | `Promise<this>` | Resets the idle timer and updates the handle. |
 | `updateTimeout(windows)` | `Promise<this>` | Changes the idle/lifetime windows (seconds) and updates the handle. |
 | `delete()` | `Promise<void>` | Permanently deletes the sandbox. |
 | `metrics(params?)` | `Promise<SandboxMetricsResponse>` | Reads the live metric series; `params` is `{ from?, to?, step? }`. |
-| `audit(params?)` | `Promise<AuditTrail>` | Reads one page of the audit trail; `params` is `{ from?, to?, cursor?, limit? }`. |
+| `audit(params?)` | `Promise<AuditTrail>` | Reads one page of the audit trail. See [Audit trail](#audit-trail). |
 | `snapshot(options?)` | `Promise<SnapshotData>` | Captures this sandbox's state (starts `Pending`). Pass `{ waitUntilReady: true }` to resolve only once the snapshot is `Ready`. |
 | `snapshots(params?)` | `Promise<SnapshotPage>` | Lists this sandbox's snapshots (paginated: `{ page, limit }`). |
 | `rollback(snapshotId)` | `Promise<this>` | Rolls this sandbox back in place to a chosen snapshot. |
@@ -524,7 +563,7 @@ An agent is a catalogue template (e.g. `"claude-code"`) running on a backing san
 | `listPorts(id, scope?)` | `Promise<SandboxPort[]>` | Lists the agent's exposed preview ports. |
 | `revokePort(id, port, scope?)` | `Promise<void>` | Stops serving an agent preview port. |
 | `getPortUrl(id, port, options?, scope?)` | `Promise<string>` | Exposes a port and returns its preview URL once routable; same options as `neev.sandboxes.getPortUrl`. |
-| `audit(id, params?)` | `Promise<AuditTrail>` | Reads one page of what the agent ran in its sandbox; `params` = `{ from?, to?, cursor?, limit?, orgId?, projectId? }`. |
+| `audit(id, params?)` | `Promise<AuditTrail>` | Reads one page of what the agent ran in its sandbox. See [Audit trail](#audit-trail). |
 | `delete(id, scope?)` | `Promise<void>` | Permanently deletes the agent and its backing sandbox. |
 
 **`create(params, scope?)`** — `params` is `CreateAgentParams`.
@@ -552,7 +591,7 @@ const port = await neev.agents.exposePort(agent.id, 3000);
 const trail = await neev.agents.audit(agent.id, { limit: 50 });
 ```
 
-The agent audit trail has the same shape and recording rules as the sandbox one. Its `sandbox_id` is the agent's backing sandbox, not the agent id.
+The agent audit trail has the same events, filters and recording rules as the [sandbox one](#audit-trail). An agent has no `execution_trace` setting.
 
 ### Agent templates
 
@@ -582,7 +621,7 @@ Returned by `neev.agents.create`, `get`, and `list().items`.
 | `rollback(snapshotId)` | `Promise<this>` | Restores the backing sandbox from a snapshot and updates the handle. |
 | `exposePort(port, options?)` / `listPorts()` / `revokePort(port)` | — | Preview ports, as on the sandbox handle. |
 | `getUrl(options)` | `Promise<string>` | Exposes `options.port` and returns its preview URL once routable; `options` = `{ port, slug?, waitUntilReady?, timeoutMs?, pollIntervalMs? }`. |
-| `audit(params?)` | `Promise<AuditTrail>` | One page of the audit trail; `params` = `{ from?, to?, cursor?, limit? }`. |
+| `audit(params?)` | `Promise<AuditTrail>` | One page of the audit trail. See [Audit trail](#audit-trail). |
 | `sandbox()` | `Promise<Sandbox>` | The backing sandbox as a `Sandbox` handle, for `files` / `exec` / `processes`. |
 | `delete()` | `Promise<void>` | Permanently deletes the agent. |
 
@@ -766,7 +805,7 @@ Minimal one-liners for each public API.
 | `sandbox.fork(name)` | `const fork = await sandbox.fork("my-fork");` |
 | `sandbox.delete()` | `await sandbox.delete();` |
 | `sandbox.metrics(...)` | `const m = await sandbox.metrics({ step: "60s" });` |
-| `sandbox.audit(...)` | `const { records, next_cursor } = await sandbox.audit({ limit: 50 });` |
+| `sandbox.audit(...)` | `const { data, next_cursor } = await sandbox.audit({ limit: 50 });` |
 | `sandbox.addressable` | `console.log(sandbox.addressable);` |
 | `sandbox.getUrl(...)` | `const url = await sandbox.getUrl({ port: 3000 });` |
 | `sandbox.exposePort(...)` | `const p = await sandbox.exposePort(3000, { slug: "k3x9q2ab" });` |
