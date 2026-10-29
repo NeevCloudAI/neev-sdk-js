@@ -387,8 +387,14 @@ export class Sandbox {
   // reports no connect_url, a stale non-Ready phase, or is not yet addressable).
   // The cached connection is rebuilt if the connect_url changes (e.g. across a
   // resume). Throws if the sandbox is Ready but still exposes no connect_url.
+  // A Paused sandbox that still has a connect_url is called directly: where the
+  // platform's automatic wake-up is enabled, the request wakes it.
   private async resolveConnection(): Promise<SandboxConnection> {
-    if (!this.state.connect_url || this.phase !== "Ready" || !this.addressable) {
+    const pausedWithUrl = this.phase === "Paused" && !!this.state.connect_url;
+    if (
+      !pausedWithUrl &&
+      (!this.state.connect_url || this.phase !== "Ready" || !this.addressable)
+    ) {
       await this.waitUntilReady();
     }
     const connectUrl = this.state.connect_url;

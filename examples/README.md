@@ -41,6 +41,7 @@ No model needed: these use only the SDK.
 | File | What it shows | Run |
 |------|---------------|-----|
 | [`create-sandbox.ts`](./create-sandbox.ts) | Lifecycle: create → wait for Ready → metrics → resize → pause → delete | `npx tsx examples/create-sandbox.ts` |
+| [`auto-resume.ts`](./auto-resume.ts) | Use a paused sandbox without calling `resume()`; reports whether it woke by itself (explicit `resume()` only on a 429 while still Paused) | `npx tsx examples/auto-resume.ts` |
 | [`lifecycle-keepalive.ts`](./lifecycle-keepalive.ts) | Capped-lifetime sandbox (`lifecycle` windows) held past its idle deadline with a `keepalive()` loop, then `updateTimeout()` | `npx tsx examples/lifecycle-keepalive.ts` |
 | [`labels.ts`](./labels.ts) | Label two sandboxes at create, `list({ labels })` by one label and by two, print `sandbox.labels`, delete both | `npx tsx examples/labels.ts` |
 | [`byoi-create.ts`](./byoi-create.ts) | Bring Your Own Image: `create({ image, command })` from a public OCI image → wait for Ready → exec | `npx tsx examples/byoi-create.ts` |
@@ -67,6 +68,7 @@ No model needed: these use only the SDK.
 |------|---------------|-----|
 | [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
 | [`agent-ports-audit.ts`](./agent-ports-audit.ts) | Agent preview port with a slug → list → audit page → `keepalive()` → revoke | `npx tsx examples/agent-ports-audit.ts` |
+| [`agent-auto-resume.ts`](./agent-auto-resume.ts) | Use a paused agent without calling `resume()`; reports whether it woke by itself (explicit `agent.resume()` only on a 429 while still Paused) | `npx tsx examples/agent-auto-resume.ts` |
 
 ## Agent tools
 
@@ -134,6 +136,18 @@ npx tsx examples/update-resize-egress.ts
 npx tsx examples/last-crash.ts
 ```
 → `ready … lastCrash: null` → `seeded /workspace/marker.txt` → `forcing an OOM …` → `exec died with the sandbox, as expected: Request timed out` → `lastCrash: {"at":"…","reason":"OOMKilled","storage_reset":true}` → `storage_reset: true — marker gone` → `re-seeded the workspace` → `cleaned up`.
+
+**1e. Auto-resume**
+```sh
+npx tsx examples/auto-resume.ts
+```
+→ `ready: …` → `paused` → `woke in N.Ns` → `RESULT: woke automatically` (or `429 and still Paused …` → `resumed in N.Ns` → `RESULT: resumed explicitly` where automatic wake-up is off).
+
+**1f. Agent auto-resume**
+```sh
+npx tsx examples/agent-auto-resume.ts
+```
+→ `created agent …` → `agent is Ready; wrote auto-resume-marker.txt …` → `agent paused (status: Paused)` → `file read back intact after N.Ns` → `agent status now: …` → `RESULT: woke automatically` (or `the read was refused with 429 …` → `RESULT: resumed explicitly` where automatic wake-up is off) → `deleted agent …`.
 
 **2. Streaming exec**
 ```sh
@@ -207,7 +221,7 @@ npx tsx examples/agents/genkit.ts
 | `NEEV_API_KEY` | all | — (required) |
 | `NEEV_ORG_ID` | all | — (required) |
 | `NEEV_PROJECT_ID` | all | — (required) |
-| `NEEV_AGENT_TEMPLATE` | `create-agent.ts` | `claude-code` |
+| `NEEV_AGENT_TEMPLATE` | `create-agent.ts`, `agent-ports-audit.ts`, `agent-auto-resume.ts` | `claude-code` |
 | `NEEV_INFERENCE_API_KEY` | model examples | falls back to `NEEV_API_KEY` |
 | `NEEV_INFERENCE_BASE_URL` | model examples | `https://inference.ai.neevcloud.com/v1` |
 

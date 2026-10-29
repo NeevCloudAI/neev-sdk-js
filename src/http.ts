@@ -63,10 +63,10 @@ export function createDispatch(opts: DispatchOptions): Dispatch {
         failure = err;
       } finally {
         clearTimeout(timer);
-        callerSignal.removeEventListener("abort", onAbort);
       }
 
       if (failure !== undefined) {
+        callerSignal.removeEventListener("abort", onAbort);
         // A caller abort is terminal; never retry it.
         if (isCallerAbort(failure, callerSignal)) {
           throw new APIConnectionError("Request aborted by caller", failure);
@@ -84,10 +84,13 @@ export function createDispatch(opts: DispatchOptions): Dispatch {
 
       const ok = response as Response;
       if (!ok.ok && isRetryableStatus(ok.status) && attempt < maxRetries) {
+        callerSignal.removeEventListener("abort", onAbort);
         await backoffSleep(retryDelayMs(ok, attempt), callerSignal);
         attempt++;
         continue;
       }
+      // The listener stays so the caller's signal still cancels the body stream
+      // after headers arrive (the timeout only covers the wait for headers).
       return ok;
     }
   };

@@ -357,7 +357,7 @@ const paused = await client.sandboxes.pause(sandbox.id);
 console.log(paused.phase); // "Paused"
 ```
 
-A paused sandbox will not become `Ready` until `resume()` is called. Calling `waitUntilReady()` on a `Paused` handle throws `NeevError`.
+A paused sandbox stays `Paused` until `resume()` is called or, where the platform's automatic wake-up is enabled, a runtime call wakes it. Calling `waitUntilReady()` on a `Paused` handle throws `NeevError`. Runtime calls (`exec`, `files`, `processes`, …) on a `Paused` handle that still has a `connect_url` are sent anyway: where the platform's automatic wake-up is enabled, the request wakes the sandbox (one slow response). If the platform answers 429 instead, call `resume()`. The handle's `phase` still reads `Paused` after an automatic wake until you call `refresh()`. See `examples/auto-resume.ts` and `examples/agent-auto-resume.ts`.
 
 ### `client.sandboxes.resume(id, scope?)`
 
@@ -954,7 +954,7 @@ Polls `refresh()` until `phase === "Ready"` and the sandbox is addressable, then
 
 **Raises:**
 
-- `NeevError` if the sandbox is `Paused` (it will never become `Ready` on its own — call `resume()` first). Fails fast.
+- `NeevError` if the sandbox is `Paused` (polling won't see it become `Ready` — call `resume()` first, or wake it with a runtime call where automatic wake-up is enabled). Fails fast.
 - `NeevError` if the timeout elapses before `Ready`.
 
 ```ts
@@ -1120,7 +1120,7 @@ Runs a command in the sandbox. With no `stream` flag it buffers stdout/stderr an
 
 **Returns:** `Promise<ExecResult>` (buffered) or `AsyncGenerator<ExecStreamEvent>` (streaming).
 
-**Raises:** `NeevError` (invalid args, sandbox `Paused`/timeout on the readiness wait, or a stream that ends without an exit status), and typed `APIError` subclasses mapped from the sandbox.s `{reason_code, message}` (e.g. `PermissionDeniedError`, `BadRequestError`, `NotFoundError`, `PreconditionFailedError`, `RateLimitError`, `DeadlineExceededError`, `InternalServerError`).
+**Raises:** `NeevError` (invalid args, sandbox `Paused` with no `connect_url`/timeout on the readiness wait, or a stream that ends without an exit status), and typed `APIError` subclasses mapped from the sandbox.s `{reason_code, message}` (e.g. `PermissionDeniedError`, `BadRequestError`, `NotFoundError`, `PreconditionFailedError`, `RateLimitError`, `DeadlineExceededError`, `InternalServerError`).
 
 ```ts
 // argv form (preferred)
@@ -1335,7 +1335,7 @@ All file operations raise typed `APIError` subclasses (mapped from the sandbox.s
 
 Access via the `sandbox.processes` getter (a `SandboxProcesses`). It runs **detached** processes that outlive the request that started them, each addressed by a stable `process_id`.
 
-- The first call waits for the sandbox to be `Ready`, and throws `NeevError` if it is `Paused` or doesn't become `Ready` in time.
+- The first call waits for the sandbox to be `Ready`, and throws `NeevError` if it is `Paused` with no `connect_url` or doesn't become `Ready` in time. A `Paused` sandbox that still has a `connect_url` is called directly (see `client.sandboxes.pause`).
 - Before any request, `start` throws `NeevError` for invalid arguments: an argv array combined with `args`, or an empty program.
 - Request failures raise typed `APIError` subclasses, such as `NotFoundError` for an unknown `process_id` or `BadRequestError` for a disallowed signal.
 
@@ -2049,7 +2049,7 @@ All SDK errors inherit from `NeevError`. Import from `@neevcloud/sdk`. Branch wi
 
 | Class | When raised |
 | ----- | ----------- |
-| `NeevError` | Base class; thrown directly for client-side problems (missing API key, missing scope, invalid exec args, readiness timeout, `Paused` sandbox, exec stream ending without an exit). |
+| `NeevError` | Base class; thrown directly for client-side problems (missing API key, missing scope, invalid exec args, readiness timeout, `Paused` sandbox with no `connect_url`, exec stream ending without an exit). |
 | `APIConnectionError` | Request never produced a response — DNS failure, connection reset, caller abort. |
 | `APITimeoutError` | Request aborted because it exceeded the configured timeout (subclass of `APIConnectionError`). |
 | `APIError` | Base for any non-2xx HTTP response. Carries `status`, `code`, `scope`, `details`, `requestId`. |

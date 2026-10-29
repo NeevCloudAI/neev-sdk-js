@@ -108,6 +108,25 @@ describe("createDispatch", () => {
     expect(String(err.message)).toContain("aborted by caller");
   });
 
+  it("lets the caller's signal cancel a body that stalls after headers", async () => {
+    const controller = new AbortController();
+    // Headers arrive at once; the body never sends a byte until the fetch signal aborts.
+    const stalling: FetchLike = async (_input, init) => {
+      const body = new ReadableStream({
+        start(c) {
+          init?.signal?.addEventListener("abort", () => c.error(new Error("aborted")));
+        },
+      });
+      return new Response(body, { status: 200 });
+    };
+    const dispatch = createDispatch({ fetch: stalling, timeoutMs: 1000, maxRetries: 0 });
+    const request = new Request("http://localhost:7010/x", { signal: controller.signal });
+    const response = await dispatch(request);
+    const read = response.text();
+    controller.abort();
+    await expect(read).rejects.toThrow("aborted");
+  });
+
   it("honors a numeric Retry-After header", async () => {
     let attempts = 0;
     const dispatch = createDispatch({
