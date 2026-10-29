@@ -18,13 +18,14 @@
  */
 import { APIError, Neev, NeevError, type Sandbox } from "@neevcloud/sdk";
 
-// Construct the client from NEEV_* environment variables.
-const neev = new Neev();
-
 const TEMPLATE = process.env.NEEV_SANDBOX_TEMPLATE_ID ?? "sb-ubuntu-26-04-dev";
 const MARKER_FILE = "auto-resume-marker.txt";
 const MARKER_TEXT = "written before the pause";
 const PHASE_TIMEOUT_MS = 120_000;
+
+// Construct the client from NEEV_* environment variables. A wake-up can hold the
+// response back, so allow it the same time as the marker read.
+const neev = new Neev({ timeoutMs: PHASE_TIMEOUT_MS });
 
 // Polls refresh() until done(sandbox) holds, or throws after PHASE_TIMEOUT_MS.
 async function waitFor(

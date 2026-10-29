@@ -593,6 +593,39 @@ describe("runtime", () => {
       expect(seen).toEqual(["create:a.txt", "remove:a.txt"]);
     });
 
+    it("ends cleanly when the caller aborts after the stream has started", async () => {
+      const controller = new AbortController();
+      let call = 0;
+      // The create call returns the sandbox; the watch call sends one event, then
+      // stalls until the fetch signal aborts.
+      const fetch: typeof globalThis.fetch = async (_input, init) => {
+        if (call++ === 0) {
+          return json(
+            201,
+            sandboxData({ connect_url: "https://sbx.sandboxes.example", phase: "Ready" }),
+          );
+        }
+        const body = new ReadableStream({
+          start(c) {
+            c.enqueue(new TextEncoder().encode('{"type":"create","path":"a.txt"}\n'));
+            init?.signal?.addEventListener("abort", () => c.error(new Error("aborted")));
+          },
+        });
+        return new Response(body, { status: 200 });
+      };
+      const neev = new Neev({ apiKey: "k", orgId: "org_test", projectId: "proj_test", fetch });
+      const sandbox = await neev.sandboxes.create({
+        name: "demo",
+        sandbox_template_id: "sb-ubuntu-26-04-dev",
+      });
+      const seen = [];
+      for await (const ev of sandbox.files.watch(".", { signal: controller.signal })) {
+        seen.push(`${ev.type}:${ev.path}`);
+        controller.abort();
+      }
+      expect(seen).toEqual(["create:a.txt"]);
+    });
+
     it("throws before the first event on a bad path", async () => {
       const { sandbox } = await readySandbox("https://sbx.sandboxes.example", [
         json(400, { reason_code: "invalid_argument", message: "not a directory" }),

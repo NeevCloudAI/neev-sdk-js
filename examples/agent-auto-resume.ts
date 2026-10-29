@@ -20,13 +20,14 @@
  */
 import { APIError, type Agent, Neev, NeevError, type Sandbox } from "@neevcloud/sdk";
 
-// Construct the client from NEEV_* environment variables.
-const neev = new Neev();
-
 const AGENT_TEMPLATE = process.env.NEEV_AGENT_TEMPLATE ?? "claude-code";
 const MARKER_FILE = "auto-resume-marker.txt";
 const MARKER_TEXT = "written before the pause";
 const PHASE_TIMEOUT_MS = 120_000;
+
+// Construct the client from NEEV_* environment variables. A wake-up can hold the
+// response back, so allow it the same time as the marker read.
+const neev = new Neev({ timeoutMs: PHASE_TIMEOUT_MS });
 
 // Polls refresh() until done(agent) holds, or throws after PHASE_TIMEOUT_MS.
 async function waitFor(agent: Agent, done: (a: Agent) => boolean, expected: string): Promise<void> {
@@ -53,7 +54,9 @@ async function readMarker(sandbox: Sandbox): Promise<void> {
 }
 
 // Reads the marker without resuming; returns which path made it work.
-async function usePausedAgent(agent: Agent, sandbox: Sandbox): Promise<string> {
+async function usePausedAgent(agent: Agent): Promise<string> {
+  // A fresh handle: the one from before the pause still reads Ready.
+  const sandbox = await agent.sandbox();
   console.log(`reading ${MARKER_FILE} from the paused agent, without calling resume()...`);
   const started = Date.now();
   const elapsed = () => ((Date.now() - started) / 1000).toFixed(1);
@@ -73,7 +76,10 @@ async function usePausedAgent(agent: Agent, sandbox: Sandbox): Promise<string> {
   // waitUntilReady() gives up at once on Paused, so first wait for resume to take effect.
   await waitFor(agent, (a) => a.status !== "Paused", "to leave Paused");
   await agent.waitUntilReady();
-  await readMarker(sandbox);
+  // Fetch the sandbox again in case resume moved it to a new address.
+  const resumed = await agent.sandbox();
+  await resumed.waitUntilReady();
+  await readMarker(resumed);
   console.log(`file read back intact after ${elapsed()}s`);
   return "resumed explicitly";
 }
@@ -93,7 +99,7 @@ async function main(): Promise<void> {
     await waitFor(agent, (a) => a.status === "Paused", "Paused");
     console.log(`agent paused (status: ${agent.status})`);
 
-    const result = await usePausedAgent(agent, sandbox);
+    const result = await usePausedAgent(agent);
     await agent.refresh();
     console.log(`agent status now: ${agent.status}`);
     console.log(`RESULT: ${result}`);

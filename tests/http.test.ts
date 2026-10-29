@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type FetchLike, RawClient, createDispatch } from "../src/http.js";
 import {
   APIConnectionError,
@@ -124,7 +124,23 @@ describe("createDispatch", () => {
     const response = await dispatch(request);
     const read = response.text();
     controller.abort();
-    await expect(read).rejects.toThrow("aborted");
+    const err = await read.catch((e) => e);
+    expect(err).toBeInstanceOf(APIConnectionError);
+    expect(String(err.message)).toContain("aborted by caller");
+  });
+
+  it("drops the caller-abort listener once the body is read", async () => {
+    const dispatch = createDispatch({
+      fetch: async () => json(200, { ok: true }),
+      timeoutMs: 1000,
+      maxRetries: 0,
+    });
+    const request = new Request("http://localhost:7010/x");
+    const removed = vi.spyOn(request.signal, "removeEventListener");
+    const response = await dispatch(request);
+    expect(removed).not.toHaveBeenCalled();
+    await response.json();
+    expect(removed).toHaveBeenCalledWith("abort", expect.any(Function));
   });
 
   it("honors a numeric Retry-After header", async () => {
