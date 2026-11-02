@@ -793,6 +793,30 @@ rollback(id: string, snapshotId: string, scope?: Scope): Promise<Agent>
 
 `keepalive` resets the agent's idle timer so a busy agent stays running without an open connection (call it e.g. once per agent turn). `rollback` restores the agent's backing sandbox in place from one of its snapshots.
 
+### `client.agents.createSnapshot(id, params?, scope?)` / `listSnapshots(id, params?)`
+
+```ts
+createSnapshot(id: string, params?: CreateSnapshotParams, scope?: Scope): Promise<SnapshotData>
+listSnapshots(id: string, params?: ListSnapshotsParams): Promise<SnapshotPage>
+```
+
+Snapshot the sandbox backing an agent, and list those snapshots. Same params and `SnapshotData` shape as [`sandboxes.createSnapshot`](#clientsandboxescreatesnapshotid-params-scope) / [`listSnapshots`](#clientsandboxeslistsnapshotsid-params); the snapshot starts `Pending`. Wait on it with `client.sandboxes.waitForSnapshot`, or use `agent.snapshot({ waitUntilReady: true })`.
+
+### `client.agents.fork(id, name, scope?)`
+
+```ts
+fork(id: string, name: string, scope?: Scope): Promise<Agent>
+```
+
+Forks an agent into a new agent with the source's template and configuration and its own gateway token. Returns the new `Agent`, which is `Provisioning` until it is ready; call `waitUntilReady()` on it before use. The source agent keeps running.
+
+```ts
+const forked = await client.agents.fork(agent.id, "web-fork");
+await forked.waitUntilReady();
+```
+
+A paused or still-provisioning agent raises `ConflictError` (409) or `TooEarlyError` (425).
+
 ### `client.agents.exposePort(id, port, params?)` / `listPorts(id, scope?)` / `revokePort(id, port, scope?)` / `getPortUrl(id, port, options?, scope?)`
 
 ```ts
@@ -848,7 +872,7 @@ Fetches a single agent template by id (e.g. `"ag-claude-code"`).
 
 ## Agent handle
 
-`Agent` instances are returned by `agents.create()`, `get()`, `update()`, `pause()`, `resume()`, and `list().items`. They hold the latest known server state (`AgentData`) and expose lifecycle actions plus `sandbox()` to reach the backing sandbox's runtime. Construct via the `agents` resource, never directly.
+`Agent` instances are returned by `agents.create()`, `get()`, `update()`, `pause()`, `resume()`, `fork()`, and `list().items`. They hold the latest known server state (`AgentData`) and expose lifecycle actions plus `sandbox()` to reach the backing sandbox's runtime. Construct via the `agents` resource, never directly.
 
 ### Getters
 
@@ -874,6 +898,8 @@ Fetches a single agent template by id (e.g. `"ag-claude-code"`).
 | `pause()` / `resume()` | `Promise<this>` | Suspend / restart the backing sandbox. |
 | `keepalive()` | `Promise<this>` | Resets the idle timer and updates the handle. |
 | `rollback(snapshotId)` | `Promise<this>` | Rolls the agent back in place to a snapshot and updates the handle. |
+| `snapshot(options?)` / `snapshots(params?)` | `Promise<SnapshotData>` / `Promise<SnapshotPage>` | Same as [`sandbox.snapshot()` / `.snapshots()`](#sandboxsnapshotparams--sandboxsnapshotsparams), for the sandbox backing this agent. |
+| `fork(name)` | `Promise<Agent>` | Returns a new `Agent` handle for the fork; this handle is unchanged. |
 | `getUrl(options)` | `Promise<string>` | Exposes `options.port` and returns its preview URL once routable; `options` = `{ port, slug?, waitUntilReady?, timeoutMs?, pollIntervalMs? }`. |
 | `exposePort(port, options?)` / `listPorts()` / `revokePort(port)` | — | Preview-port control, as on the sandbox handle. |
 | `audit(params?)` | `Promise<AuditTrail>` | One page of the agent's audit trail; `params` = `AuditQuery` (window, paging and filters, as in `sandboxes.audit`). |
@@ -1909,12 +1935,12 @@ Paginated list payload returned by `templates.list`.
 | `class_uid` / `type_name` | `6003 \| 1007 \| 4001` / `string` | yes — e.g. `"Process Activity: Launch"` |
 | `api.operation` | `string` | API Activity only — e.g. `pty_command`, `ssh`, `exec`, `process.start`, `fs.read`, `interpreter.run` |
 | `api.request.uid` | `string` | no — the request that caused the call |
-| `actor.user` | `AuditActorUser` | yes — `type` (`"User"`, `"API Key"`, `"System"`, `"Unknown"`), `uid`, `name?`, `programmatic_credentials?` (the API key, absent for a user). `Unknown` on program and connection events |
+| `actor.user` | `AuditActorUser` | yes — `type` (`"User"`, `"API Key"`, `"System"`, `"Unknown"`), `uid`, `name?`, `programmatic_credentials?` (the API key, absent for a user). `Unknown` only for a program the sandbox ran on its own, such as a background process |
 | `actor.process` | `AuditProcess` | no — on a Launch, the parent that started the program; on a connection, the program that opened it |
 | `process` | `AuditProcess` | Process Activity only — `pid`, `name` (no arguments), `working_directory`, `file.path` (what actually executed), `parent_process.pid` |
 | `exit_code` | `number` | no — on a Terminate, unless a signal stopped the program |
 | `dst_endpoint` | `AuditDstEndpoint` | Network Activity only — `ip` and `port`, or `name` (`unix:<path>`) |
-| `device.uid` | `string` | no — the sandbox id |
+| `device.uid` | `string` | yes — the sandbox id |
 | `actor.session.uid` | `string` | no — the console session a user's call came from |
 | `status` / `status_id` | `string` / `1 \| 2` | yes — `"Success"` (1) or `"Failure"` (2) |
 | `status_code` | `string` | no — `ok`, `permission_denied`, `internal` |
@@ -1939,7 +1965,7 @@ Alias for the generated `Snapshot` schema — a snapshot captured from a sandbox
 | `project_id` | `string` | yes |
 | `name` | `string` | no |
 | `status` | `SnapshotStatus` | yes |
-| `snapshot_type` | `SnapshotType` | yes — `"full"` (memory and files, restorable) or `"filesystem"` (files only; `restorability` is `unsupported`) |
+| `snapshot_type` | `SnapshotType` | yes — `"full"` (memory and files, restorable) or `"filesystem"` (/workspace only, without process memory; can be restored onto any sandbox image) |
 | `source_region` | `string` | yes |
 | `size_bytes` | `number \| null` | no |
 | `error_message` | `string \| null` | no |
@@ -1962,6 +1988,7 @@ Caller-facing options for `sandbox.snapshot` / `sandboxes.createSnapshot`, the g
 | Field | Type | Required |
 | ----- | ---- | -------- |
 | `name` | `string` | no — a DNS-style name (lowercase letters, digits and `-`, starting with a letter, max 63 characters) so it can name sandboxes forked or restored from it. |
+| `snapshot_type` | `SnapshotType` | no — `"full"` (the default: files and process memory) or `"filesystem"` (`/workspace` only, without process memory, so it can be restored onto any sandbox image) |
 
 ### `SnapshotListResponse`
 
@@ -2073,6 +2100,7 @@ All SDK errors inherit from `NeevError`. Import from `@neevcloud/sdk`. Branch wi
 | `NotFoundError` | HTTP 404 |
 | `ConflictError` | HTTP 409 |
 | `PreconditionFailedError` | HTTP 412 |
+| `TooEarlyError` | HTTP 425 — not ready yet, such as an agent still provisioning |
 | `RateLimitError` | HTTP 429 |
 | `DeadlineExceededError` | HTTP 504 |
 | `InternalServerError` | HTTP 5xx (default for any 500+ status not matched above) |
@@ -2209,6 +2237,8 @@ Compact reviewer index.
 | `Agents.pause` / `resume` | methods | `Promise<Agent>` |
 | `Agents.keepalive` | method | `Promise<Agent>` |
 | `Agents.rollback` | method | `Promise<Agent>` (in place) |
+| `Agents.createSnapshot` / `listSnapshots` | methods | `Promise<SnapshotData>` / `Promise<SnapshotPage>` (paginated) |
+| `Agents.fork` | method | `Promise<Agent>` (the new agent) |
 | `Agents.exposePort` | method | `Promise<SandboxPort>`; `ExposePortParams` (slug + scope). |
 | `Agents.listPorts` / `revokePort` | methods | `Promise<SandboxPort[]>` / `Promise<void>` |
 | `Agents.getPortUrl` | method | `Promise<string>` |
@@ -2234,6 +2264,8 @@ Compact reviewer index.
 | `update` | method | `Promise<this>`; `UpdateAgentParams`. |
 | `pause` / `resume` / `keepalive` | methods | `Promise<this>` |
 | `rollback` | method | `Promise<this>` (in place) |
+| `snapshot` / `snapshots` | methods | `Promise<SnapshotData>` / `Promise<SnapshotPage>` (paginated) |
+| `fork` | method | `Promise<Agent>` (the new agent) |
 | `getUrl` | method | `Promise<string>` (preview URL, waits until routable) |
 | `exposePort` / `listPorts` / `revokePort` | methods | `Promise<SandboxPort>` / `Promise<SandboxPort[]>` / `Promise<void>` |
 | `audit` | method | `Promise<AuditTrail>` |

@@ -607,10 +607,12 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Fork an agent's sandbox into a new sandbox
-         * @description Atomically snapshots the sandbox backing this agent and creates a new
-         *     sandbox from that snapshot. The agent's sandbox keeps running. Returns
-         *     the new sandbox object.
+         * Fork an agent into a new agent
+         * @description Snapshots the running agent and creates a new agent from that
+         *     snapshot, with the source's template and configuration and its own
+         *     gateway token. The source agent keeps running. The new agent is
+         *     Provisioning until it is ready to use; poll it until its status is
+         *     Ready. Returns the new agent.
          */
         post: operations["forkAgent"];
         delete?: never;
@@ -1072,9 +1074,9 @@ export interface components {
          */
         SnapshotStatus: "Pending" | "Running" | "Ready" | "Failed";
         /**
-         * @description Type of the snapshot. `full`: memory and filesystem, restorable.
-         *     `filesystem`: files only, taken when a full capture is not possible;
-         *     its `restorability` is `unsupported`.
+         * @description Type of the snapshot. `full`: captures process memory and filesystem (/workspace).
+         *     `filesystem`: captures filesystem (/workspace) only without process memory,
+         *     allowing restore onto any sandbox image.
          * @enum {string}
          */
         SnapshotType: "full" | "filesystem";
@@ -1093,7 +1095,7 @@ export interface components {
          * @enum {string}
          */
         SnapshotTrigger: "manual" | "memory_pressure";
-        /** @description Metadata for a sandbox memory+filesystem snapshot. */
+        /** @description Metadata for a sandbox snapshot (full or filesystem-only). */
         Snapshot: {
             /**
              * Format: uuid
@@ -1111,7 +1113,7 @@ export interface components {
             name?: string;
             status: components["schemas"]["SnapshotStatus"];
             snapshot_type: components["schemas"]["SnapshotType"];
-            trigger?: components["schemas"]["SnapshotTrigger"];
+            trigger: components["schemas"]["SnapshotTrigger"];
             /** @description Region where the snapshot is stored. */
             source_region: string;
             /**
@@ -1158,6 +1160,7 @@ export interface components {
              *     can name sandboxes created on fork and restore. Omit to leave unnamed.
              */
             name?: string;
+            snapshot_type?: components["schemas"]["SnapshotType"];
         };
         /** @description Body for POST .../sandboxes/{id}/rollback. */
         RollbackSandboxRequest: {
@@ -1340,7 +1343,7 @@ export interface components {
             /** @description What a program returned when it ended. Zero means it succeeded. Present on a Process Activity Terminate event unless a signal stopped the program. */
             exit_code?: number;
             dst_endpoint?: components["schemas"]["AuditDstEndpoint"];
-            device?: components["schemas"]["AuditDevice"];
+            device: components["schemas"]["AuditDevice"];
             /** @description What the call touched: the sandbox, then any file or process it named, the program it ran, and the terminal it ran in. Present on API Activity only; Process and Network events name the sandbox in device. */
             resources?: components["schemas"]["AuditResource"][];
             cloud: components["schemas"]["AuditCloud"];
@@ -1359,7 +1362,7 @@ export interface components {
             /** @description Always Virtual. */
             type?: string;
             /** @description The sandbox id. */
-            uid?: string;
+            uid: string;
         };
         /** @description A program that ran inside the sandbox, as an OCSF process. On a Process Activity event it is the program that started or ended. As actor.process it is the program that opened a connection (Network Activity) or the parent that launched this program (Process Activity Launch, pid only). */
         AuditProcess: {
@@ -1375,7 +1378,7 @@ export interface components {
         /** @description The process that started this one, so a run can be traced back to what caused it. Its own Launch event names it. */
         AuditParentProcess: {
             /** @description Identifies the parent within the sandbox. */
-            pid?: number;
+            pid: number;
         };
         AuditFile: {
             /** @description The file name, the last element of path. */
@@ -1427,8 +1430,8 @@ export interface components {
         AuditCloud: {
             /** @description Always NeevCloud. */
             provider: string;
-            account?: components["schemas"]["AuditAccount"];
-            org?: components["schemas"]["AuditOrg"];
+            account: components["schemas"]["AuditAccount"];
+            org: components["schemas"]["AuditOrg"];
         };
         /** @description The project, as OCSF cloud.account. */
         AuditAccount: {
@@ -1472,12 +1475,12 @@ export interface components {
         /** @description The principal that acted, as OCSF actor.user. */
         AuditActorUser: {
             /**
-             * @description The OCSF caption of type_id: User for a user in the console, System for the platform acting on its own, such as pairing a device, Unknown when no principal can be named, and API Key (type_id 99, Other) for an API key.
+             * @description The OCSF caption of type_id: User for a user in the console, System for the platform acting on its own, such as pairing a device, and API Key (type_id 99, Other) for an API key. Unknown is only for a program the sandbox ran on its own, such as a background process, since no caller started it.
              * @enum {string}
              */
             type: "User" | "API Key" | "System" | "Unknown";
             /**
-             * @description OCSF user.type_id: 0 (Unknown), 1 (User), 3 (System), 99 (Other) for an API key.
+             * @description OCSF user.type_id: 1 (User), 3 (System), 99 (Other) for an API key, the same values as the platform audit log, so use it to match actors across them. 0 (Unknown) is only for a program the sandbox ran on its own.
              * @enum {integer}
              */
             type_id: 0 | 1 | 3 | 99;
@@ -1875,7 +1878,7 @@ export interface components {
         AuditLimit: number;
         /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. Recorded programs and connections are not calls and have no operation, so this filter leaves them out. */
         AuditOperation: string;
-        /** @description Only calls that ended this way. */
+        /** @description Only records that ended this way. A recorded program fails when it exits non-zero or is killed; its start and its connections always succeed. */
         AuditStatus: components["schemas"]["AuditStatusFilter"];
         /** @description Only calls by this kind of principal, one or several separated by commas: `user`, `api_key` or `system`, matching actor.user.type User, API Key or System. Records from before actors were recorded are not matched; use credential_uid for those. */
         AuditActorTypeFilter: components["schemas"]["AuditActorTypeFilterValue"][];
@@ -2625,7 +2628,7 @@ export interface operations {
                 limit?: components["parameters"]["AuditLimit"];
                 /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. Recorded programs and connections are not calls and have no operation, so this filter leaves them out. */
                 operation?: components["parameters"]["AuditOperation"];
-                /** @description Only calls that ended this way. */
+                /** @description Only records that ended this way. A recorded program fails when it exits non-zero or is killed; its start and its connections always succeed. */
                 status?: components["parameters"]["AuditStatus"];
                 /** @description Only calls by this kind of principal, one or several separated by commas: `user`, `api_key` or `system`, matching actor.user.type User, API Key or System. Records from before actors were recorded are not matched; use credential_uid for those. */
                 actor_type?: components["parameters"]["AuditActorTypeFilter"];
@@ -3109,13 +3112,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description New forked sandbox */
+            /** @description New forked agent */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Sandbox"];
+                    "application/json": components["schemas"]["Agent"];
                 };
             };
             400: components["responses"]["BadRequest"];
@@ -3274,7 +3277,7 @@ export interface operations {
                 limit?: components["parameters"]["AuditLimit"];
                 /** @description Only these calls (api.operation), one or several separated by commas, such as `exec,pty_command`. Recorded programs and connections are not calls and have no operation, so this filter leaves them out. */
                 operation?: components["parameters"]["AuditOperation"];
-                /** @description Only calls that ended this way. */
+                /** @description Only records that ended this way. A recorded program fails when it exits non-zero or is killed; its start and its connections always succeed. */
                 status?: components["parameters"]["AuditStatus"];
                 /** @description Only calls by this kind of principal, one or several separated by commas: `user`, `api_key` or `system`, matching actor.user.type User, API Key or System. Records from before actors were recorded are not matched; use credential_uid for those. */
                 actor_type?: components["parameters"]["AuditActorTypeFilter"];

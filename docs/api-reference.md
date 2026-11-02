@@ -87,7 +87,7 @@ Every method returns a `Sandbox` handle (or a page of handles) so callers can ch
 | `listPorts(id, scope?)` | `Promise<SandboxPort[]>` | Lists the exposed preview ports. |
 | `revokePort(id, port, scope?)` | `Promise<void>` | Stops serving a preview port. |
 | `getPortUrl(id, port, options?, scope?)` | `Promise<string>` | Exposes a port and returns its preview URL once routable; `options` = `{ slug?, waitUntilReady?, timeoutMs?, pollIntervalMs? }`. |
-| `createSnapshot(id, params?, scope?)` | `Promise<SnapshotData>` | Captures the sandbox's full state (files and running processes' memory); returns immediately with `status: "Pending"`. |
+| `createSnapshot(id, params?, scope?)` | `Promise<SnapshotData>` | Captures the sandbox's full state (files and running processes' memory) by default, or `/workspace` only with `snapshot_type: "filesystem"`; returns immediately with `status: "Pending"`. |
 | `listSnapshots(id, params?)` | `Promise<SnapshotPage>` | Lists a sandbox's snapshots. **Paginated** — accepts `{ page, limit }`, returns `{ items, total, page, limit }`. |
 | `getSnapshot(snapshotId, scope?)` | `Promise<SnapshotData>` | Fetches snapshot metadata by project-scoped id. |
 | `waitForSnapshot(snapshotId, params?)` | `Promise<SnapshotData>` | Polls until the snapshot is `Ready`; throws on `Failed` (with its error message) or timeout. |
@@ -559,6 +559,9 @@ An agent is a catalogue template (e.g. `"claude-code"`) running on a backing san
 | `resume(id, scope?)` | `Promise<Agent>` | Resumes a paused agent. |
 | `keepalive(id, scope?)` | `Promise<Agent>` | Resets the idle timer so a busy agent stays running without an open connection. |
 | `rollback(id, snapshotId, scope?)` | `Promise<Agent>` | Restores the agent's backing sandbox in place from a snapshot. |
+| `createSnapshot(id, params?, scope?)` | `Promise<SnapshotData>` | Snapshots the agent's backing sandbox (starts `Pending`). |
+| `listSnapshots(id, params?)` | `Promise<SnapshotPage>` | Lists the agent's snapshots. **Paginated** — accepts `{ page, limit }`. |
+| `fork(id, name, scope?)` | `Promise<Agent>` | Forks into a new agent, `Provisioning` until ready; the source keeps running. |
 | `exposePort(id, port, params?)` | `Promise<SandboxPort>` | Exposes an agent port for preview URLs; `params` = `{ slug?, orgId?, projectId? }`. |
 | `listPorts(id, scope?)` | `Promise<SandboxPort[]>` | Lists the agent's exposed preview ports. |
 | `revokePort(id, port, scope?)` | `Promise<void>` | Stops serving an agent preview port. |
@@ -604,7 +607,7 @@ Read-only catalogue of agent templates. A template's `name` is what you pass as 
 
 ### `Agent` handle
 
-Returned by `neev.agents.create`, `get`, and `list().items`.
+Returned by `neev.agents.create`, `get`, `fork`, and `list().items`.
 
 | Member | Returns | Summary |
 | ------ | ------- | ------- |
@@ -619,6 +622,8 @@ Returned by `neev.agents.create`, `get`, and `list().items`.
 | `refresh()` | `Promise<this>` | Re-fetches and updates the handle. |
 | `update(params)` / `pause()` / `resume()` / `keepalive()` | `Promise<this>` | Lifecycle actions; each updates the handle. |
 | `rollback(snapshotId)` | `Promise<this>` | Restores the backing sandbox from a snapshot and updates the handle. |
+| `snapshot(options?)` / `snapshots(params?)` | `Promise<SnapshotData>` / `Promise<SnapshotPage>` | Same as `sandbox.snapshot()` / `.snapshots()`, for the sandbox backing this agent. |
+| `fork(name)` | `Promise<Agent>` | Returns a new `Agent` handle for the fork; this handle is unchanged. |
 | `exposePort(port, options?)` / `listPorts()` / `revokePort(port)` | — | Preview ports, as on the sandbox handle. |
 | `getUrl(options)` | `Promise<string>` | Exposes `options.port` and returns its preview URL once routable; `options` = `{ port, slug?, waitUntilReady?, timeoutMs?, pollIntervalMs? }`. |
 | `audit(params?)` | `Promise<AuditTrail>` | One page of the audit trail. See [Audit trail](#audit-trail). |
@@ -749,6 +754,7 @@ try {
 | `NotFoundError` | 404 | Resource does not exist. |
 | `ConflictError` | 409 | Conflicts with current state. |
 | `PreconditionFailedError` | 412 | A precondition failed. |
+| `TooEarlyError` | 425 | Not ready yet, such as an agent still provisioning; retry later. |
 | `RateLimitError` | 429 | Rate limit exceeded. |
 | `DeadlineExceededError` | 504 | Operation exceeded the server deadline. |
 | `InternalServerError` | 5xx | Server failed to handle a valid request. |
@@ -788,10 +794,15 @@ Minimal one-liners for each public API.
 | `neev.agents.create(...)` | `const agent = await neev.agents.create({ name: "reviewer", agent_template: "claude-code" });` |
 | `neev.agents.keepalive(id)` | `await neev.agents.keepalive(id);` |
 | `neev.agents.rollback(id, snapshotId)` | `await neev.agents.rollback(id, snapshotId);` |
+| `neev.agents.createSnapshot(id, ...)` | `const snap = await neev.agents.createSnapshot(id, { name: "demo" });` |
+| `neev.agents.listSnapshots(id)` | `const page = await neev.agents.listSnapshots(id);` |
+| `neev.agents.fork(id, name)` | `const fork = await neev.agents.fork(id, "fork-name");` |
 | `neev.agents.audit(id, ...)` | `const trail = await neev.agents.audit(id, { limit: 50 });` |
 | `neev.agentTemplates.list(...)` | `const { items } = await neev.agentTemplates.list();` |
 | `agent.getUrl(...)` | `const url = await agent.getUrl({ port: 3000 });` |
 | `agent.sandbox()` | `const sandbox = await agent.sandbox();` |
+| `agent.snapshot(...)` / `.snapshots()` | `const snap = await agent.snapshot({ waitUntilReady: true });` |
+| `agent.fork(name)` | `const fork = await agent.fork("fork-name"); await fork.waitUntilReady();` |
 | `neev.raw.request(...)` | `const data = await neev.raw.request<T>({ method: "GET", path });` |
 | `sandbox.id` / `.name` / `.phase` | `console.log(sandbox.phase);` |
 | `sandbox.connectUrl` | `console.log(sandbox.connectUrl);` |

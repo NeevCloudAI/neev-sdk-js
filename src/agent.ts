@@ -2,14 +2,17 @@ import type { Scope } from "./client.js";
 import { NeevError } from "./errors.js";
 import type { ExposePortOptions, GetPortUrlOptions } from "./preview.js";
 import type { Agents } from "./resources/agents.js";
-import type { AuditQuery } from "./resources/sandboxes.js";
-import type { Sandbox } from "./sandbox.js";
+import { checkSnapshotWait } from "./resources/sandboxes.js";
+import type { AuditQuery, ListSnapshotsParams, SnapshotPage } from "./resources/sandboxes.js";
+import type { Sandbox, SnapshotWaitOptions } from "./sandbox.js";
 import type {
   AgentData,
   AgentLastCrash,
   AgentStatus,
   AuditTrail,
+  CreateSnapshotParams,
   SandboxPort,
+  SnapshotData,
   UpdateAgentParams,
 } from "./types.js";
 
@@ -148,6 +151,34 @@ export class Agent {
     const next = await this.agents.rollback(this.id, snapshotId, this.scope);
     this.state = next.data;
     return this;
+  }
+
+  // Snapshots this agent's backing sandbox. By default the result starts Pending;
+  // pass { waitUntilReady: true } to block until it is Ready. timeoutMs and
+  // pollIntervalMs tune that wait and are checked before the snapshot is created.
+  async snapshot(options: CreateSnapshotParams & SnapshotWaitOptions = {}): Promise<SnapshotData> {
+    const { waitUntilReady, timeoutMs, pollIntervalMs, ...params } = options;
+    if (waitUntilReady) checkSnapshotWait({ timeoutMs, pollIntervalMs });
+    const snapshot = await this.agents.createSnapshot(this.id, params, this.scope);
+    if (!waitUntilReady) return snapshot;
+    // Snapshots are project-scoped, so the sandboxes resource waits on it.
+    // biome-ignore lint/complexity/useLiteralKeys: reads the resource's private sandboxes
+    return this.agents["sandboxes"].waitForSnapshot(snapshot.id, {
+      ...this.scope,
+      timeoutMs,
+      pollIntervalMs,
+    });
+  }
+
+  // Lists the snapshots of this agent's backing sandbox, one page at a time.
+  async snapshots(params: ListSnapshotsParams = {}): Promise<SnapshotPage> {
+    return this.agents.listSnapshots(this.id, { ...params, ...this.scope });
+  }
+
+  // Forks this agent into a new agent and returns the new agent's handle, which is
+  // Provisioning until ready. This handle is unchanged and the source keeps running.
+  async fork(name: string): Promise<Agent> {
+    return this.agents.fork(this.id, name, this.scope);
   }
 
   // Exposes a port and returns its public preview URL, by default waiting until the

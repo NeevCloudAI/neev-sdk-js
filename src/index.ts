@@ -164,5 +164,6 @@ export {
   PreconditionFailedError,
   RateLimitError,
   ServiceUnavailableError,
+  TooEarlyError,
 } from "./errors.js";
 export type { ApiErrorBody, ErrorCode } from "./errors.js";

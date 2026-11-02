@@ -124,6 +124,25 @@ export interface WaitForSnapshotParams extends Scope {
   pollIntervalMs?: number;
 }
 
+// Rejects non-finite or non-positive snapshot wait timings, which would otherwise
+// spin a near-zero-delay poll loop (or, for NaN, one that never times out). The
+// agent.snapshot calls it before creating, so bad timings leave no snapshot behind.
+export function checkSnapshotWait({
+  timeoutMs = DEFAULT_SNAPSHOT_WAIT_TIMEOUT_MS,
+  pollIntervalMs = DEFAULT_SNAPSHOT_POLL_INTERVAL_MS,
+}: { timeoutMs?: number; pollIntervalMs?: number }): void {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new NeevError(
+      `waitForSnapshot: timeoutMs must be a positive, finite number (got ${timeoutMs}).`,
+    );
+  }
+  if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+    throw new NeevError(
+      `waitForSnapshot: pollIntervalMs must be a positive, finite number (got ${pollIntervalMs}).`,
+    );
+  }
+}
+
 // The time-window fields of a metrics read; shared by the resource method and the
 // Sandbox handle. All optional — the platform defaults to the last hour.
 export interface MetricsQuery {
@@ -461,18 +480,7 @@ export class Sandboxes {
       pollIntervalMs = DEFAULT_SNAPSHOT_POLL_INTERVAL_MS,
       ...scope
     } = params;
-    // Reject non-finite or non-positive timings, which would otherwise spin a
-    // near-zero-delay poll loop (or, for NaN, one that never times out).
-    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-      throw new NeevError(
-        `waitForSnapshot: timeoutMs must be a positive, finite number (got ${timeoutMs}).`,
-      );
-    }
-    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
-      throw new NeevError(
-        `waitForSnapshot: pollIntervalMs must be a positive, finite number (got ${pollIntervalMs}).`,
-      );
-    }
+    checkSnapshotWait({ timeoutMs, pollIntervalMs });
     const deadline = Date.now() + timeoutMs;
 
     // Fetch the live status each iteration until Ready, a terminal Failed, or the
