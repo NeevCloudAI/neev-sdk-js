@@ -48,7 +48,7 @@ No model needed: these use only the SDK.
 | [`update-resize-egress.ts`](./update-resize-egress.ts) | Update a running sandbox in place: resize cpu/memory + re-scope egress in one `update()` call (single PATCH), then edit the allow-list with `egress_add` / `egress_remove` | `npx tsx examples/update-resize-egress.ts` |
 | [`docker.ts`](./docker.ts) | Docker template: `docker run --network=host hello-world` | `npx tsx examples/docker.ts` |
 | [`upload-download.ts`](./upload-download.ts) | `files.uploadFile` a large local file in resumable chunks with progress, then `files.downloadFile` it back | `npx tsx examples/upload-download.ts` |
-| [`audit-trail.ts`](./audit-trail.ts) | `sandbox.audit()` — page through what ran inside a sandbox, newest first | `npx tsx examples/audit-trail.ts` |
+| [`audit-trail.ts`](./audit-trail.ts) | `sandbox.audit()` — calls, programs and connections, each program tied to the call that started it | `npx tsx examples/audit-trail.ts` |
 | [`last-crash.ts`](./last-crash.ts) | `sandbox.lastCrash` — seed a file, force an OOM kill, then use `storage_reset` to tell a wiped `/workspace` from one that survived | `npx tsx examples/last-crash.ts` |
 | [`streaming-exec.ts`](./streaming-exec.ts) | `sandbox.exec(cmd, { stream: true })` — output streamed line-by-line as it is produced | `npx tsx examples/streaming-exec.ts` |
 | [`files.ts`](./files.ts) | `sandbox.files` — write, read, stat/exists, mkdir, move, list, remove, and a live `watch` of changes | `npx tsx examples/files.ts` |
