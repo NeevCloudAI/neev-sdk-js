@@ -54,10 +54,9 @@ async function main(): Promise<void> {
     const trail = await firstAuditPage(() => agent.audit({ limit: 20 }));
     console.log("audit:");
     for (const e of trail.data) {
-      const what = e.api
-        ? `${e.api.operation} by ${e.actor.user.name ?? e.actor.user.uid}`
-        : `${e.class_name}: ${e.process?.name ?? e.actor.process?.name ?? "?"}`;
-      console.log(" ", new Date(e.time).toISOString(), what, e.status);
+      // A recorded program has no api; its process names it instead.
+      const what = e.api?.operation ?? e.process?.name ?? e.actor.process?.name;
+      console.log(" ", new Date(e.time).toISOString(), e.type_name, what, e.status);
     }
 
     // Hold the agent past its idle deadline while work is in progress.

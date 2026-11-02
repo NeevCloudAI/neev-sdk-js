@@ -182,7 +182,13 @@ export function auditEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
     status_id: 1,
     status: "Success",
     actor: {
-      user: { type: "api_key", type_id: 99, uid: "key-1", name: "ci", credential_uid: "key-1" },
+      user: {
+        type: "API Key",
+        type_id: 99,
+        uid: "key-1",
+        name: "ci",
+        programmatic_credentials: [{ uid: "key-1", type: "API Key" }],
+      },
     },
     api: { operation: "fs.read" },
     cloud: { provider: "NeevCloud" },

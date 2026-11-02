@@ -300,25 +300,26 @@ See [`sandbox-metrics.ts`](./examples/sandbox-metrics.ts) · [reference](./docs/
 
 ### Audit trail
 
-Read what was run inside a sandbox, newest first, as OCSF events: API calls (commands,
-terminal and SSH sessions, file and process operations) with who made them, plus every
-program the sandbox ran and every connection it opened, whether or not anything asked for
-them. Programs are recorded by name only, never with their arguments.
+Read what happened inside a sandbox, newest first, as OCSF 1.9.0 events in three classes:
+calls made to it (API Activity, `class_uid` 6003), every program that ran in it, including
+ones no call asked for (Process Activity, 1007), and every connection those programs
+opened (Network Activity, 4001). Programs are recorded by name only, never with their arguments.
 
 ```ts
-const trail = await sandbox.audit({ status: "failure" });
+const trail = await sandbox.audit({ limit: 50 });
 for (const e of trail.data) {
-  const what = e.api ? e.api.operation : `${e.class_name}: ${e.process?.name ?? e.actor.process?.name}`;
-  console.log(new Date(e.time).toISOString(), what, e.status);
+  // A recorded program has no api; its process names it instead.
+  const what = e.api?.operation ?? e.process?.name ?? e.actor.process?.name;
+  console.log(new Date(e.time).toISOString(), e.type_name, what, e.status);
 }
 ```
 
-Program recording is on by default; turn it off with `sandbox.update({ execution_trace: false })`.
+Filter with `status` (every class), or `operation`, `actorType`, `actorUid`,
+`credentialUid` (calls only), and page back with `cursor: trail.next_cursor`. Calls take a
+few seconds to appear, programs and connections about a minute. Turn program recording off
+with `sandbox.update({ execution_trace: false })`.
 
-Filter with `operation`, `status`, `actorType`, `actorUid` or `credentialUid`, and page
-back with `cursor: trail.next_cursor`. Events take a few seconds to appear after a call.
-
-See [`audit-trail.ts`](./examples/audit-trail.ts) · [reference](./docs/api-reference.md#neevsandboxes)
+See [`audit-trail.ts`](./examples/audit-trail.ts) · [reference](./docs/api-reference.md#audit-trail)
 
 ### Code interpreter
 
