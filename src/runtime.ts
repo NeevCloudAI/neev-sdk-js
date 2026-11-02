@@ -596,7 +596,12 @@ export class SandboxFiles {
       }),
       signal: options.signal,
     });
-    yield* streamWatch(response);
+    try {
+      yield* streamWatch(response);
+    } catch (err) {
+      if (options.signal?.aborted) return;
+      throw err;
+    }
   }
 }
 

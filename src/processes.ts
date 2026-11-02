@@ -268,7 +268,12 @@ export class SandboxProcesses {
       body: JSON.stringify({ process_id: processId, cursor: options.cursor, follow: true }),
       signal: options.signal,
     });
-    yield* streamProcessLogs(response);
+    try {
+      yield* streamProcessLogs(response);
+    } catch (err) {
+      if (options.signal?.aborted) return;
+      throw err;
+    }
   }
 }
 
