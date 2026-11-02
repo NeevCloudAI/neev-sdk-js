@@ -300,16 +300,20 @@ See [`sandbox-metrics.ts`](./examples/sandbox-metrics.ts) · [reference](./docs/
 
 ### Audit trail
 
-Read what was run inside a sandbox, newest first: commands, terminal and SSH sessions,
-and file and process operations. Each event says who made the call and how it ended.
-Programs are recorded by name only, never with their arguments.
+Read what was run inside a sandbox, newest first, as OCSF events: API calls (commands,
+terminal and SSH sessions, file and process operations) with who made them, plus every
+program the sandbox ran and every connection it opened, whether or not anything asked for
+them. Programs are recorded by name only, never with their arguments.
 
 ```ts
-const trail = await sandbox.audit({ operation: "exec", status: "failure" });
+const trail = await sandbox.audit({ status: "failure" });
 for (const e of trail.data) {
-  console.log(new Date(e.time).toISOString(), e.api.operation, e.actor.user.uid, e.status);
+  const what = e.api ? e.api.operation : `${e.class_name}: ${e.process?.name ?? e.actor.process?.name}`;
+  console.log(new Date(e.time).toISOString(), what, e.status);
 }
 ```
+
+Program recording is on by default; turn it off with `sandbox.update({ execution_trace: false })`.
 
 Filter with `operation`, `status`, `actorType`, `actorUid` or `credentialUid`, and page
 back with `cursor: trail.next_cursor`. Events take a few seconds to appear after a call.

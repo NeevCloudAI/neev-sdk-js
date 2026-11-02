@@ -54,8 +54,10 @@ async function main(): Promise<void> {
     const trail = await firstAuditPage(() => agent.audit({ limit: 20 }));
     console.log("audit:");
     for (const e of trail.data) {
-      const who = e.actor.user.name ?? e.actor.user.uid;
-      console.log(" ", new Date(e.time).toISOString(), e.api.operation, who, e.status);
+      const what = e.api
+        ? `${e.api.operation} by ${e.actor.user.name ?? e.actor.user.uid}`
+        : `${e.class_name}: ${e.process?.name ?? e.actor.process?.name ?? "?"}`;
+      console.log(" ", new Date(e.time).toISOString(), what, e.status);
     }
 
     // Hold the agent past its idle deadline while work is in progress.

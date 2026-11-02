@@ -2,16 +2,28 @@
  * Read a sandbox's audit trail: what ran inside it, newest first.
  *
  * Runs a few commands and file operations, then pages through
- * `sandbox.audit()`. Each event names the call (`exec`, `fs.write`,
- * `pty_command`, …), who made it, what it touched — a program is recorded
- * without its arguments — and how it ended.
+ * `sandbox.audit()`. Events are OCSF: an API call (`exec`, `fs.write`,
+ * `pty_command`, …) with who made it, plus every program the sandbox ran and
+ * every connection it opened, whether or not anything asked for them. A
+ * program is recorded without its arguments.
  *
  * Run:
  *   NEEV_API_KEY=... NEEV_ORG_ID=... NEEV_PROJECT_ID=... \
  *     npx tsx examples/audit-trail.ts
  */
 import { Neev } from "@neevcloud/sdk";
-import type { AuditTrail } from "@neevcloud/sdk";
+import type { AuditEvent, AuditTrail } from "@neevcloud/sdk";
+
+// One line per event: the API call, or the program and what it did.
+function describe(e: AuditEvent): string {
+  if (e.api) return `${e.api.operation} by ${e.actor.user.name ?? e.actor.user.uid}`;
+  if (e.dst_endpoint) {
+    const dst = e.dst_endpoint.name ?? `${e.dst_endpoint.ip}:${e.dst_endpoint.port}`;
+    return `${e.actor.process?.name ?? "?"} connect ${dst}`;
+  }
+  const exit = e.exit_code !== undefined ? ` exit ${e.exit_code}` : "";
+  return `${e.process?.name ?? "?"} ${e.activity_name.toLowerCase()}${exit}`;
+}
 
 // Audit events land a few seconds after the call, so poll until the first page has some.
 async function firstAuditPage(read: () => Promise<AuditTrail>): Promise<AuditTrail> {
@@ -41,18 +53,19 @@ async function main(): Promise<void> {
     console.log(`trail covers ${page.retention_days} days (${page.from} → ${page.to})`);
     while (true) {
       for (const e of page.data) {
-        const who = e.actor.user.name ?? e.actor.user.uid;
-        console.log(new Date(e.time).toISOString(), e.api.operation, who, e.status);
+        console.log(new Date(e.time).toISOString(), describe(e), e.status);
       }
       if (!page.next_cursor) break;
       page = await sandbox.audit({ limit: 20, cursor: page.next_cursor });
     }
 
-    // Filter: only the programs run through exec, and what they ran.
+    // Filter: exec calls and program launches, and what they ran.
     const execs = await sandbox.audit({ operation: "exec" });
     for (const e of execs.data) {
-      const program = e.resources?.find((r) => r.type === "process")?.name ?? "";
-      console.log("exec:", new Date(e.time).toISOString(), program, e.status);
+      const program = e.api
+        ? (e.resources?.find((r) => r.type === "process")?.name ?? "")
+        : (e.process?.name ?? "");
+      console.log("exec:", new Date(e.time).toISOString(), e.class_name, program, e.status);
     }
   } finally {
     await sandbox.delete();

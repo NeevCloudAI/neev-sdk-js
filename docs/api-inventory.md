@@ -465,7 +465,7 @@ for (const s of metrics.series) {
 audit(id: string, params?: AuditParams): Promise<AuditTrail>
 ```
 
-Reads one page of the sandbox's audit trail, newest first: terminal commands, SSH, process and file operations, each as an OCSF API Activity event with who made the call (`actor`) and how it ended (`status`, `status_code`). Only the program name is recorded, never its arguments, and input at a hidden password prompt is not captured.
+Reads one page of the sandbox's audit trail, newest first, as OCSF events: terminal commands, SSH, process and file operations as API Activity with who made the call (`actor`) and how it ended (`status`, `status_code`), plus every program the sandbox ran (Process Activity) and every connection it opened (Network Activity), unless its `execution_trace` is off. Only the program name is recorded, never its arguments, and input at a hidden password prompt is not captured.
 
 `AuditParams`:
 
@@ -1893,19 +1893,31 @@ Paginated list payload returned by `templates.list`.
 | `next_cursor` | `string` | no — absent when the window is exhausted |
 | `data` | `AuditEvent[]` | yes — newest first |
 
-`AuditEvent` is one call, as an [OCSF](https://schema.ocsf.io/) 1.9.0 API Activity event (`class_uid` 6003). The fields you'll usually read:
+`AuditEvent` is one [OCSF](https://schema.ocsf.io/) 1.9.0 event. `class_uid` says which kind, and which fields are present:
+
+| `class_uid` | Kind | Carries |
+| ----------- | ---- | ------- |
+| 6003 | API Activity: a call to the sandbox | `api`, `src_endpoint`, `actor.user` |
+| 1007 | Process Activity: a program started (`activity_id` 1, Launch), ended (2, Terminate) or the sandbox started (99) | `process`, `exit_code` on Terminate (or `status_detail` `signal N` if killed) |
+| 4001 | Network Activity: a program opened a connection (`activity_id` 1, Open) | `dst_endpoint`, `actor.process` |
+
+The fields you'll usually read:
 
 | Field | Type | Required |
 | ----- | ---- | -------- |
 | `time` | `number` | yes — milliseconds since the Unix epoch |
-| `api.operation` | `string` | yes — e.g. `pty_command`, `ssh`, `exec`, `process.start`, `fs.read`, `interpreter.run` |
+| `api.operation` | `string` | API Activity only — e.g. `pty_command`, `ssh`, `exec`, `process.start`, `fs.read`, `interpreter.run` |
 | `api.request.uid` | `string` | no — the request that caused the call |
-| `actor.user` | `AuditActorUser` | yes — `type` (`"user"`, `"api_key"`, `"system"`, `"unknown"`), `uid`, `name?`, `credential_uid?` (the API key, absent for a user) |
+| `process` | `AuditProcess` | Process Activity only — `pid?`, `name?` (no arguments), `cwd?`, `file.path?` (the file that ran), `parent_process.pid?` |
+| `exit_code` | `number` | no — what a program returned; on Terminate unless a signal stopped it |
+| `dst_endpoint` | `AuditDstEndpoint` | Network Activity only — `ip?` and `port?`, or `name` (`unix:<path>`) |
+| `actor.process` | `AuditProcess` | Network Activity only — the program that connected |
+| `actor.user` | `AuditActorUser` | yes — `type` (`"user"`, `"api_key"`, `"system"`, `"unknown"`), `uid`, `name?`, `credential_uid?` (the API key, absent for a user); `unknown` on program and connection events |
 | `actor.session.uid` | `string` | no — the console session a user's call came from |
 | `status` / `status_id` | `string` / `1 \| 2` | yes — `"Success"` (1) or `"Failure"` (2) |
 | `status_code` | `string` | no — `ok`, `permission_denied`, `internal` |
 | `status_detail` | `string` | no — how a code-interpreter run ended |
-| `activity_id` / `activity_name` | `1 \| 2 \| 3 \| 4 \| 99` / `string` | yes — Create, Read, Update, Delete, Other |
+| `activity_id` / `activity_name` | `1 \| 2 \| 3 \| 4 \| 99` / `string` | yes — read with `class_uid`: Create, Read, Update, Delete, Other for API calls; Launch, Terminate, Other for programs; Open for connections |
 | `duration` | `number` | no — milliseconds; absent on a terminal command |
 | `resources` | `AuditResource[]` | no — what the call touched: `type` (`sandbox`, `file`, `process`, `channel`, `terminal`, `interpreter_context`), `uid?`, `name?` (a path, a program name without arguments, or an SSH channel) |
 | `metadata.uid` | `string` | yes — stable id of the event within the trail |
