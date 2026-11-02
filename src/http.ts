@@ -63,10 +63,10 @@ export function createDispatch(opts: DispatchOptions): Dispatch {
         failure = err;
       } finally {
         clearTimeout(timer);
-        callerSignal.removeEventListener("abort", onAbort);
       }
 
       if (failure !== undefined) {
+        callerSignal.removeEventListener("abort", onAbort);
         // A caller abort is terminal; never retry it.
         if (isCallerAbort(failure, callerSignal)) {
           throw new APIConnectionError("Request aborted by caller", failure);
@@ -84,13 +84,54 @@ export function createDispatch(opts: DispatchOptions): Dispatch {
 
       const ok = response as Response;
       if (!ok.ok && isRetryableStatus(ok.status) && attempt < maxRetries) {
+        callerSignal.removeEventListener("abort", onAbort);
         await backoffSleep(retryDelayMs(ok, attempt), callerSignal);
         attempt++;
         continue;
       }
-      return ok;
+      // The listener stays so the caller's signal still cancels the body stream
+      // after headers arrive (the timeout only covers the wait for headers).
+      return trackBody(ok, callerSignal, () => callerSignal.removeEventListener("abort", onAbort));
     }
   };
+}
+
+// Returns the response with a body that calls `detach` once it closes, errors or
+// is cancelled, so a reused caller signal doesn't collect one listener per request.
+// A read that fails because the caller aborted becomes an APIConnectionError.
+function trackBody(response: Response, callerSignal: AbortSignal, detach: () => void): Response {
+  if (!response.body) {
+    detach();
+    return response;
+  }
+  const reader = response.body.getReader();
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          detach();
+          controller.close();
+        } else {
+          controller.enqueue(value);
+        }
+      } catch (err) {
+        detach();
+        controller.error(
+          callerSignal.aborted ? new APIConnectionError("Request aborted by caller", err) : err,
+        );
+      }
+    },
+    cancel(reason) {
+      detach();
+      return reader.cancel(reason);
+    },
+  });
+  return new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
 }
 
 // Configuration for the untyped client.

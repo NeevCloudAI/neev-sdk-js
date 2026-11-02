@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { type FetchLike, RawClient, createDispatch } from "../src/http.js";
 import {
   APIConnectionError,
@@ -106,6 +106,41 @@ describe("createDispatch", () => {
     expect(err).toBeInstanceOf(APIConnectionError);
     expect(err).not.toBeInstanceOf(APITimeoutError);
     expect(String(err.message)).toContain("aborted by caller");
+  });
+
+  it("lets the caller's signal cancel a body that stalls after headers", async () => {
+    const controller = new AbortController();
+    // Headers arrive at once; the body never sends a byte until the fetch signal aborts.
+    const stalling: FetchLike = async (_input, init) => {
+      const body = new ReadableStream({
+        start(c) {
+          init?.signal?.addEventListener("abort", () => c.error(new Error("aborted")));
+        },
+      });
+      return new Response(body, { status: 200 });
+    };
+    const dispatch = createDispatch({ fetch: stalling, timeoutMs: 1000, maxRetries: 0 });
+    const request = new Request("http://localhost:7010/x", { signal: controller.signal });
+    const response = await dispatch(request);
+    const read = response.text();
+    controller.abort();
+    const err = await read.catch((e) => e);
+    expect(err).toBeInstanceOf(APIConnectionError);
+    expect(String(err.message)).toContain("aborted by caller");
+  });
+
+  it("drops the caller-abort listener once the body is read", async () => {
+    const dispatch = createDispatch({
+      fetch: async () => json(200, { ok: true }),
+      timeoutMs: 1000,
+      maxRetries: 0,
+    });
+    const request = new Request("http://localhost:7010/x");
+    const removed = vi.spyOn(request.signal, "removeEventListener");
+    const response = await dispatch(request);
+    expect(removed).not.toHaveBeenCalled();
+    await response.json();
+    expect(removed).toHaveBeenCalledWith("abort", expect.any(Function));
   });
 
   it("honors a numeric Retry-After header", async () => {
