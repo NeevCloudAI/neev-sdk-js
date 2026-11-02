@@ -508,14 +508,19 @@ describe("sandbox update (in-place resize + egress)", () => {
 
 describe("sandbox snapshots, rollback, and fork", () => {
   it("creates a snapshot and posts the request body", async () => {
-    const { neev, calls } = client([json(202, snapshotData({ name: "snap-1" }))]);
+    const { neev, calls } = client([
+      json(202, snapshotData({ name: "snap-1" })),
+      json(202, snapshotData({ snapshot_type: "filesystem" })),
+    ]);
     const snap = await neev.sandboxes.createSnapshot("sb-1", { name: "snap-1" });
+    await neev.sandboxes.createSnapshot("sb-1", { snapshot_type: "filesystem" });
     expect(snap.id).toBe("22222222-2222-2222-2222-222222222222");
     expect(snap.status).toBe("Pending");
     expect(calls[0]?.method).toBe("POST");
     expect(calls[0]?.url).toContain("/sandboxes/sb-1/snapshots");
     // The caller passes only user-facing fields; the SDK fills the rest.
     expect(calls[0]?.body).toEqual({ name: "snap-1" });
+    expect(calls[1]?.body).toEqual({ snapshot_type: "filesystem" });
   });
 
   it("lists the snapshots of a sandbox", async () => {

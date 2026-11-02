@@ -69,6 +69,7 @@ No model needed: these use only the SDK.
 | [`create-agent.ts`](./create-agent.ts) | Agent lifecycle: create from a template → wait for Ready → drive its backing sandbox → update → pause → delete | `npx tsx examples/create-agent.ts` |
 | [`agent-ports-audit.ts`](./agent-ports-audit.ts) | Agent preview port with a slug → list → audit page → `keepalive()` → revoke | `npx tsx examples/agent-ports-audit.ts` |
 | [`agent-auto-resume.ts`](./agent-auto-resume.ts) | Use a paused agent without calling `resume()`; reports whether it woke by itself (explicit `agent.resume()` only on a 429 while still Paused) | `npx tsx examples/agent-auto-resume.ts` |
+| [`agent-snapshot-fork-rollback.ts`](./agent-snapshot-fork-rollback.ts) | Agent snapshot → list snapshots → change a file → `fork()` (the fork has the change) → `rollback()` (the file is back) → clean up | `npx tsx examples/agent-snapshot-fork-rollback.ts` |
 
 ## Agent tools
 
@@ -149,6 +150,12 @@ npx tsx examples/agent-auto-resume.ts
 ```
 → `created agent …` → `agent is Ready; wrote auto-resume-marker.txt …` → `agent paused (status: Paused)` → `file read back intact after N.Ns` → `agent status now: …` → `RESULT: woke automatically` (or `the read was refused with 429 …` → `RESULT: resumed explicitly` where automatic wake-up is off) → `deleted agent …`.
 
+**1g. Agent snapshot, fork & rollback**
+```sh
+npx tsx examples/agent-snapshot-fork-rollback.ts
+```
+→ `ready: …` → `snapshot … is Ready` → `agent snapshots: before-change` → `forked: … (…)` → `fork has: modified state` → `after rollback, snapshot-demo (…) has: original state`.
+
 **2. Streaming exec**
 ```sh
 npx tsx examples/streaming-exec.ts
@@ -221,7 +228,7 @@ npx tsx examples/agents/genkit.ts
 | `NEEV_API_KEY` | all | — (required) |
 | `NEEV_ORG_ID` | all | — (required) |
 | `NEEV_PROJECT_ID` | all | — (required) |
-| `NEEV_AGENT_TEMPLATE` | `create-agent.ts`, `agent-ports-audit.ts`, `agent-auto-resume.ts` | `claude-code` |
+| `NEEV_AGENT_TEMPLATE` | `create-agent.ts`, `agent-ports-audit.ts`, `agent-auto-resume.ts`, `agent-snapshot-fork-rollback.ts` | `claude-code` |
 | `NEEV_INFERENCE_API_KEY` | model examples | falls back to `NEEV_API_KEY` |
 | `NEEV_INFERENCE_BASE_URL` | model examples | `https://inference.ai.neevcloud.com/v1` |
 

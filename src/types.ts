@@ -140,6 +140,9 @@ export type SnapshotStatus = components["schemas"]["SnapshotStatus"];
 export type SnapshotTrigger = components["schemas"]["SnapshotTrigger"];
 
 // Caller-facing options for `sandbox.snapshot` / `sandboxes.createSnapshot`.
+// `snapshot_type` "filesystem" captures /workspace only, without process memory,
+// so it can be restored onto any sandbox image; "full" (the server default)
+// captures both.
 export type CreateSnapshotParams = components["schemas"]["CreateSnapshotRequest"];
 
 // Paginated list payload returned by `sandboxes.listSnapshots`.

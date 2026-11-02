@@ -127,6 +127,8 @@ export class NotFoundError extends APIError {}
 export class ConflictError extends APIError {}
 // 412 — a precondition failed (e.g. unsupported protocol version).
 export class PreconditionFailedError extends APIError {}
+// 425 — not ready yet (e.g. an agent still provisioning); retry later.
+export class TooEarlyError extends APIError {}
 // 429 — rate limit exceeded.
 export class RateLimitError extends APIError {}
 // 504 — the operation exceeded the server's deadline.
@@ -170,6 +172,8 @@ export function errorFromStatus(
       return new ConflictError(status, body, requestId);
     case 412:
       return new PreconditionFailedError(status, body, requestId);
+    case 425:
+      return new TooEarlyError(status, body, requestId);
     case 429:
       return new RateLimitError(status, body, requestId);
     case 503:

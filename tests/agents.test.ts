@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { Agent, Neev, NeevError, NotFoundError } from "../src/index.js";
-import { agentData, auditEvent, json, mockFetch } from "./helpers.js";
+import {
+  Agent,
+  ConflictError,
+  Neev,
+  NeevError,
+  NotFoundError,
+  TooEarlyError,
+} from "../src/index.js";
+import { agentData, auditEvent, json, mockFetch, snapshotData } from "./helpers.js";
 
 // Builds a client backed by the given queued responses.
 function client(queue: Array<Response | Error>) {
@@ -357,5 +364,101 @@ describe("agent audit trail", () => {
     const url = new URL(calls[0]?.url ?? "");
     expect(url.searchParams.get("operation")).toBe("exec,ssh");
     expect(url.searchParams.get("actor_type")).toBe("user");
+  });
+});
+
+describe("agent snapshots and fork", () => {
+  const FORK_ID = "44444444-4444-4444-4444-444444444444";
+
+  it("creates and lists snapshots on the agent route", async () => {
+    const page = { items: [snapshotData({ status: "Ready" })], total: 1, page: 2, limit: 5 };
+    const { neev, calls } = client([
+      json(202, snapshotData()),
+      json(200, page),
+      json(202, snapshotData()),
+    ]);
+    const snap = await neev.agents.createSnapshot("ag-1", { name: "before-change" });
+    expect(snap.status).toBe("Pending");
+    const listed = await neev.agents.listSnapshots("ag-1", { page: 2, limit: 5 });
+    expect(listed).toEqual(page);
+    await neev.agents.createSnapshot("ag-1");
+
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.url).toMatch(/\/agents\/ag-1\/snapshots$/);
+    expect(calls[0]?.body).toEqual({ name: "before-change" });
+    const url = new URL(calls[1]?.url ?? "");
+    expect(calls[1]?.method).toBe("GET");
+    expect(url.pathname).toMatch(/\/agents\/ag-1\/snapshots$/);
+    expect(url.searchParams.get("page")).toBe("2");
+    expect(url.searchParams.get("limit")).toBe("5");
+    expect(calls[2]?.body).toEqual({});
+  });
+
+  it("fork returns a handle to the new agent", async () => {
+    const { neev, calls } = client([json(201, agentData({ id: FORK_ID, status: "Provisioning" }))]);
+    const forked = await neev.agents.fork("ag-1", "web-fork");
+    expect(forked).toBeInstanceOf(Agent);
+    expect(forked.id).toBe(FORK_ID);
+    expect(forked.status).toBe("Provisioning");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.method).toBe("POST");
+    expect(calls[0]?.url).toMatch(/\/agents\/ag-1\/fork$/);
+    expect(calls[0]?.body).toEqual({ name: "web-fork" });
+  });
+
+  it("handle snapshot, snapshots and fork leave the source handle unchanged", async () => {
+    const snap = snapshotData();
+    const { neev, calls } = client([
+      json(200, agentData()),
+      json(202, snap),
+      json(202, snap),
+      json(200, snapshotData({ status: "Ready" })),
+      json(200, { items: [snap], total: 1, page: 1, limit: 20 }),
+      json(201, agentData({ id: FORK_ID, status: "Provisioning" })),
+    ]);
+    const agent = await neev.agents.get("ag-1");
+    expect((await agent.snapshot({ name: "before-change" })).status).toBe("Pending");
+    expect((await agent.snapshot({ waitUntilReady: true, pollIntervalMs: 1 })).status).toBe(
+      "Ready",
+    );
+    expect((await agent.snapshots()).items.map((s) => s.id)).toEqual([snap.id]);
+    const forked = await agent.fork("web-fork");
+    expect(forked).not.toBe(agent);
+    expect(forked.id).toBe(FORK_ID);
+    expect(agent.id).toBe(agentData().id);
+    expect(agent.status).toBe(agentData().status);
+
+    const seen = calls
+      .slice(1)
+      .map((c) => `${c.method} ${new URL(c.url).pathname.split("/").slice(-2).join("/")}`);
+    expect(seen).toEqual([
+      `POST ${agent.id}/snapshots`,
+      `POST ${agent.id}/snapshots`,
+      `GET snapshots/${snap.id}`,
+      `GET ${agent.id}/snapshots`,
+      `POST ${agent.id}/fork`,
+    ]);
+  });
+
+  it("rejects bad wait timings before creating a snapshot", async () => {
+    const { neev, calls } = client([json(200, agentData())]);
+    const agent = await neev.agents.get("ag-1");
+    await expect(agent.snapshot({ waitUntilReady: true, timeoutMs: 0 })).rejects.toThrow(
+      /timeoutMs must be a positive/,
+    );
+    expect(calls).toHaveLength(1);
+  });
+
+  it.each([
+    [409, ConflictError],
+    [425, TooEarlyError],
+  ])("fork and createSnapshot surface HTTP %i as %O", async (status, ErrorClass) => {
+    const body = { code: "agent_not_ready", message: "not ready" };
+    const { neev } = client([json(status, body), json(status, body)]);
+    const forkErr = await neev.agents.fork("ag-1", "web-fork").catch((e: unknown) => e);
+    expect(forkErr).toBeInstanceOf(ErrorClass);
+    expect((forkErr as ConflictError).status).toBe(status);
+    expect((forkErr as ConflictError).code).toBe("agent_not_ready");
+    await expect(neev.agents.createSnapshot("ag-1")).rejects.toBeInstanceOf(ErrorClass);
   });
 });

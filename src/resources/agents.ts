@@ -11,11 +11,14 @@ import type {
   AgentListResponse,
   AuditTrail,
   CreateAgentParams,
+  CreateSnapshotParams,
   SandboxPort,
+  SnapshotData,
+  SnapshotListResponse,
   UpdateAgentParams,
 } from "../types.js";
 import { auditQuerySerializer, auditRequest } from "./sandboxes.js";
-import type { AuditParams, Sandboxes } from "./sandboxes.js";
+import type { AuditParams, ListSnapshotsParams, Sandboxes, SnapshotPage } from "./sandboxes.js";
 
 // Spec path templates for the aiagent agent endpoints. openapi-fetch type-checks
 // each call against these literal paths and the generated `paths` type.
@@ -28,6 +31,8 @@ const ROLLBACK = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent
 const PORTS = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/ports";
 const PORT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/ports/{port}";
 const AUDIT = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/audit";
+const SNAPSHOTS = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/snapshots";
+const FORK = "/api/v1beta1/orgs/{org_id}/projects/{project_id}/agents/{agent_id}/fork";
 
 // The fields an in-place agent update can carry; at least one must be set.
 const AGENT_UPDATE_FIELDS = [
@@ -167,6 +172,50 @@ export class Agents {
     const res = await this.api.POST(ROLLBACK, {
       params: { path: { org_id: orgId, project_id: projectId, agent_id: id } },
       body: { snapshot_id: snapshotId },
+    });
+    return new Agent(this, unwrap<AgentData>(res), scope);
+  }
+
+  // Snapshots the sandbox backing an agent. Same params and SnapshotData shape as
+  // sandboxes.createSnapshot; the snapshot starts Pending, so wait on it with
+  // sandboxes.waitForSnapshot (or agent.snapshot({ waitUntilReady: true })).
+  async createSnapshot(
+    id: string,
+    params: CreateSnapshotParams = {},
+    scope?: Scope,
+  ): Promise<SnapshotData> {
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.POST(SNAPSHOTS, {
+      params: { path: { org_id: orgId, project_id: projectId, agent_id: id } },
+      body: { ...params },
+    });
+    return unwrap<SnapshotData>(res);
+  }
+
+  // Lists the snapshots of an agent's backing sandbox, one page at a time.
+  async listSnapshots(id: string, params: ListSnapshotsParams = {}): Promise<SnapshotPage> {
+    const { page, limit, ...scope } = params;
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.GET(SNAPSHOTS, {
+      params: {
+        path: { org_id: orgId, project_id: projectId, agent_id: id },
+        query: { page, limit },
+      },
+    });
+    // The spec's inline agent list schema leaves every field optional; the server
+    // sends the same page as the sandbox snapshot list.
+    const data = unwrap(res) as SnapshotListResponse;
+    return { items: data.items, total: data.total, page: data.page, limit: data.limit };
+  }
+
+  // Forks an agent into a new agent with the source's template and configuration
+  // and its own gateway token. Returns a handle to the new agent, which is
+  // Provisioning until ready; call waitUntilReady() on it. The source keeps running.
+  async fork(id: string, name: string, scope?: Scope): Promise<Agent> {
+    const { orgId, projectId } = this.ctx.resolveScope(scope);
+    const res = await this.api.POST(FORK, {
+      params: { path: { org_id: orgId, project_id: projectId, agent_id: id } },
+      body: { name },
     });
     return new Agent(this, unwrap<AgentData>(res), scope);
   }

@@ -191,7 +191,8 @@ export function auditEvent(overrides: Partial<AuditEvent> = {}): AuditEvent {
       },
     },
     api: { operation: "fs.read" },
-    cloud: { provider: "NeevCloud" },
+    cloud: { provider: "NeevCloud", account: { uid: "proj_test" }, org: { uid: "org_test" } },
+    device: { type_id: 6, type: "Virtual", uid: "sb-1" },
     src_endpoint: { name: "unknown" },
     osint: [],
     metadata: {
