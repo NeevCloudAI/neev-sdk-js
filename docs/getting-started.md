@@ -1,9 +1,9 @@
 # Getting started
 
 Install the SDK, configure credentials, and run your first script. For a shorter
-overview, see the [README](../README.md). When you need API lists, method
-signatures, or example references, use the [documentation map](#documentation-map)
-below.
+overview, see the [README](../README.md). For each product, read its guide
+([Sandboxes](./sandboxes.md), [Agents](./agents.md), [Agent tools](./agent-tools.md));
+the [documentation map](#documentation-map) below lists everything else.
 
 `@neevcloud/sdk` is **async-only**: every method returns a `Promise`, so all the
 snippets below use `await` (inside an `async` function or a module that supports
@@ -72,6 +72,8 @@ Notes:
   `NEEV_API_KEY`.
 - `orgId` / `projectId` are required to make a call, but may be set on the client
   **or** overridden per call (see [per-call scope](#per-call-scope-override)).
+- Every option, including `baseURL`, `fetch` and `webSocket`, is in
+  [Configuration](./configuration.md#client-options).
 
 **Linux / macOS (bash/zsh)** — current session:
 
@@ -222,9 +224,9 @@ import { Neev } from "@neevcloud/sdk";
 const neev = new Neev();
 
 async function main(): Promise<void> {
-  // 1. Create a sandbox. Every field is optional — the platform generates a
-  //    name and defaults the template.
-  const sandbox = await neev.sandboxes.create({});
+  // 1. Create a sandbox from the general-purpose template. Every field is
+  //    optional; omit the template to use the platform default.
+  const sandbox = await neev.sandboxes.create({ sandbox_template_id: "sb-ubuntu-26-04-dev" });
   console.log(`created ${sandbox.id} (phase: ${sandbox.phase})`);
 
   try {
@@ -263,13 +265,17 @@ Key points:
 
 - Use `sandbox_template_id` (not `template_id`) in `create` params when you want a
   specific template; omit it to use the platform default.
-- Egress is **deny-all** by default. Pass `allowInternet: true` to open all outbound
-  network, or `allowEgress: ["github.com", "*.npmjs.org"]` for specific hosts. The same
-  fields work on `agents.create`.
+- A sandbox's egress is **deny-all** by default, apart from any hosts its template
+  allows. Pass `allowInternet: true` to open all outbound network, or
+  `allowEgress: ["github.com", "*.npmjs.org"]` for specific hosts. An agent instead
+  starts with its template's allow-list, and these fields on `agents.create` replace it;
+  see [Agents: Network access](./agents.md#network-access).
 - `connectUrl` is a getter on the handle; it is populated once the sandbox is
   Ready.
 - Always `await sandbox.waitUntilReady()` before `exec` or `files` operations. The
-  handle will also wait automatically on the first runtime call if you skip it.
+  handle will also wait automatically on the first runtime call if you skip it. A
+  paused sandbox can wake on use instead; see
+  [Pause and wake](./sandboxes.md#pause-and-wake).
 - `pause()` and `resume()` return the updated `Sandbox` handle; `delete()`
   resolves to `void`.
 - File and `exec` calls are **not** retried automatically (a retried write could
@@ -291,8 +297,8 @@ for await (const event of sandbox.exec(["sh", "-c", "seq 1 3"], { stream: true }
 
 ### Per-call scope override
 
-Any method accepts an optional scope to target a different org/project than the
-client default:
+Sandbox and agent methods accept an optional scope to target a different org/project
+than the client default (see [Configuration](./configuration.md#organization-and-project-scope)):
 
 ```ts
 await neev.sandboxes.list({ orgId: "other-org", projectId: "other-proj" });
@@ -319,11 +325,12 @@ try {
 `err.code` is a machine-readable `ErrorCode` such as `not_found` or
 `sandbox_quota_exceeded` — branch on it, not on the message text. A `503`
 surfaces as `ServiceUnavailableError` (a subclass of `InternalServerError`):
-the platform is briefly unavailable, so retry shortly.
+the platform is briefly unavailable, so retry shortly. See [Errors](./errors.md) for
+every class and when to retry.
 
 For snapshot capture, rollback, and fork workflows, see
 [`examples/snapshot-fork-rollback.ts`](../examples/snapshot-fork-rollback.ts) and
-the snapshots section of [`api-reference.md`](./api-reference.md).
+[Snapshots, fork and rollback](./sandboxes.md#snapshots-fork-and-rollback).
 
 ## Other products
 
@@ -331,15 +338,19 @@ The same client covers every NeevCloud product in this SDK.
 
 | Product | Start here |
 | --- | --- |
-| Agents: ready-made coding agents, each on its own sandbox | [README: Agents](../README.md#agents) |
-| Agent tools: sandbox tools for the agent you build | [README: Agent tools](../README.md#agent-tools) |
+| Agents: ready-made coding agents, each on its own sandbox | [Agents](./agents.md) |
+| Agent tools: sandbox tools for the agent you build | [Agent tools](./agent-tools.md) |
 
 ## Documentation map
 
 | Document | What you'll find |
 | -------- | ---------------- |
-| [README](../README.md) | Short install overview, quickstart, usage snippets |
+| [README](../README.md) | Short install overview, quickstart and the product list |
 | **Getting started** (this file) | Full install walkthrough, env vars, first script |
-| [`api-reference.md`](./api-reference.md) | Every product and method, grouped by product, with snippets |
-| [`api-inventory.md`](./api-inventory.md) | Full method signatures, parameter tables, types, errors |
-| [`examples/README.md`](../examples/README.md) | Tiered learning path and per-example run commands |
+| [Sandboxes](./sandboxes.md) · [Agents](./agents.md) · [Agent tools](./agent-tools.md) | One guide per product |
+| [Configuration](./configuration.md) | Credentials, scope, client options, timeouts, raw client |
+| [Errors](./errors.md) | Error classes, error codes and retrying |
+| [API reference](./api-reference.md) | Every method, grouped by product, with snippets |
+| [API inventory](./api-inventory.md) | Full method signatures, parameter tables, types, errors |
+| [Use from an AI agent](./ai-agents.md) | Prompts and rules for coding agents |
+| [`examples/README.md`](../examples/README.md) | Per-example run commands and expected output |

@@ -736,7 +736,7 @@ Access via `client.agents` (an `Agents` instance). An agent is a managed workloa
 create(params: CreateAgentParams, scope?: Scope): Promise<Agent>
 ```
 
-Creates an agent from a catalogue template. `name` and `agent_template` are required. Egress is deny-all by default; open it with the `allowInternet` / `allowEgress` convenience fields (see `EgressConvenience`) or a full `egress` object.
+Creates an agent from a catalogue template. `name` and `agent_template` are required. Egress defaults to the template's allow-list (`default_egress`, the hosts the agent needs), or deny-all when the template has none. The `allowInternet` / `allowEgress` convenience fields (see `EgressConvenience`) or a full `egress` object replace that list; to add a host, use `update(id, { egress_add })` after create.
 
 **Returns:** `Promise<Agent>` — the handle may still be `Provisioning`; call `waitUntilReady`.
 
