@@ -23,7 +23,8 @@ export type SandboxLastCrash = components["schemas"]["SandboxLastCrash"];
 // `egress` policy. Pass a full `egress` object for anything these don't cover; an
 // explicit `egress` always wins over them.
 export interface EgressConvenience {
-  // Open all egress (0.0.0.0/0 and ::/0). Default is deny-all; opt in with true.
+  // Open all egress (0.0.0.0/0 and ::/0). A sandbox defaults to deny-all and an agent
+  // to its template's allow-list; either field replaces that default.
   allowInternet?: boolean;
   // Allow egress to specific hosts — FQDN or CIDR (wildcards supported).
   allowEgress?: string[];
